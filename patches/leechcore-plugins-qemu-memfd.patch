@@ -1,0 +1,93 @@
+--- a/leechcore_device_qemu/leechcore_device_qemu.c	2026-11-08 12:14:53.892425700 +0000
++++ b/leechcore_device_qemu/leechcore_device_qemu.c	2026-11-08 12:15:06.352901006 +0000
+@@ -485,60 +485,56 @@
+     return false;
+ }
+ 
++// Find QEMU's guest RAM fd in /proc/<pid>/fd: a hugetlbfs file or a memfd
++// created by memory-backend-memfd. If several match, take the largest one.
++static BOOL DeviceQEMU_IsRamFdTarget(_In_ LPCSTR szTarget)
++{
++    return !strncmp(szTarget, HUGEPAGES_PATH, sizeof(HUGEPAGES_PATH) - 1) ||
++           !strncmp(szTarget, "/memfd:memory-backend-memfd", 27);
++}
++
+ _Success_(return)
+ BOOL LcPluginCreate_HugePages(_In_ PLC_CONTEXT ctxLC, _Inout_ PDEVICE_CONTEXT_QEMU ctx, _In_ QWORD qwHugePagePid)
+ {
+-    
+     DIR *fdDir;
+     int fd = -1;
+     BOOL fResult;
+     struct dirent *dp;
+-    CHAR szPathMem[MAX_PATH] = { 0 }, szPathQemuFdDir[MAX_PATH] = { 0 };
++    struct stat st;
++    off_t cbBest = 0;
++    CHAR szPathMem[MAX_PATH] = { 0 }, szPathQemuFdDir[64] = { 0 };
++    CHAR szPathQemuFd[MAX_PATH], szTarget[MAX_PATH];
++    ssize_t cch;
+ 
+     snprintf(szPathQemuFdDir, sizeof(szPathQemuFdDir), "/proc/%llu/fd/", qwHugePagePid);
+-
+-    fdDir = opendir(szPathQemuFdDir);
+-    if(!fdDir) {
+-        lcprintf(ctxLC, "DEVICE: QEMU: Failed to open qemu hugepage fd path.\n");
+-        lcprintf(ctxLC, "DEVICE: QEMU: Check path and permissions for path: %s\n", szPathQemuFdDir);
++    if(!(fdDir = opendir(szPathQemuFdDir))) {
++        lcprintf(ctxLC, "DEVICE: QEMU: FAIL: cannot open %s (need root / ptrace access).\n", szPathQemuFdDir);
+         goto fail;
+     }
+-
+-    while ((dp = readdir(fdDir)) != NULL)
+-    {
+-        CHAR szPathQemuFd[MAX_PATH] = { 0 };
+-        CHAR szPathQemuFdReal[MAX_PATH] = { 0 };
+-
+-        if((strcmp(".", dp->d_name) == 0) || (strcmp("..", dp->d_name) == 0)) {
+-            continue;
+-        }
+-
+-        strcat(szPathQemuFd, szPathQemuFdDir);
+-        strcat(szPathQemuFd, dp->d_name);
+-
+-        if(readlink(szPathQemuFd, szPathQemuFdReal, sizeof(szPathQemuFdReal)) == -1) {
+-            continue;
+-        }
+-
+-        if(strncmp(HUGEPAGES_PATH, szPathQemuFdReal, sizeof(HUGEPAGES_PATH) -1) == 0) {
+-            strcpy(szPathMem, szPathQemuFd);
+-            break;
+-        }
++    while((dp = readdir(fdDir)) != NULL) {
++        if(dp->d_name[0] == '.') { continue; }
++        snprintf(szPathQemuFd, sizeof(szPathQemuFd), "%s%s", szPathQemuFdDir, dp->d_name);
++        if((cch = readlink(szPathQemuFd, szTarget, sizeof(szTarget) - 1)) <= 0) { continue; }
++        szTarget[cch] = 0;
++        if(!DeviceQEMU_IsRamFdTarget(szTarget)) { continue; }
++        if(stat(szPathQemuFd, &st) || !S_ISREG(st.st_mode) || (st.st_size <= cbBest)) { continue; }
++        cbBest = st.st_size;
++        strcpy(szPathMem, szPathQemuFd);
+     }
+-
+     closedir(fdDir);
+-
++    if(!szPathMem[0]) {
++        lcprintf(ctxLC, "DEVICE: QEMU: FAIL: no hugetlbfs/memfd guest RAM fd found in %s\n", szPathQemuFdDir);
++        goto fail;
++    }
++    lcprintfv(ctxLC, "DEVICE: QEMU: using %s (%lli bytes)\n", szPathMem, (long long)cbBest);
+     fd = open(szPathMem, O_RDWR | O_SYNC, 0);
+     if(fd < 0) {
+-        lcprintf(ctxLC, "DEVICE: QEMU: FAIL: 'open' failed path='%s', errorcode=%i.\n", szPathMem, fd);
+-        lcprintf(ctxLC, "  Possible reasons: no read/write access to hugepage memory file.\n");
++        lcprintf(ctxLC, "DEVICE: QEMU: FAIL: 'open' failed path='%s', errno=%i.\n", szPathMem, errno);
+         goto fail;
+     }
+-
+     fResult = DeviceQEMU_MapFd(ctxLC, ctx, fd);
+     close(fd);
+     return fResult;
+-
+ fail:
+     if(fd >= 0) { close(fd); }
+     return false;

@@ -1,0 +1,13 @@
+/build*/
+/maps/**/*.png
+/maps/**/*.jpg
+/maps/**/*.webp
+/dumps/
+*.raw
+*.dmp
+compile_commands.json
+.cache/
+__pycache__/
+/web/node_modules/
+/web/dist/
+*.jsonl

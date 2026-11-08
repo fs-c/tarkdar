@@ -1,0 +1,949 @@
+{
+  "schema": 1,
+  "note": "Initial values: live-EFT reference values from MeatyEFTRelease cac603e. Expect different values for SPT builds; regenerate with tools/update-offsets.py.",
+  "build": {
+    "GameAssembly.dll": null,
+    "UnityPlayer.dll": null
+  },
+  "bootstrap": {
+    "typeInfoTableRva": "0x5FB0F48"
+  },
+  "unityRvas": {
+    "gameObjectManager": "0x1A233A0",
+    "allCameras": "0x19F3080"
+  },
+  "unityLayout": {
+    "GameObjectManager.LastActiveNode": "0x20",
+    "GameObjectManager.ActiveNodes": "0x28",
+    "ListNode.Next": "0x8",
+    "ListNode.Object": "0x10",
+    "GameObject.Components": "0x58",
+    "GameObject.ComponentCount": "0x68",
+    "GameObject.Name": "0x88",
+    "ComponentEntry.Stride": "0x10",
+    "ComponentEntry.Component": "0x8",
+    "Component.ManagedObject": "0x20",
+    "Component.GameObject": "0x58",
+    "Transform.Hierarchy": "0x70",
+    "Transform.Index": "0x78",
+    "TransformHierarchy.ParentIndices": "0x40",
+    "TransformHierarchy.LocalTransforms": "0x68"
+  },
+  "managedLayout": {
+    "Object.Klass": "0x0",
+    "UnityObject.CachedPtr": "0x10",
+    "String.Length": "0x10",
+    "String.Chars": "0x14",
+    "Array.Length": "0x18",
+    "Array.Data": "0x20",
+    "List.Items": "0x10",
+    "List.Size": "0x18",
+    "Dictionary.Entries": "0x18",
+    "Dictionary.Count": "0x20",
+    "Il2CppClass.Name": "0x10",
+    "Il2CppClass.Namespace": "0x18",
+    "Il2CppClass.Parent": "0x58",
+    "Il2CppClass.StaticFields": "0xB8",
+    "Il2CppClass.ByvalArg": "0x20",
+    "Il2CppClass.DeclaringType": "0x50",
+    "Il2CppClass.Fields": "0x80",
+    "Il2CppClass.FieldCount": "0x124",
+    "FieldInfo.Name": "0x0",
+    "FieldInfo.Type": "0x8",
+    "FieldInfo.Parent": "0x10",
+    "FieldInfo.Offset": "0x18",
+    "FieldInfo.Size": "0x20",
+    "Il2CppType.Data": "0x0",
+    "Il2CppType.Attrs": "0x8",
+    "Il2CppType.Kind": "0xA"
+  },
+  "types": [
+    {
+      "group": "GamePlayerOwner",
+      "name": "TypeIndex",
+      "class": "EFT.GamePlayerOwner",
+      "required": true,
+      "value": "0x2215"
+    }
+  ],
+  "fields": [
+    {
+      "group": "GamePlayerOwner",
+      "name": "MyPlayer",
+      "class": "EFT.GamePlayerOwner",
+      "field": "_myPlayer",
+      "static": true,
+      "required": true,
+      "value": "0x8"
+    },
+    {
+      "group": "GameWorld",
+      "name": "Location",
+      "class": "EFT.GameWorld",
+      "field": "<LocationId>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0xE8"
+    },
+    {
+      "group": "GameWorld",
+      "name": "SynchronizableObjectLogicProcessor",
+      "class": "EFT.GameWorld",
+      "field": "<SynchronizableObjectLogicProcessor>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x278"
+    },
+    {
+      "group": "ClientLocalGameWorld",
+      "name": "btrController",
+      "class": "EFT.GameWorld",
+      "field": "<BtrController>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x28"
+    },
+    {
+      "group": "ClientLocalGameWorld",
+      "name": "ExfiltrationController",
+      "class": "EFT.GameWorld",
+      "field": "<ExfiltrationController>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x68"
+    },
+    {
+      "group": "ClientLocalGameWorld",
+      "name": "LootList",
+      "class": "EFT.GameWorld",
+      "field": "LootList",
+      "static": false,
+      "required": true,
+      "value": "0x1B0"
+    },
+    {
+      "group": "ClientLocalGameWorld",
+      "name": "RegisteredPlayers",
+      "class": "EFT.GameWorld",
+      "field": "RegisteredPlayers",
+      "static": false,
+      "required": true,
+      "value": "0x1D0"
+    },
+    {
+      "group": "ClientLocalGameWorld",
+      "name": "MainPlayer",
+      "class": "EFT.GameWorld",
+      "field": "MainPlayer",
+      "static": false,
+      "required": true,
+      "value": "0x230"
+    },
+    {
+      "group": "ClientLocalGameWorld",
+      "name": "Grenades",
+      "class": "EFT.GameWorld",
+      "field": "Grenades",
+      "static": false,
+      "required": true,
+      "value": "0x2B8"
+    },
+    {
+      "group": "ExfiltrationController",
+      "name": "ExfiltrationPoints",
+      "class": "CommonAssets.Scripts.Game.ExfiltrationController",
+      "field": "<ExfiltrationPoints>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x20"
+    },
+    {
+      "group": "ExfiltrationController",
+      "name": "ScavExfiltrationPoints",
+      "class": "CommonAssets.Scripts.Game.ExfiltrationController",
+      "field": "<ScavExfiltrationPoints>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x28"
+    },
+    {
+      "group": "ExfiltrationController",
+      "name": "MSecretExfiltrationPoints",
+      "class": "CommonAssets.Scripts.Game.ExfiltrationController",
+      "field": "<SecretExfiltrationPoints>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x30"
+    },
+    {
+      "group": "ExfiltrationPoint",
+      "name": "Status",
+      "class": "EFT.Interactive.ExfiltrationPoint",
+      "field": "_status",
+      "static": false,
+      "required": true,
+      "value": "0x58"
+    },
+    {
+      "group": "ExfiltrationPoint",
+      "name": "Settings",
+      "class": "EFT.Interactive.ExfiltrationPoint",
+      "field": "Settings",
+      "static": false,
+      "required": true,
+      "value": "0x98"
+    },
+    {
+      "group": "ExfiltrationPoint",
+      "name": "EligibleEntryPoints",
+      "class": "EFT.Interactive.ExfiltrationPoint",
+      "field": "EligibleEntryPoints",
+      "static": false,
+      "required": true,
+      "value": "0xC0"
+    },
+    {
+      "group": "ScavExfiltrationPoint",
+      "name": "EligibleIds",
+      "class": "EFT.Interactive.ScavExfiltrationPoint",
+      "field": "EligibleIds",
+      "static": false,
+      "required": true,
+      "value": "0xF8"
+    },
+    {
+      "group": "ExitSettings",
+      "name": "Name",
+      "class": "EFT.Interactive.ExitTriggerSettings",
+      "field": "Name",
+      "static": false,
+      "required": true,
+      "value": "0x18"
+    },
+    {
+      "group": "SynchronizableObject",
+      "name": "Type",
+      "class": "EFT.SynchronizableObjects.SynchronizableObject",
+      "field": "Type",
+      "static": false,
+      "required": true,
+      "value": "0x68"
+    },
+    {
+      "group": "SynchronizableObjectLogicProcessor",
+      "name": "_activeSynchronizableObjects",
+      "class": "EFT.SynchronizableObjects.SynchronizableObjectLogicProcessor",
+      "field": "_activeSynchronizableObjects",
+      "static": false,
+      "required": true,
+      "value": "0x10"
+    },
+    {
+      "group": "SynchronizableObjectLogicProcessor",
+      "name": "_staticSynchronizableObjects",
+      "class": "EFT.SynchronizableObjects.SynchronizableObjectLogicProcessor",
+      "field": "_staticSynchronizableObjects",
+      "static": false,
+      "required": true,
+      "value": "0x18"
+    },
+    {
+      "group": "TripwireSynchronizableObject",
+      "name": "_tripwireState",
+      "class": "EFT.SynchronizableObjects.TripwireSynchronizableObject",
+      "field": "_tripwireState",
+      "static": false,
+      "required": true,
+      "value": "0xE4"
+    },
+    {
+      "group": "TripwireSynchronizableObject",
+      "name": "FromPosition",
+      "class": "EFT.SynchronizableObjects.TripwireSynchronizableObject",
+      "field": "<FromPosition>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x14C"
+    },
+    {
+      "group": "TripwireSynchronizableObject",
+      "name": "ToPosition",
+      "class": "EFT.SynchronizableObjects.TripwireSynchronizableObject",
+      "field": "<ToPosition>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x158"
+    },
+    {
+      "group": "BtrController",
+      "name": "BtrView",
+      "class": "EFT.Vehicle.BtrController",
+      "field": "<BtrView>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x50"
+    },
+    {
+      "group": "BTRView",
+      "name": "turret",
+      "class": "EFT.Vehicle.BTRView",
+      "field": "turret",
+      "static": false,
+      "required": false,
+      "value": "0x60"
+    },
+    {
+      "group": "BTRView",
+      "name": "previousPosition",
+      "class": "EFT.Vehicle.BTRView",
+      "field": "_previousPosition",
+      "static": false,
+      "required": false,
+      "value": "0xB4"
+    },
+    {
+      "group": "BTRTurretView",
+      "name": "attachedBot",
+      "class": "EFT.Vehicle.BTRTurretView",
+      "field": "_bot",
+      "static": false,
+      "required": false,
+      "value": "0x60"
+    },
+    {
+      "group": "Player",
+      "name": "CharacterController",
+      "class": "EFT.Player",
+      "field": "_characterController",
+      "static": false,
+      "required": true,
+      "value": "0x40"
+    },
+    {
+      "group": "Player",
+      "name": "MovementContext",
+      "class": "EFT.Player",
+      "field": "<MovementContext>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x60"
+    },
+    {
+      "group": "Player",
+      "name": "_playerBody",
+      "class": "EFT.Player",
+      "field": "_playerBody",
+      "static": false,
+      "required": true,
+      "value": "0x1A0"
+    },
+    {
+      "group": "Player",
+      "name": "GameWorld",
+      "class": "EFT.Player",
+      "field": "<GameWorld>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x690"
+    },
+    {
+      "group": "Player",
+      "name": "Corpse",
+      "class": "EFT.Player",
+      "field": "Corpse",
+      "static": false,
+      "required": true,
+      "value": "0x728"
+    },
+    {
+      "group": "Player",
+      "name": "Location",
+      "class": "EFT.Player",
+      "field": "<Location>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x928"
+    },
+    {
+      "group": "Player",
+      "name": "Profile",
+      "class": "EFT.Player",
+      "field": "<Profile>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x9C0"
+    },
+    {
+      "group": "Player",
+      "name": "_inventoryController",
+      "class": "EFT.Player",
+      "field": "_inventoryController",
+      "static": false,
+      "required": true,
+      "value": "0xA38"
+    },
+    {
+      "group": "Player",
+      "name": "_handsController",
+      "class": "EFT.Player",
+      "field": "_handsController",
+      "static": false,
+      "required": true,
+      "value": "0xA40"
+    },
+    {
+      "group": "Player",
+      "name": "_playerLookRaycastTransform",
+      "class": "EFT.Player",
+      "field": "_playerLookRaycastTransform",
+      "static": false,
+      "required": true,
+      "value": "0xAE0"
+    },
+    {
+      "group": "Player",
+      "name": "PlayerBones",
+      "class": "EFT.Player",
+      "field": "<PlayerBones>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0xB48"
+    },
+    {
+      "group": "SimpleCharacterController",
+      "name": "Velocity",
+      "class": "SimpleCharacterController",
+      "field": "_velocity",
+      "static": false,
+      "required": true,
+      "value": "0xF0"
+    },
+    {
+      "group": "BifacialTransform",
+      "name": "Original",
+      "class": "EFT.BifacialTransform",
+      "field": "Original",
+      "static": false,
+      "required": true,
+      "value": "0x10"
+    },
+    {
+      "group": "PlayerBones",
+      "name": "WeaponRootThird",
+      "class": "PlayerBones",
+      "field": "Weapon_Root_Third",
+      "static": false,
+      "required": true,
+      "value": "0x40"
+    },
+    {
+      "group": "PlayerBones",
+      "name": "Ribcage",
+      "class": "PlayerBones",
+      "field": "Ribcage",
+      "static": false,
+      "required": true,
+      "value": "0x148"
+    },
+    {
+      "group": "ItemHandsController",
+      "name": "Item",
+      "class": "ItemHandsController",
+      "field": "_item",
+      "static": false,
+      "required": true,
+      "value": "0x70"
+    },
+    {
+      "group": "ObservedPlayerView",
+      "name": "ObservedPlayerController",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerView",
+      "field": "<ObservedPlayerController>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x28"
+    },
+    {
+      "group": "ObservedPlayerView",
+      "name": "Voice",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerView",
+      "field": "<Voice>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x40"
+    },
+    {
+      "group": "ObservedPlayerView",
+      "name": "Side",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerView",
+      "field": "<Side>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0xB4"
+    },
+    {
+      "group": "ObservedPlayerView",
+      "name": "IsAI",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerView",
+      "field": "<IsAI>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0xC0"
+    },
+    {
+      "group": "ObservedPlayerView",
+      "name": "PlayerBody",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerView",
+      "field": "<PlayerBody>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0xF8"
+    },
+    {
+      "group": "ObservedPlayerController",
+      "name": "InventoryController",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerController",
+      "field": "<InventoryController>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x10"
+    },
+    {
+      "group": "ObservedPlayerController",
+      "name": "MovementController",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerController",
+      "field": "<MovementController>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0xF0"
+    },
+    {
+      "group": "ObservedPlayerController",
+      "name": "HealthController",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerController",
+      "field": "<HealthController>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x100"
+    },
+    {
+      "group": "ObservedPlayerController",
+      "name": "HandsController",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerController",
+      "field": "<HandsController>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x140"
+    },
+    {
+      "group": "ObservedMovementController",
+      "name": "ObservedPlayerStateContext",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerMovementController",
+      "field": "<ObservedPlayerStateContext>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0xB0"
+    },
+    {
+      "group": "ObservedPlayerStateContext",
+      "name": "Rotation",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerStateContext",
+      "field": "<Rotation>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x28"
+    },
+    {
+      "group": "ObservedPlayerStateContext",
+      "name": "Velocity",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerStateContext",
+      "field": "_velocity",
+      "static": false,
+      "required": true,
+      "value": "0xF8"
+    },
+    {
+      "group": "ObservedPlayerHands",
+      "name": "Item",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerHandsController",
+      "field": "_item",
+      "static": false,
+      "required": true,
+      "value": "0x58"
+    },
+    {
+      "group": "ObservedHealthController",
+      "name": "HealthStatus",
+      "class": "ObservedPlayerHealthController",
+      "field": "HealthStatus",
+      "static": false,
+      "required": true,
+      "value": "0x10"
+    },
+    {
+      "group": "ObservedHealthController",
+      "name": "PlayerCorpse",
+      "class": "ObservedPlayerHealthController",
+      "field": "_playerCorpse",
+      "static": false,
+      "required": true,
+      "value": "0x48"
+    },
+    {
+      "group": "InventoryController",
+      "name": "Inventory",
+      "class": "EFT.InventoryLogic.InventoryController",
+      "field": "<Inventory>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x100"
+    },
+    {
+      "group": "Inventory",
+      "name": "Equipment",
+      "class": "EFT.InventoryLogic.Inventory",
+      "field": "Equipment",
+      "static": false,
+      "required": true,
+      "value": "0x18"
+    },
+    {
+      "group": "InventoryEquipment",
+      "name": "_cachedSlots",
+      "class": "EFT.InventoryLogic.InventoryEquipment",
+      "field": "_cachedSlots",
+      "static": false,
+      "required": true,
+      "value": "0x90"
+    },
+    {
+      "group": "Slot",
+      "name": "ContainedItem",
+      "class": "EFT.InventoryLogic.Slot",
+      "field": "<ContainedItem>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x48"
+    },
+    {
+      "group": "Slot",
+      "name": "ID",
+      "class": "EFT.InventoryLogic.Slot",
+      "field": "<ID>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x58"
+    },
+    {
+      "group": "Weapon",
+      "name": "Chambers",
+      "class": "EFT.InventoryLogic.Weapon",
+      "field": "<Chambers>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0xB0"
+    },
+    {
+      "group": "Weapon",
+      "name": "MagazineSlotCache",
+      "class": "EFT.InventoryLogic.Weapon",
+      "field": "_magSlotCache",
+      "static": false,
+      "required": true,
+      "value": "0xC8"
+    },
+    {
+      "group": "Magazine",
+      "name": "Cartridges",
+      "class": "EFT.InventoryLogic.Magazine",
+      "field": "<Cartridges>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0xA8"
+    },
+    {
+      "group": "Item",
+      "name": "StackObjectsCount",
+      "class": "EFT.InventoryLogic.Item",
+      "field": "StackObjectsCount",
+      "static": false,
+      "required": true,
+      "value": "0x24"
+    },
+    {
+      "group": "Item",
+      "name": "Version",
+      "class": "EFT.InventoryLogic.Item",
+      "field": "Version",
+      "static": false,
+      "required": true,
+      "value": "0x28"
+    },
+    {
+      "group": "Item",
+      "name": "Template",
+      "class": "EFT.InventoryLogic.Item",
+      "field": "<Template>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x60"
+    },
+    {
+      "group": "StackSlot",
+      "name": "MaxCount",
+      "class": "EFT.InventoryLogic.StackSlot",
+      "field": "MaxCount",
+      "static": false,
+      "required": true,
+      "value": "0x10"
+    },
+    {
+      "group": "StackSlot",
+      "name": "items",
+      "class": "EFT.InventoryLogic.StackSlot",
+      "field": "_items",
+      "static": false,
+      "required": true,
+      "value": "0x18"
+    },
+    {
+      "group": "Profile",
+      "name": "Id",
+      "class": "EFT.Profile",
+      "field": "Id",
+      "static": false,
+      "required": true,
+      "value": "0x10"
+    },
+    {
+      "group": "Profile",
+      "name": "Info",
+      "class": "EFT.Profile",
+      "field": "Info",
+      "static": false,
+      "required": true,
+      "value": "0x48"
+    },
+    {
+      "group": "Profile",
+      "name": "QuestsData",
+      "class": "EFT.Profile",
+      "field": "QuestsData",
+      "static": false,
+      "required": true,
+      "value": "0x98"
+    },
+    {
+      "group": "Profile",
+      "name": "WishlistManager",
+      "class": "EFT.Profile",
+      "field": "WishlistManager",
+      "static": false,
+      "required": true,
+      "value": "0x138"
+    },
+    {
+      "group": "WishlistManager",
+      "name": "_wishlistItems",
+      "class": "EFT.WishlistManager",
+      "field": "_wishlistItems",
+      "static": false,
+      "required": true,
+      "value": "0x30"
+    },
+    {
+      "group": "QuestsData",
+      "name": "Id",
+      "class": "EFT.Quests.QuestStatusData",
+      "field": "Id",
+      "static": false,
+      "required": true,
+      "value": "0x10"
+    },
+    {
+      "group": "QuestsData",
+      "name": "Status",
+      "class": "EFT.Quests.QuestStatusData",
+      "field": "Status",
+      "static": false,
+      "required": true,
+      "value": "0x1C"
+    },
+    {
+      "group": "QuestsData",
+      "name": "CompletedConditions",
+      "class": "EFT.Quests.QuestStatusData",
+      "field": "CompletedConditions",
+      "static": false,
+      "required": true,
+      "value": "0x28"
+    },
+    {
+      "group": "PlayerInfo",
+      "name": "EntryPoint",
+      "class": "EFT.ProfileInfo",
+      "field": "EntryPoint",
+      "static": false,
+      "required": true,
+      "value": "0x30"
+    },
+    {
+      "group": "PlayerInfo",
+      "name": "Side",
+      "class": "EFT.ProfileInfo",
+      "field": "<Side>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x50"
+    },
+    {
+      "group": "MovementContext",
+      "name": "_rotation",
+      "class": "EFT.MovementContext",
+      "field": "_rotation",
+      "static": false,
+      "required": true,
+      "value": "0xC0"
+    },
+    {
+      "group": "InteractiveLootItem",
+      "name": "Item",
+      "class": "EFT.Interactive.LootItem",
+      "field": "_item",
+      "static": false,
+      "required": true,
+      "value": "0xF0"
+    },
+    {
+      "group": "LootItemMod",
+      "name": "Slots",
+      "class": "EFT.InventoryLogic.CompoundItem",
+      "field": "Slots",
+      "static": false,
+      "required": true,
+      "value": "0x80"
+    },
+    {
+      "group": "LootableContainer",
+      "name": "InteractingPlayer",
+      "class": "EFT.Interactive.LootableContainer",
+      "field": "<InteractingPlayer>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x160"
+    },
+    {
+      "group": "LootableContainer",
+      "name": "ItemOwner",
+      "class": "EFT.Interactive.LootableContainer",
+      "field": "ItemOwner",
+      "static": false,
+      "required": true,
+      "value": "0x178"
+    },
+    {
+      "group": "LootableContainerItemOwner",
+      "name": "RootItem",
+      "class": "EFT.InventoryLogic.ItemController",
+      "field": "<RootItem>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0xD0"
+    },
+    {
+      "group": "ItemTemplate",
+      "name": "ShortName",
+      "class": "EFT.InventoryLogic.ItemTemplate",
+      "field": "ShortName",
+      "static": false,
+      "required": true,
+      "value": "0x18"
+    },
+    {
+      "group": "ItemTemplate",
+      "name": "QuestItem",
+      "class": "EFT.InventoryLogic.ItemTemplate",
+      "field": "QuestItem",
+      "static": false,
+      "required": true,
+      "value": "0x34"
+    },
+    {
+      "group": "ItemTemplate",
+      "name": "_id",
+      "class": "EFT.InventoryLogic.ItemTemplate",
+      "field": "<_id>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0xE0"
+    },
+    {
+      "group": "Throwable",
+      "name": "_isDestroyed",
+      "class": "Throwable",
+      "field": "_isDestroyed",
+      "static": false,
+      "required": true,
+      "value": "0x4D"
+    },
+    {
+      "group": "CompoundItem",
+      "name": "Grids",
+      "class": "EFT.InventoryLogic.CompoundItem",
+      "field": "Grids",
+      "static": false,
+      "required": false,
+      "optional": true,
+      "value": null,
+      "note": "StashGridClass[]: the item's container grids (backpack, rig, container). Unverified class/field names."
+    },
+    {
+      "group": "StashGrid",
+      "name": "ItemCollection",
+      "class": "EFT.InventoryLogic.StashGridClass",
+      "field": "<ItemCollection>k__BackingField",
+      "static": false,
+      "required": false,
+      "optional": true,
+      "value": null,
+      "note": "The grid's item collection object. Unverified class/field names."
+    },
+    {
+      "group": "ItemCollection",
+      "name": "Items",
+      "class": "EFT.InventoryLogic.ItemCollection",
+      "field": "_items",
+      "static": false,
+      "required": false,
+      "optional": true,
+      "value": null,
+      "note": "List<Item> of the items in a grid collection. Unverified class/field names and type (may be a dictionary)."
+    }
+  ],
+  "literals": [
+    {
+      "group": "PlayerBody",
+      "name": "SkeletonRootJoint",
+      "value": "0x40",
+      "note": "EFT.PlayerBody \u2192 skeleton root joint object (field name unverified)"
+    },
+    {
+      "group": "Skeleton",
+      "name": "Values",
+      "value": "0x30",
+      "note": "skeleton \u2192 List<Transform> of bones, indexed by Unity bone index (field name unverified)"
+    },
+    {
+      "group": "MongoID",
+      "name": "StringId",
+      "value": "0x10",
+      "note": "EFT MongoID struct: cached string form (String*); struct = {u32 timestamp; u64 counter; String* stringId}"
+    },
+    {
+      "group": "GrenadeCollection",
+      "name": "List",
+      "value": "0x18",
+      "note": "GameWorld.Grenades collection object \u2192 List<Throwable> (field name unverified)"
+    }
+  ]
+}

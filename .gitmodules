@@ -1,0 +1,19 @@
+[submodule "third_party/LeechCore"]
+	path = third_party/LeechCore
+	url = https://github.com/ufrisk/LeechCore
+[submodule "third_party/MemProcFS"]
+	path = third_party/MemProcFS
+	url = https://github.com/ufrisk/MemProcFS
+[submodule "third_party/LeechCore-plugins"]
+	path = third_party/LeechCore-plugins
+	url = https://github.com/ufrisk/LeechCore-plugins
+	ignore = dirty
+[submodule "third_party/doctest"]
+	path = third_party/doctest
+	url = https://github.com/doctest/doctest
+[submodule "third_party/Crow"]
+	path = third_party/Crow
+	url = https://github.com/CrowCpp/Crow
+[submodule "third_party/asio"]
+	path = third_party/asio
+	url = https://github.com/chriskohlhoff/asio

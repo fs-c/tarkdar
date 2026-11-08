@@ -1,0 +1,15 @@
+{
+  "name": "Demo",
+  "ids": ["demo"],
+  "calibration": {
+    "points": [
+      { "world": [0, 0], "pixel": [500, 500] },
+      { "world": [200, 200], "pixel": [900, 100] }
+    ]
+  },
+  "layers": [
+    { "image": "ground.svg", "maxY": 3 },
+    { "image": "upper.svg" }
+  ],
+  "layerHysteresis": 0.5
+}

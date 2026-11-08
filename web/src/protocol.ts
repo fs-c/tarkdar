@@ -1,0 +1,105 @@
+// Server → client messages. Mirrors docs/protocol.md.
+
+export const PROTOCOL_VERSION = 1;
+
+export interface Envelope<T extends string, D> {
+  type: T;
+  raid: number | null;
+  rev: number;
+  t: number; // ms since the Unix epoch
+  data: D;
+}
+
+export type AppState = "waitingForProcess" | "waitingForModules" | "waitingForRaid" | "inRaid" | "cooldown";
+
+export interface StatusData {
+  state: AppState;
+  raidPending: boolean;
+  locationId: string | null;
+  offsetsMismatch: boolean;
+}
+
+export type Side = "usec" | "bear" | "savage" | "unknown";
+
+/** World coordinates in metres (Unity axes): [x east, y up, z north]. */
+export type WorldPos = [number, number, number];
+
+export interface Player {
+  id: number;
+  local: boolean;
+  ai: boolean;
+  side: Side;
+  dead: boolean;
+  absent: boolean;
+  pos: WorldPos | null;
+  /** Degrees, as stored by the game. Assumed: 0 = +z (north), 90 = +x (east). */
+  yaw: number;
+  pitch: number;
+}
+
+export interface PlayersData {
+  players: Player[];
+}
+
+export interface Exfil {
+  id: number;
+  kind: "regular" | "secret";
+  /** The game's internal exit name. */
+  name: string;
+  /** EExfiltrationStatus: 1 closed, 2 requirements, 3 countdown, 4 open, 5 pending, 6 manual. */
+  status: number;
+  pos: WorldPos | null;
+}
+
+export interface ExplosivesData {
+  grenades: { id: number; pos: WorldPos }[];
+  tripwires: { id: number; from: WorldPos; to: WorldPos }[];
+}
+
+/** An item and its contents (slot attachments, grid contents). */
+export interface ItemNode {
+  tpl: string;
+  /** Slot id when the item sits in a slot (e.g. "FirstPrimaryWeapon"). */
+  slot?: string;
+  /** Stack size, when more than 1. */
+  count?: number;
+  items?: ItemNode[];
+}
+
+export interface PlayerEquipment {
+  id: number;
+  slots: ItemNode[];
+}
+
+export type LootKind = "item" | "quest" | "container" | "airdrop" | "corpse";
+
+export interface LootEntry {
+  id: number;
+  kind: LootKind;
+  /** Item/container template id; empty for airdrops and corpses. */
+  tpl: string;
+  /** GameObject name, for debugging. */
+  obj: string;
+  pos: WorldPos;
+  /** Containers: contents. Corpses: equipment. */
+  contents?: ItemNode[];
+}
+
+export type Message =
+  | Envelope<"hello", { protocol: number }>
+  | Envelope<"status", StatusData>
+  | Envelope<"players", PlayersData>
+  | Envelope<"exfils", { exfils: Exfil[] }>
+  | Envelope<"explosives", ExplosivesData>
+  | Envelope<"loot", { loot: LootEntry[] }>
+  | Envelope<"equipment", { players: PlayerEquipment[] }>;
+
+export function parseMessage(text: string): Message | null {
+  try {
+    const m = JSON.parse(text) as { type?: unknown };
+    if (typeof m !== "object" || m === null || typeof m.type !== "string") return null;
+    return m as Message;
+  } catch {
+    return null;
+  }
+}

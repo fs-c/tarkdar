@@ -86,26 +86,52 @@ public:
 
     struct FakePlayer {
         Address instance = 0;
-        Address movement = 0;
+        Address rotation = 0;     // Vector2 yaw/pitch
+        Address corpseField = 0;  // non-null once dead
         Address trs = 0;  // skeleton hierarchy TrsX array: slot 0 = Base, 1 = left foot, 2 = right foot
     };
 
     // A full EFT.Player (ClientPlayer) with profile, side, movement context and a skeleton whose Base
     // bone is at `position` and whose feet are 0.15 m to either side.
     Address newPlayer(int side = 4, std::optional<math::Vec3> position = std::nullopt) {
-        const math::Vec3 pos = position.value_or(math::Vec3{100.0f + 3.0f * float(fakePlayers.size()), 5, 200});
         FakePlayer fp;
         fp.instance = heap.object(clientPlayerClass, 0x1000);
         const Address profile = heap.alloc(0x200), info = heap.alloc(0x100);
         heap.put<Address>(fp.instance + off::Player::Profile, profile);
         heap.put<Address>(profile + off::Profile::Info, info);
         heap.put<std::int32_t>(info + off::PlayerInfo::Side, side);
-        fp.movement = heap.alloc(0x200);
-        heap.put<Address>(fp.instance + off::Player::MovementContext, fp.movement);
+        const Address movement = heap.alloc(0x200);
+        heap.put<Address>(fp.instance + off::Player::MovementContext, movement);
+        fp.rotation = movement + off::MovementContext::_rotation;
+        fp.corpseField = fp.instance + off::Player::Corpse;
+        return addSkeleton(fp, fp.instance + off::Player::_playerBody, position);
+    }
 
+    // A network-replicated ObservedPlayerView: controller → health / movement → state context, side,
+    // AI flag and voice on the view, and the same kind of skeleton as newPlayer.
+    Address newObservedPlayer(int side = 4, bool ai = true, std::u16string_view voice = u"BossKilla",
+                              std::optional<math::Vec3> position = std::nullopt) {
+        FakePlayer fp;
+        fp.instance = heap.object(observedClass, 0x200);
+        const Address controller = heap.alloc(0x200), health = heap.alloc(0x100), movement = heap.alloc(0x100),
+                      state = heap.alloc(0x200);
+        heap.put<Address>(fp.instance + off::ObservedPlayerView::ObservedPlayerController, controller);
+        heap.put<Address>(controller + off::ObservedPlayerController::HealthController, health);
+        heap.put<Address>(controller + off::ObservedPlayerController::MovementController, movement);
+        heap.put<Address>(movement + off::ObservedMovementController::ObservedPlayerStateContext, state);
+        heap.put<std::uint8_t>(fp.instance + off::ObservedPlayerView::IsAI, ai ? 1 : 0);
+        heap.put<std::int32_t>(fp.instance + off::ObservedPlayerView::Side, side);
+        heap.put<Address>(fp.instance + off::ObservedPlayerView::Voice, heap.managedString(voice));
+        fp.rotation = state + off::ObservedPlayerStateContext::Rotation;
+        fp.corpseField = health + off::ObservedHealthController::PlayerCorpse;
+        return addSkeleton(fp, fp.instance + off::ObservedPlayerView::PlayerBody, position);
+    }
+
+    Address addSkeleton(FakePlayer fp, Address bodyField, std::optional<math::Vec3> position) {
+        const math::Vec3 pos = position.value_or(math::Vec3{100.0f + 3.0f * float(fakePlayers.size()), 5, 200});
         // Skeleton: body → root joint → List<Transform> (managed) → native transforms in one hierarchy.
         const Address body = heap.alloc(0x100), root = heap.alloc(0x100);
-        heap.put<Address>(fp.instance + off::Player::_playerBody, body);
+        heap.put<Address>(bodyField, body);
         heap.put<Address>(body + off::PlayerBody::SkeletonRootJoint, root);
         const Address hierarchy = heap.alloc(0x100);
         fp.trs = heap.alloc(3 * sizeof(unity::TrsX));
@@ -136,17 +162,20 @@ public:
     }
     void setRotation(Address player, float yaw, float pitch) {
         const float v[2] = {yaw, pitch};
-        heap.putBytes(fakePlayers.at(player).movement + off::MovementContext::_rotation, v, sizeof(v));
+        heap.putBytes(fakePlayers.at(player).rotation, v, sizeof(v));
     }
-    void kill(Address player) { heap.put<Address>(player + off::Player::Corpse, heap.alloc(0x40)); }
+    void kill(Address player) { heap.put<Address>(fakePlayers.at(player).corpseField, heap.alloc(0x40)); }
     void setRosterList(const std::vector<Address>& list) {
+        roster = list;
         heap.put<Address>(world + off::ClientLocalGameWorld::RegisteredPlayers, heap.list(list, 64));
     }
+    [[nodiscard]] const std::vector<Address>& rosterPlayers() const { return roster; }
 
     // Roster of `count` players; the first is the local player.
     void setRoster(int count) {
         std::vector<Address> players;
         for (int i = 0; i < count; ++i) players.push_back(i == 0 ? localPlayer : newPlayer());
+        roster = players;
         heap.put<Address>(world + off::ClientLocalGameWorld::RegisteredPlayers, heap.list(players, 8));
     }
     void setRosterCount(std::int32_t count) {
@@ -171,6 +200,7 @@ public:
     std::unique_ptr<mem::Target> target;
     Address gameWorldClass = 0, clientWorldClass = 0, playerClass = 0, clientPlayerClass = 0, observedClass = 0;
     std::map<Address, FakePlayer> fakePlayers;
+    std::vector<Address> roster;  // as last set by setRoster / setRosterList
     Address typeInfoTable = 0, ownerClass = 0, ownerStatics = 0;
     Address gom = 0, gameWorldObject = 0;
     Address world = 0, localPlayer = 0;

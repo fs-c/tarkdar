@@ -6,6 +6,7 @@ add_library(radar_eft STATIC
     eft/raid/RaidFinder.cpp
     eft/raid/RaidMonitor.cpp
     eft/raid/Roster.cpp
+    eft/players/PlayerKinds.cpp
     eft/players/Players.cpp
     eft/players/Skeleton.cpp
     eft/Read.cpp

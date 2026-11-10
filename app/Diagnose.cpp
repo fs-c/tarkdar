@@ -163,6 +163,9 @@ void checkPlayers(Report& r, const std::shared_ptr<const eft::RaidSession>& sess
     std::string classList;
     for (const auto& [name, n] : classes) classList += std::format("{}{} ×{}", classList.empty() ? "" : ", ", name, n);
     r.ok(std::format("{} registered players: {}", roster->players.size(), classList));
+    if (roster->players.size() <= 1)
+        r.info("only the local player is registered: normal right at raid start; if bots are already "
+               "visible in game, ClientLocalGameWorld.RegisteredPlayers may point at the wrong list");
 
     eft::WorldState world;
     eft::Players players(session, world);
@@ -173,12 +176,19 @@ void checkPlayers(Report& r, const std::shared_ptr<const eft::RaidSession>& sess
     players.positionsTick(t);
     for (int i = 0; i < 1 + int(roster->players.size()); ++i) players.equipmentTick(t + std::chrono::seconds(i));
     const auto snap = world.players.get();
+    std::map<std::string, int> kinds;
+    for (const auto& p : snap->players) ++kinds[eft::kindName(p.kind)];
+    std::string kindList;
+    for (const auto& [name, n] : kinds) kindList += std::format("{}{} ×{}", kindList.empty() ? "" : ", ", name, n);
     if (snap->players.size() < roster->players.size())
-        r.fail(std::format("only {} of {} players built", snap->players.size(), roster->players.size()),
-               "classes deriving from EFT.Player; Player.Profile → Profile.Info → PlayerInfo.Side, "
-               "Player._playerBody, Player.MovementContext");
+        r.fail(std::format("only {} of {} players built ({})", snap->players.size(), roster->players.size(), kindList),
+               "client/local players: Player.Profile → Profile.Info → PlayerInfo.Side, Player._playerBody, "
+               "Player.MovementContext; observed players: ObservedPlayerView.*, ObservedPlayerController.*, "
+               "ObservedMovementController.*; see the reasons below");
     else
-        r.ok(std::format("{} players built", snap->players.size()));
+        r.ok(std::format("{} players built ({})", snap->players.size(), kindList));
+    for (const auto& f : players.buildFailures())
+        r.info(std::format("not built: {} ({}): {}", hex(f.instance), f.className, f.error));
 
     int positioned = 0;
     for (const auto& p : snap->players) positioned += p.position ? 1 : 0;
@@ -189,8 +199,9 @@ void checkPlayers(Report& r, const std::shared_ptr<const eft::RaidSession>& sess
         r.ok(std::format("{} of {} players have a position", positioned, snap->players.size()));
     for (const auto& p : snap->players) {
         if (!p.local && &p - snap->players.data() > 4) continue;  // the local player + a few others
-        r.info(std::format("#{}{} side {} {}: pos {} yaw {:.1f} pitch {:.1f}", p.id, p.local ? " (local)" : "",
-                           static_cast<int>(p.side), p.dead ? "dead" : "alive",
+        r.info(std::format("#{} {}{} side {}{} {}: pos {} yaw {:.1f} pitch {:.1f}", p.id, eft::kindName(p.kind),
+                           p.ai ? " ai" : "", static_cast<int>(p.side), p.voice.empty() ? "" : " voice " + p.voice,
+                           p.dead ? "dead" : "alive",
                            p.position ? std::format("({:.1f}, {:.1f}, {:.1f})", p.position->x, p.position->y, p.position->z)
                                       : std::string("none"),
                            p.yaw, p.pitch));

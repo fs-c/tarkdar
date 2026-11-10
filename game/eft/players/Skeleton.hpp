@@ -18,9 +18,10 @@ struct PositionBones {
     std::array<Address, 3> transforms{};
 };
 
-// Follows Player._playerBody → skeleton root joint → bone list, then each bone's managed Transform
-// to its native transform. nullopt if any step fails.
-[[nodiscard]] std::optional<PositionBones> resolvePositionBones(const Game& game, Address player);
+// Follows the PlayerBody pointer stored at bodyField (Player._playerBody or ObservedPlayerView.PlayerBody)
+// → skeleton root joint → bone list, then each bone's managed Transform to its native transform.
+// nullopt if any step fails.
+[[nodiscard]] std::optional<PositionBones> resolvePositionBones(const Game& game, Address bodyField);
 
 // Picks the position from bone poses (Base, left foot, right foot):
 //  1. Base, if usable;  2. midpoint of the feet, if both usable and 1 cm < separation ≤ 5.5 m;

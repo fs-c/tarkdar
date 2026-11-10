@@ -69,8 +69,9 @@ void logPlayerSummary(const radar::eft::PlayersSnapshot& snap) {
     log::info("players: {} alive, {} dead, {} absent ({} with position)", alive, dead, absent, positioned);
     for (const auto& p : snap.players) {
         if (!p.position) continue;
-        const auto line = std::format("  #{}{} side {} {}{}: ({:.1f}, {:.1f}, {:.1f}) yaw {:.0f} pitch {:.0f}", p.id,
-                                      p.local ? " (local)" : "", static_cast<int>(p.side), p.dead ? "dead" : "alive",
+        const auto line = std::format("  #{} {}{} side {}{} {}{}: ({:.1f}, {:.1f}, {:.1f}) yaw {:.0f} pitch {:.0f}",
+                                      p.id, radar::eft::kindName(p.kind), p.ai ? " ai" : "", static_cast<int>(p.side),
+                                      p.voice.empty() ? "" : " voice " + p.voice, p.dead ? "dead" : "alive",
                                       p.absent ? " absent" : "", p.position->x, p.position->y, p.position->z, p.yaw,
                                       p.pitch);
         if (p.local) log::info("{}", line);

@@ -135,10 +135,56 @@ TEST_CASE("Players tracks the roster, positions, rotation and death") {
     }
 }
 
-TEST_CASE("Players skips non-EFT.Player objects and backs off on build failures") {
+TEST_CASE("Players builds observed players through their own layout") {
     FakeWorld w;
     w.newWorld(u"bigmap", 0);
-    const Address observed = w.heap.object(w.observedClass);
+    const Address client = w.newPlayer(4, Vec3{50, 2, 60});
+    const Address boss = w.newObservedPlayer(4, true, u"BossKilla", Vec3{-20, 1, 30});
+    const Address pmc = w.newObservedPlayer(2, false, u"Bear_1", Vec3{10, 4, -10});
+    w.setRosterList({w.localPlayer, client, boss, pmc});
+    w.setRotation(boss, 45.0f, 2.0f);
+
+    eft::WorldState world;
+    eft::Players players(makeSession(w), world);
+    const auto t = Clock::now();
+    players.rosterTick(t);
+    players.positionsTick(t);
+    auto snap = world.players.get();
+    REQUIRE(snap->players.size() == 4);
+    CHECK(snap->local()->kind == eft::PlayerKind::Local);
+
+    const auto* c = byPosition(*snap, {50, 2, 60});
+    const auto* b = byPosition(*snap, {-20, 1, 30});
+    const auto* p = byPosition(*snap, {10, 4, -10});
+    REQUIRE(c);
+    REQUIRE(b);
+    REQUIRE(p);
+    CHECK(c->kind == eft::PlayerKind::Client);
+    CHECK(c->ai);
+    CHECK(b->kind == eft::PlayerKind::Observed);
+    CHECK(b->ai);
+    CHECK(b->side == eft::Side::Savage);
+    CHECK(b->voice == "BossKilla");
+    CHECK(b->yaw == doctest::Approx(45.0f));
+    CHECK(p->kind == eft::PlayerKind::Observed);
+    CHECK_FALSE(p->ai);  // a human player on another machine
+    CHECK(p->side == eft::Side::Bear);
+
+    const auto bossId = b->id;
+    w.kill(boss);
+    w.movePlayer(pmc, {11, 4, -10});
+    players.rosterTick(t + eft::Players::kCorpseInterval);
+    players.positionsTick(t + eft::Players::kCorpseInterval);
+    snap = world.players.get();
+    for (const auto& q : snap->players)
+        if (q.id == bossId) CHECK(q.dead);
+    CHECK(byPosition(*snap, {11, 4, -10}));
+}
+
+TEST_CASE("Players backs off on build failures and reports why") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 0);
+    const Address observed = w.heap.object(w.observedClass);  // an observed view with nothing filled in
     const Address broken = w.newPlayer();
     w.heap.put<Address>(broken + off::Player::Profile, 0);  // can't build
     w.setRosterList({w.localPlayer, observed, broken});
@@ -150,6 +196,18 @@ TEST_CASE("Players skips non-EFT.Player objects and backs off on build failures"
         // Free retries are spaced kMinBuildSpacing apart: 5 attempts at 0, 250, …, 1000 ms.
         for (int i = 0; i < 10; ++i) players.rosterTick(t + milliseconds(250 * i));
         CHECK(world.players.get()->players.size() == 1);  // only the local player
+        const auto failures = players.buildFailures();
+        REQUIRE(failures.size() == 2);
+        for (const auto& f : failures) {
+            CHECK(f.attempts == eft::Players::kMaxFreeBuildAttempts);
+            if (f.instance == broken) {
+                CHECK(f.className == "ClientPlayer");
+                CHECK(f.error == "Player.Profile is null");
+            } else {
+                CHECK(f.className == "ObservedPlayerView");
+                CHECK(f.error == "ObservedPlayerView.ObservedPlayerController is null");
+            }
+        }
 
         // The broken player becomes buildable: picked up after the back-off.
         w.heap.put<Address>(broken + off::Player::Profile, w.heap.alloc(0x200));

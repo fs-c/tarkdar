@@ -106,7 +106,7 @@ def main():
         # Unity yaw: 0 = +z (north), 90 = +x (east). Moving counter-clockwise (seen from above),
         # the direction of travel is (-sin, cos).
         lyaw = math.degrees(math.atan2(-math.sin(angle), math.cos(angle))) % 360
-        players = [{"id": 1, "local": True, "ai": False, "side": "usec", "dead": False, "absent": False,
+        players = [{"id": 1, "local": True, "kind": "local", "ai": False, "side": "usec", "dead": False, "absent": False,
                     "pos": [round(lx, 2), round(ly, 2), round(lz, 2)], "yaw": round(lyaw, 2), "pitch": 0.0}]
         for b in bots:
             dead = b["id"] == 3 and secs > 20
@@ -116,7 +116,8 @@ def main():
                 h = math.radians(b["heading"])
                 b["x"] = max(-200, min(200, b["x"] + math.sin(h) * b["speed"] / RATE_HZ))
                 b["z"] = max(-200, min(200, b["z"] + math.cos(h) * b["speed"] / RATE_HZ))
-            players.append({"id": b["id"], "local": False, "ai": True, "side": b["side"], "dead": dead,
+            players.append({"id": b["id"], "local": False, "kind": "observed", "ai": True, "side": b["side"],
+                            "voice": "BossKilla" if b["id"] == 2 else "Scav_1", "dead": dead,
                             "absent": absent, "pos": [round(b["x"], 2), 0.0, round(b["z"], 2)],
                             "yaw": round(b["heading"], 2), "pitch": 0.0})
         lines.append(envelope("players", raid, step + 1, t, {"players": players}))

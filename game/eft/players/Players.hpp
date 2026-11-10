@@ -4,6 +4,7 @@
 #include "core/sched/TaskRunner.hpp"
 #include "core/sched/Published.hpp"
 #include "game/eft/model/WorldState.hpp"
+#include "game/eft/players/PlayerKinds.hpp"
 #include "game/eft/players/Skeleton.hpp"
 #include "game/eft/raid/RaidSession.hpp"
 
@@ -26,8 +27,9 @@ namespace radar::eft {
 //    player at most every kEquipmentRefresh, and publishes WorldState::equipment. It sees the roster
 //    only through an internally published list, so it shares no mutable state with the live tasks.
 //
-// Only full EFT.Player objects are tracked: the local player and, in offline raids, every bot. The
-// networked "observed" player representation of online raids isn't supported.
+// Both player layouts are tracked (full EFT.Player and network-replicated ObservedPlayerView, see
+// game/eft/players/PlayerKinds.hpp): the build resolves per-kind field addresses, everything after
+// that is shared.
 class Players final : public RaidSubsystem {
 public:
     static constexpr auto kRosterInterval = std::chrono::milliseconds(20);
@@ -56,16 +58,21 @@ public:
     void positionsTick(sched::Clock::time_point now);
     void equipmentTick(sched::Clock::time_point now);
 
+    // Registered entries that haven't built (yet), with the last failure reason. For --diagnose.
+    struct BuildFailureInfo {
+        Address instance = 0;
+        std::string className;
+        std::string error;
+        int attempts = 0;
+    };
+    [[nodiscard]] std::vector<BuildFailureInfo> buildFailures() const;
+
 private:
     struct Entry {
         std::uint32_t id = 0;
         Address instance = 0;
         bool local = false;
-        bool ai = false;
-        Side side = Side::Unknown;
-        // Cached at build time.
-        Address rotationField = 0;  // MovementContext._rotation (Vector2, degrees)
-        Address corpseField = 0;    // Player.Corpse (non-null once dead)
+        PlayerLayout layout;  // kind, identity and field addresses, resolved at build time
         // Dynamic state.
         float yaw = 0, pitch = 0;
         bool dead = false;
@@ -81,12 +88,14 @@ private:
     struct BuildFailure {
         int attempts = 0;
         sched::Clock::time_point last{};
+        std::string className;
+        std::string error;
     };
 
     // What the equipment task needs to know about a player.
     struct Ref {
         std::uint32_t id = 0;
-        Address instance = 0;
+        Address inventoryControllerField = 0;
         bool dead = false;
         friend bool operator==(const Ref&, const Ref&) = default;
     };
@@ -96,9 +105,8 @@ private:
         std::vector<ItemNode> slots;
     };
 
-    std::optional<Entry> build(Address instance, Address localPlayer) const;
     void publishRefs();
-    std::vector<ItemNode> readEquipment(Address player) const;
+    std::vector<ItemNode> readEquipment(Address inventoryControllerField) const;
     void refresh(sched::Clock::time_point now);
     void publish();
 

@@ -1,4 +1,4 @@
-import { Locate, LocateFixed } from "lucide-react";
+import { Locate, LocateFixed, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type ControlPoint, formatCalibration, worldToPixel } from "../calibration";
 import type { RadarState } from "../connection";
@@ -13,6 +13,7 @@ import type { RecordingInfo } from "../protocol";
 import { loadRecording } from "../recordings";
 import type { Timeline, TimelineEvent } from "../timeline";
 import { NO_MAP_TRANSFORM, type Scene } from "../render";
+import { cx } from "../ui";
 import { View } from "../view";
 import { DetailsPanel } from "./DetailsPanel";
 import { ListPanel } from "./ListPanel";
@@ -347,15 +348,21 @@ export function App() {
         )}
         <main className={s.main}>
           <RadarCanvas view={camera} scene={scene} follow={follow} onPan={() => setFollow(false)} onTap={onTap} />
-          {review && <div className={s.replayFrame} aria-hidden />}
-          <button
-            className={s.follow}
-            aria-pressed={follow}
-            title={follow ? "Following you (F)" : "Follow the local player (F)"}
-            onClick={() => setFollow((f) => !f)}
-          >
-            {follow ? <LocateFixed size={20} /> : <Locate size={20} />}
-          </button>
+          <div className={s.mapControls}>
+            {review && (
+              <button className={cx(s.control, s.exitReplay)} title="Stop replaying, back to the live raid" onClick={backToLive}>
+                <X size={18} /> Exit replay
+              </button>
+            )}
+            <button
+              className={s.control}
+              aria-pressed={follow}
+              title={follow ? "Following you (F)" : "Follow the local player (F)"}
+              onClick={() => setFollow((f) => !f)}
+            >
+              {follow ? <LocateFixed size={20} /> : <Locate size={20} />}
+            </button>
+          </div>
           {selection && (
             <DetailsPanel
               selection={selection}
@@ -382,7 +389,6 @@ export function App() {
               replay={review ? `${mapName(review.info.locationId)}${review.info.start ? ` · ${formatStart(review.info.start)}` : ""}` : null}
               open={timelineOpen}
               onClick={toggleTimeline}
-              onExitReplay={backToLive}
             />
           )
         }

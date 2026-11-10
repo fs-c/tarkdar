@@ -24,7 +24,7 @@ export function statusParts(
   if (!s.status) return [s.live ? "connected" : "offline: no game, recorded raids only"];
   const parts: string[] = [];
   const { state } = s.status;
-  // A replay says what it is in its own banner.
+  // A replay says what it is in the timeline indicator.
   if (replay) {
     // nothing: the map and players follow
   } else if (state === "waitingForRaid") parts.push(s.status.raidPending ? "raid loading…" : "waiting for a raid");
@@ -51,7 +51,7 @@ interface Props {
   layer: number;
   manualLayer: number | null;
   catalog: CatalogStatus;
-  /** Timeline indicator (first). */
+  /** Timeline indicator (last, at the right edge). */
   timeline?: React.ReactNode;
   /** Replaying a recording: the bar is tinted so it can't be mistaken for live. */
   replay?: boolean;
@@ -64,12 +64,12 @@ export function StatusBar({ state, map, layer, manualLayer, catalog, timeline, r
   const warn = !state.connected || state.protocolMismatch;
   return (
     <footer className={s.bar} data-mode={warn ? "warn" : replay ? "replay" : undefined}>
-      {timeline}
       {parts.map((p, i) => (
         <StatusText key={i} alert={p.startsWith("⚠")}>{p}</StatusText>
       ))}
       <span className={s.spacer} />
       {children}
+      {timeline}
     </footer>
   );
 }

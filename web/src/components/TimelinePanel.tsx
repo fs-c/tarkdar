@@ -1,7 +1,7 @@
 // A raid's timeline (the Raids view's second level): the playback controls, a vertical scrubber
 // rail and the events, oldest at the top, with a marker at the shown moment (later events dimmed).
 // Clicking an event jumps there and shows it on the map. The status bar carries an indicator that
-// opens it; while replaying a recording, that indicator turns into a replay banner with an exit.
+// opens it; while replaying a recording, it names the recording (the exit is next to the map's follow button).
 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronLeft, History, Pause, Play, Radio, X } from "lucide-react";
@@ -34,33 +34,25 @@ interface IndicatorProps {
   replay: string | null;
   open: boolean;
   onClick: () => void;
-  onExitReplay: () => void;
 }
 
-export function TimelineIndicator({ range, playback, replay, open, onClick, onExitReplay }: IndicatorProps) {
+export function TimelineIndicator({ range, playback, replay, open, onClick }: IndicatorProps) {
   const live = replay === null;
   const atLive = live && playback.cursor === null;
   const Icon = live ? Radio : History;
   return (
-    <>
-      <StatusButton
-        className={s.indicator}
-        data-mode={live ? (atLive ? "live" : "behind") : "replay"}
-        data-open={open}
-        title={live ? (atLive ? "Live, recording: open the timeline" : "Behind live: open the timeline") : "Replaying a recording: open its timeline"}
-        onClick={onClick}
-      >
-        <Icon size={13} />
-        {!live && <span className={s.tag}>replay · {replay}</span>}
-        <span className={s.clock}>{timeLabel(range, playback.cursor, live)}</span>
-        {playback.playing && <span className={s.speed}>▶ {playback.speed}×</span>}
-      </StatusButton>
-      {!live && (
-        <StatusButton className={s.exitReplay} title="Stop replaying, back to the live raid" onClick={onExitReplay}>
-          <X size={13} /> Exit replay
-        </StatusButton>
-      )}
-    </>
+    <StatusButton
+      className={s.indicator}
+      data-mode={live ? (atLive ? "live" : "behind") : "replay"}
+      data-open={open}
+      title={live ? (atLive ? "Live, recording: open the timeline" : "Behind live: open the timeline") : "Replaying a recording: open its timeline"}
+      onClick={onClick}
+    >
+      <Icon size={13} />
+      {!live && <span className={s.name}>{replay}</span>}
+      <span className={s.clock}>{timeLabel(range, playback.cursor, live)}</span>
+      {playback.playing && <span className={s.speed}>▶ {playback.speed}×</span>}
+    </StatusButton>
   );
 }
 

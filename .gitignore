@@ -1,7 +1,4 @@
 /build*/
-/maps/**/*.png
-/maps/**/*.jpg
-/maps/**/*.webp
 /dumps/
 *.raw
 *.dmp
@@ -12,3 +9,7 @@ __pycache__/
 /web/dist/
 *.jsonl
 /recordings/
+
+# We don't want to commit the map files because of copyright, and commiting the JSONs without 
+# the maps is kind of pointless. Ideally in the future we have our own maps.
+/maps/

@@ -2,7 +2,8 @@
 // side panel showing the picked view. Clicking the active icon collapses the panel.
 
 import { Archive, Bomb, DoorOpen, History, Layers, type LucideIcon, Package, PanelLeftClose, Settings, Users } from "lucide-react";
-import type { ReactNode } from "react";
+import { type PointerEvent, type ReactNode, useRef } from "react";
+import { usePersistentState } from "../hooks";
 import { TABS } from "../list/columns";
 import type { TabId } from "../list/rows";
 import { Button, cx } from "../ui";
@@ -77,9 +78,42 @@ interface SidePanelProps {
   children: ReactNode;
 }
 
+/** Panel width in px: the same for every view, dragged with the sash on its right edge. */
+const DEFAULT_WIDTH = 420;
+const MIN_WIDTH = 260;
+/** Room always left for the map. */
+const MAP_MIN = 160;
+
 export function SidePanel({ view, aside, onClose, children }: SidePanelProps) {
+  const [{ width }, setSize] = usePersistentState("radar.sidebarSize", { width: DEFAULT_WIDTH });
+  const drag = useRef<{ x: number; width: number } | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
+
+  const onSashDown = (e: PointerEvent) => {
+    drag.current = { x: e.clientX, width: panelRef.current?.offsetWidth ?? width };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onSashMove = (e: PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const left = panelRef.current?.getBoundingClientRect().left ?? 0;
+    const max = window.innerWidth - left - MAP_MIN;
+    setSize({ width: Math.round(Math.max(MIN_WIDTH, Math.min(max, d.width + e.clientX - d.x))) });
+  };
+
   return (
-    <aside className={s.sidebar} data-narrow={view === "map" || view === "settings"}>
+    <aside ref={panelRef} className={s.sidebar} style={{ width }}>
+      <div
+        className={s.sash}
+        role="separator"
+        aria-orientation="vertical"
+        title="Drag to resize, double-click to reset"
+        onPointerDown={onSashDown}
+        onPointerMove={onSashMove}
+        onPointerUp={() => (drag.current = null)}
+        onPointerCancel={() => (drag.current = null)}
+        onDoubleClick={() => setSize({ width: DEFAULT_WIDTH })}
+      />
       <header className={s.header}>
         <h2 className={s.title}>{VIEW_TITLES[view]}</h2>
         <span className={s.aside}>{aside}</span>

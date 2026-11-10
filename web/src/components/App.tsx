@@ -166,12 +166,7 @@ export function App() {
     if (!pos) return;
     setFollow(false);
     const [u, v] = worldToPixel(map?.transform ?? NO_MAP_TRANSFORM, pos[0], pos[2]);
-    // Centre it in the part of the map the side panel doesn't cover (unless the panel covers nearly all).
-    const panel = document.getElementById("sidebar")?.getBoundingClientRect().right ?? 0;
-    const canvas = document.getElementById("radar")?.getBoundingClientRect().left ?? 0;
-    const covered = Math.max(0, panel - canvas);
-    const shift = covered < camera.width * 0.7 ? covered / 2 : 0;
-    camera.centerU = u - shift / camera.zoom;
+    camera.centerU = u;
     camera.centerV = v;
     if (map && map.config.layers.length > 1) {
       const floor = selectLayer(map.config.layers, pos[1], null, map.config.layerHysteresis);
@@ -331,42 +326,46 @@ export function App() {
 
   return (
     <>
-      <RadarCanvas view={camera} scene={scene} follow={follow} onPan={() => setFollow(false)} onTap={onTap} />
-      <ActivityBar
-        active={ui.open ? view : null}
-        onPick={pickView}
-        badges={{
-          players: list.rows.players.length,
-          items: list.rows.items.length,
-          containers: list.rows.containers.length,
-          exfils: list.rows.exfils.length,
-          explosives: list.rows.explosives.length,
-          raids: !!review,
-          settings: calibrating,
-        }}
-      />
-      {ui.open && (
-        <SidePanel view={view} onClose={togglePanel}>
-          {panelBody()}
-        </SidePanel>
-      )}
-      {review && <div className={s.replayFrame} aria-hidden />}
-      <button
-        className={s.follow}
-        aria-pressed={follow}
-        title={follow ? "Following you (F)" : "Follow the local player (F)"}
-        onClick={() => setFollow((f) => !f)}
-      >
-        {follow ? <LocateFixed size={20} /> : <Locate size={20} />}
-      </button>
-      {selection && (
-        <DetailsPanel
-          selection={selection}
-          state={state}
-          catalog={catalog}
-          history={timeline && range && at !== null ? { timeline, at, start: range[0], onPick: pickEvent } : null}
+      <div className={s.workbench}>
+        <ActivityBar
+          active={ui.open ? view : null}
+          onPick={pickView}
+          badges={{
+            players: list.rows.players.length,
+            items: list.rows.items.length,
+            containers: list.rows.containers.length,
+            exfils: list.rows.exfils.length,
+            explosives: list.rows.explosives.length,
+            raids: !!review,
+            settings: calibrating,
+          }}
         />
-      )}
+        {ui.open && (
+          <SidePanel view={view} onClose={togglePanel}>
+            {panelBody()}
+          </SidePanel>
+        )}
+        <main className={s.main}>
+          <RadarCanvas view={camera} scene={scene} follow={follow} onPan={() => setFollow(false)} onTap={onTap} />
+          {review && <div className={s.replayFrame} aria-hidden />}
+          <button
+            className={s.follow}
+            aria-pressed={follow}
+            title={follow ? "Following you (F)" : "Follow the local player (F)"}
+            onClick={() => setFollow((f) => !f)}
+          >
+            {follow ? <LocateFixed size={20} /> : <Locate size={20} />}
+          </button>
+          {selection && (
+            <DetailsPanel
+              selection={selection}
+              state={state}
+              catalog={catalog}
+              history={timeline && range && at !== null ? { timeline, at, start: range[0], onPick: pickEvent } : null}
+            />
+          )}
+        </main>
+      </div>
       <StatusBar
         state={state}
         map={map}

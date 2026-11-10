@@ -221,8 +221,11 @@ an internally published list, so it shares no mutable state with the live tasks.
   replayed on top; the revision rule drops the overlap).
 - `playback.ts` is the time cursor: null means live (the stream's state as is, not the timeline's),
   otherwise a moment of the live raid or of a recording opened from the Raids view
-  (`recordings.ts`). The status bar only shows a small indicator with the time; it opens the
-  Timeline view (`TimelinePanel.tsx`), which holds the controls.
+  (`recordings.ts`). The Raids view has two levels: the list of raids (the current one pinned on
+  top, then past recordings) and the shown raid's timeline (`TimelinePanel.tsx`, with the
+  controls). The status bar only shows a small indicator with the time, which opens that timeline.
+  While a recording is replayed the status bar turns blue with an exit button, and the map gets a
+  blue frame, so a replay can't be taken for the live raid.
 - Trails are drawn from the tracks up to the shown moment (`render.ts`), thinned to a point per metre
   of movement (`Track.trailIndices`, built incrementally). They fade with age; parts on another
   floor than the shown one are dimmed. The selected player's trail covers the whole raid; everyone's

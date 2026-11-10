@@ -15,13 +15,17 @@ export function statusParts(
   layer: number,
   manualLayer: number | null,
   catalog: CatalogStatus,
+  replay = false,
 ): string[] {
   if (!s.connected) return ["⚠ disconnected from backend"];
   if (s.protocolMismatch) return ["⚠ protocol version mismatch: rebuild the frontend"];
   if (!s.status) return [s.live ? "connected" : "offline: no game, recorded raids only"];
   const parts: string[] = [];
   const { state } = s.status;
-  if (state === "waitingForRaid") parts.push(s.status.raidPending ? "raid loading…" : "waiting for a raid");
+  // A replay says what it is in its own banner.
+  if (replay) {
+    // nothing: the map and players follow
+  } else if (state === "waitingForRaid") parts.push(s.status.raidPending ? "raid loading…" : "waiting for a raid");
   else if (state === "inRaid") parts.push(`in raid: ${s.status.locationId ?? "?"}`);
   else parts.push(STATE_LABELS[state] ?? state);
   if (state === "inRaid") {
@@ -47,15 +51,17 @@ interface Props {
   catalog: CatalogStatus;
   /** Timeline indicator (first). */
   timeline?: React.ReactNode;
+  /** Replaying a recording: the bar is tinted so it can't be mistaken for live. */
+  replay?: boolean;
   /** Extra items on the right. */
   children?: React.ReactNode;
 }
 
-export function StatusBar({ state, map, layer, manualLayer, catalog, timeline, children }: Props) {
-  const parts = statusParts(state, map, layer, manualLayer, catalog);
+export function StatusBar({ state, map, layer, manualLayer, catalog, timeline, replay = false, children }: Props) {
+  const parts = statusParts(state, map, layer, manualLayer, catalog, replay);
   const warn = !state.connected || state.protocolMismatch;
   return (
-    <footer id="statusbar" className={warn ? "warn" : undefined}>
+    <footer id="statusbar" className={warn ? "warn" : replay ? "replay" : undefined}>
       {timeline}
       {parts.map((p, i) => (
         <span key={i} className={p.startsWith("⚠") ? "item alert" : "item"}>{p}</span>

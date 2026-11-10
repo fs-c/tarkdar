@@ -1,16 +1,16 @@
-// The raid timeline: a side panel with the playback controls, a vertical scrubber rail and the
-// events, oldest at the top, with a marker at the shown moment (later events dimmed). Clicking an
-// event jumps there and shows it on the map. The status bar carries a small indicator that opens it.
+// A raid's timeline (the Raids view's second level): the playback controls, a vertical scrubber
+// rail and the events, oldest at the top, with a marker at the shown moment (later events dimmed).
+// Clicking an event jumps there and shows it on the map. The status bar carries an indicator that
+// opens it; while replaying a recording, that indicator turns into a replay banner with an exit.
 
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { History, Pause, Play, Radio, X } from "lucide-react";
+import { ChevronLeft, History, Pause, Play, Radio, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_EVENT_GROUPS, EVENT_GROUPS, type EventGroup, describeEvent, eventConcerns, eventGroup } from "../events";
 import { usePersistentState } from "../hooks";
 import type { ItemCatalog } from "../items";
 import { type Selection, selectionKey } from "../pick";
 import { type Playback, SPEEDS, formatDuration } from "../playback";
-import type { RecordingInfo } from "../protocol";
 import type { Timeline, TimelineEvent } from "../timeline";
 
 const ROW_HEIGHT = 22;
@@ -24,20 +24,38 @@ function timeLabel(range: [number, number], cursor: number | null, live: boolean
 
 // ---- status bar indicator --------------------------------------------------------------------------
 
-export function TimelineIndicator(props: { range: [number, number]; playback: Playback; live: boolean; open: boolean; onClick: () => void }) {
-  const { range, playback, live, open, onClick } = props;
+interface IndicatorProps {
+  range: [number, number];
+  playback: Playback;
+  /** Replaying a recording: its name ("Customs · 10 Nov 19:03"); null for the live raid. */
+  replay: string | null;
+  open: boolean;
+  onClick: () => void;
+  onExitReplay: () => void;
+}
+
+export function TimelineIndicator({ range, playback, replay, open, onClick, onExitReplay }: IndicatorProps) {
+  const live = replay === null;
   const atLive = live && playback.cursor === null;
   const Icon = live ? Radio : History;
   return (
-    <button
-      className={["item", "timeline-indicator", atLive && "live", open && "open"].filter(Boolean).join(" ")}
-      title={live ? (atLive ? "Live, recording: open the timeline" : "Behind live: open the timeline") : "Replaying a recording: open the timeline"}
-      onClick={onClick}
-    >
-      <Icon size={13} />
-      <span>{timeLabel(range, playback.cursor, live)}</span>
-      {playback.playing && <span className="muted">▶ {playback.speed}×</span>}
-    </button>
+    <>
+      <button
+        className={["item", "timeline-indicator", atLive && "live", !live && "replay", open && "open"].filter(Boolean).join(" ")}
+        title={live ? (atLive ? "Live, recording: open the timeline" : "Behind live: open the timeline") : "Replaying a recording: open its timeline"}
+        onClick={onClick}
+      >
+        <Icon size={13} />
+        {!live && <span className="tag">replay · {replay}</span>}
+        <span className="time">{timeLabel(range, playback.cursor, live)}</span>
+        {playback.playing && <span className="speed">▶ {playback.speed}×</span>}
+      </button>
+      {!live && (
+        <button className="item exit-replay" title="Stop replaying, back to the live raid" onClick={onExitReplay}>
+          <X size={13} /> Exit replay
+        </button>
+      )}
+    </>
   );
 }
 
@@ -48,15 +66,19 @@ interface Props {
   range: [number, number] | null;
   /** The live raid (else a recording). */
   live: boolean;
-  recording: RecordingInfo | null;
+  /** "Current raid" or the recording's map, and a second line (map, date). */
+  title: string;
+  subtitle: string;
+  /** Back to the list of raids. */
+  onBack: () => void;
   /** Still loading the live raid so far. */
   loading: boolean;
   playback: Playback;
   catalog: ItemCatalog;
   selection: Selection | null;
   onPick: (e: TimelineEvent) => void;
-  /** Recordings: close it (back to live). */
-  onClose: () => void;
+  /** Recordings: stop replaying (back to live). */
+  onExitReplay: () => void;
 }
 
 interface Prefs {
@@ -67,7 +89,7 @@ interface Prefs {
 type Row = { kind: "event"; e: TimelineEvent } | { kind: "now" };
 
 export function TimelinePanel(props: Props) {
-  const { timeline, range, live, recording, loading, playback, catalog, selection, onPick, onClose } = props;
+  const { timeline, range, live, title, subtitle, onBack, loading, playback, catalog, selection, onPick, onExitReplay } = props;
   const [prefs, setPrefs] = usePersistentState<Prefs>("radar.log", { groups: DEFAULT_EVENT_GROUPS, selectedOnly: false });
   const groups = { ...DEFAULT_EVENT_GROUPS, ...prefs.groups };
   const at = playback.cursor ?? range?.[1] ?? null;
@@ -124,10 +146,23 @@ export function TimelinePanel(props: Props) {
     playback.seek(t);
   };
 
+  const back = (
+    <div className="tl-back">
+      <button className="icon" title="All raids" onClick={onBack}>
+        <ChevronLeft size={16} />
+      </button>
+      <div className="tl-title">
+        <span>{title}</span>
+        <small className="muted">{subtitle}</small>
+      </div>
+    </div>
+  );
+
   if (!timeline || !range) {
     return (
-      <div className="panel-body">
-        <p className="muted pad">No raid yet. Raids are recorded while the backend reads the game; past ones are in the Raids view.</p>
+      <div id="timeline">
+        {back}
+        <p className="muted pad">No raid right now. Raids are recorded while the backend reads the game.</p>
       </div>
     );
   }
@@ -138,6 +173,7 @@ export function TimelinePanel(props: Props) {
 
   return (
     <div id="timeline">
+      {back}
       <div className="tl-head">
         <button
           className="tl-play"
@@ -150,7 +186,7 @@ export function TimelinePanel(props: Props) {
         <div className="tl-time">
           <span className="big">{timeLabel(range, playback.cursor, live)}</span>
           <small className="muted">
-            {live ? (atLive ? "live" : "behind live") : recording ? `replay · ${recording.name}` : "replay"}
+            {live ? (atLive ? "live" : "behind live") : "replay"}
             {loading && " · loading the raid so far…"}
           </small>
         </div>
@@ -159,8 +195,8 @@ export function TimelinePanel(props: Props) {
             <Radio size={14} /> Live
           </button>
         ) : (
-          <button title="Close the recording (back to live)" onClick={onClose}>
-            <X size={14} /> Close
+          <button className="tl-exit" title="Stop replaying, back to the live raid" onClick={onExitReplay}>
+            <X size={14} /> Exit replay
           </button>
         )}
       </div>

@@ -2,7 +2,7 @@
 //
 // Live mode: connects to the memory source, runs the game lifecycle (attach, find raids, track
 // players) and streams the state to the web frontend.
-// Replay mode: serves a recorded stream instead, without any memory source.
+// Offline mode: serves the frontend and past raid recordings, without any memory source.
 
 #include "app/Diagnose.hpp"
 #include "app/Options.hpp"
@@ -69,9 +69,10 @@ void logPlayerSummary(const radar::eft::PlayersSnapshot& snap) {
     log::info("players: {} alive, {} dead, {} absent ({} with position)", alive, dead, absent, positioned);
     for (const auto& p : snap.players) {
         if (!p.position) continue;
-        const auto line = std::format("  #{} {}{} side {}{} {}{}: ({:.1f}, {:.1f}, {:.1f}) yaw {:.0f} pitch {:.0f}",
+        const auto line = std::format("  #{} {}{} side {}{}{} {}{}: ({:.1f}, {:.1f}, {:.1f}) yaw {:.0f} pitch {:.0f}",
                                       p.id, radar::eft::kindName(p.kind), p.ai ? " ai" : "", static_cast<int>(p.side),
-                                      p.voice.empty() ? "" : " voice " + p.voice, p.dead ? "dead" : "alive",
+                                      p.voice.empty() ? "" : " voice " + p.voice,
+                                      p.role ? std::format(" role {}", *p.role) : "", p.dead ? "dead" : "alive",
                                       p.absent ? " absent" : "", p.position->x, p.position->y, p.position->z, p.yaw,
                                       p.pitch);
         if (p.local) log::info("{}", line);
@@ -97,35 +98,25 @@ int main(int argc, char** argv) {
     std::signal(SIGTERM, onSignal);
 
     server::MessageHub hub;
-    std::unique_ptr<server::StreamRecorder> recorder;
-    if (options->record) {
-        recorder = std::make_unique<server::StreamRecorder>(*options->record);
-        if (!recorder->ok()) {
-            log::error("can't write {}", options->record->string());
-            return 1;
-        }
-        hub.setTap([&recorder](const std::string& m) { recorder->write(m); });
-        log::info("recording the stream to {}", options->record->string());
+    std::unique_ptr<server::RaidRecorder> recorder;
+    if (!options->offline && !options->noRecord && !options->once && !options->diagnose) {
+        recorder = std::make_unique<server::RaidRecorder>(
+            server::RaidRecorder::Config{.dir = options->server.recordingsRoot, .keep = options->keepRecordings});
+        log::info("recording raids to {}", options->server.recordingsRoot.string());
     }
 
     std::unique_ptr<server::Server> httpServer;
     if (!options->noServer && !options->once && !options->diagnose) {
-        httpServer = std::make_unique<server::Server>(options->server, hub);
+        httpServer = std::make_unique<server::Server>(options->server, hub, recorder.get());
         if (!httpServer->start()) return 1;
     }
 
-    // ---- replay mode ----------------------------------------------------------------------------
-    if (options->replay) {
-        server::StreamReplay replay(*options->replay, hub, options->replaySpeed, options->replayLoop);
-        std::atomic<bool> failed{false};
-        std::jthread replayThread([&](std::stop_token stop) {
-            if (!replay.run(stop)) failed = true;
-        });
-        // A non-looping replay ends on its own; keep serving the last state until interrupted.
-        while (!gStop.load() && !failed.load()) std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        replayThread.request_stop();
-        replayThread.join();
-        return failed ? 1 : 0;
+    // ---- offline mode -----------------------------------------------------------------------------
+    if (options->offline) {
+        log::info("offline: serving recordings from {}", options->server.recordingsRoot.string());
+        while (!gStop.load()) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        httpServer->stop();
+        return 0;
     }
 
     // ---- live mode --------------------------------------------------------------------------------
@@ -151,7 +142,8 @@ int main(int argc, char** argv) {
         subsystems.push_back(std::make_unique<eft::Loot>(session, world));
         return subsystems;
     });
-    server::LiveFeed feed({.status = [&lifecycle] { return lifecycle.status(); }, .world = &world}, hub);
+    server::LiveFeed feed(
+        {.status = [&lifecycle] { return lifecycle.status(); }, .world = &world, .recorder = recorder.get()}, hub);
 
     std::jthread lifecycleThread([&](std::stop_token stop) { lifecycle.run(stop); });
     std::jthread feedThread([&](std::stop_token stop) { feed.run(stop); });
@@ -176,6 +168,7 @@ int main(int argc, char** argv) {
     lifecycleThread.request_stop();
     feedThread.join();
     lifecycleThread.join();
+    if (recorder) recorder->finish();  // a raid in progress: keep what's there
     if (httpServer) httpServer->stop();
     backend.close();
     return 0;

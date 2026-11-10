@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
 
 namespace radar::eft {
 
@@ -73,9 +74,10 @@ void Players::rosterTick(Clock::time_point now) {
             entry.local = isLocal;
             entry.layout = std::move(*layout);
             failures_.erase(instance);
-            log::debug("players: +#{} {:#x} {} ({}) side {} ai {}{}", entry.id, instance, kindName(entry.layout.kind),
+            log::debug("players: +#{} {:#x} {} ({}) side {} ai {}{}{}", entry.id, instance, kindName(entry.layout.kind),
                        entry.layout.className, static_cast<int>(entry.layout.side), entry.layout.ai,
-                       entry.layout.voice.empty() ? "" : " voice " + entry.layout.voice);
+                       entry.layout.voice.empty() ? "" : " voice " + entry.layout.voice,
+                       entry.layout.role ? std::format(" role {}", *entry.layout.role) : "");
             entries_.emplace(instance, std::move(entry));
         } else {
             failure.error = std::move(layout.error());
@@ -274,6 +276,7 @@ void Players::publish() {
             .dead = e.dead,
             .absent = e.absent,
             .voice = e.layout.voice,
+            .role = e.layout.role,
             .position = e.position,
             .yaw = e.yaw,
             .pitch = e.pitch,

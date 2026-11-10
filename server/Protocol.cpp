@@ -86,12 +86,33 @@ crow::json::wvalue itemList(const std::vector<eft::ItemNode>& nodes) {
     return list;
 }
 
+crow::json::wvalue lootEntry(const eft::LootEntry& l) {
+    crow::json::wvalue v;
+    v["id"] = l.id;
+    v["kind"] = lootKind(l.kind);
+    v["tpl"] = l.templateId;
+    v["obj"] = l.objectName;
+    v["pos"] = vec(l.position);
+    if (!l.contents.empty()) v["contents"] = itemList(l.contents);
+    return v;
+}
+
 }  // namespace
 
-std::string encodeHello() {
+std::string encodeHello(bool live) {
     crow::json::wvalue data;
     data["protocol"] = kProtocolVersion;
+    data["live"] = live;
     return envelope("hello", 0, 0, std::move(data));
+}
+
+std::string encodeRecordingHeader(const eft::Status& s) {
+    crow::json::wvalue data;
+    data["protocol"] = kProtocolVersion;
+    data["format"] = kRecordingFormat;
+    data["locationId"] = s.locationId;
+    data["offsetsMismatch"] = s.offsetsMismatch;
+    return envelope("recording", s.raidId, 0, std::move(data));
 }
 
 std::string encodeStatus(const eft::Status& s) {
@@ -114,6 +135,7 @@ std::string encodePlayers(const eft::PlayersSnapshot& snap) {
         v["kind"] = eft::kindName(p.kind);
         v["ai"] = p.ai;
         if (!p.voice.empty()) v["voice"] = p.voice;
+        if (p.role) v["role"] = *p.role;
         v["side"] = sideId(p.side);
         v["dead"] = p.dead;
         v["absent"] = p.absent;
@@ -169,19 +191,28 @@ std::string encodeExplosives(const eft::ExplosivesSnapshot& snap) {
 std::string encodeLoot(const eft::LootSnapshot& snap) {
     std::vector<crow::json::wvalue> list;
     list.reserve(snap.loot.size());
-    for (const auto& l : snap.loot) {
-        crow::json::wvalue v;
-        v["id"] = l.id;
-        v["kind"] = lootKind(l.kind);
-        v["tpl"] = l.templateId;
-        v["obj"] = l.objectName;
-        v["pos"] = vec(l.position);
-        if (!l.contents.empty()) v["contents"] = itemList(l.contents);
-        list.push_back(std::move(v));
-    }
+    for (const auto& l : snap.loot) list.push_back(lootEntry(l));
     crow::json::wvalue data;
     data["loot"] = std::move(list);
     return envelope("loot", snap.raidId, snap.revision, std::move(data));
+}
+
+std::string encodeLootDiff(std::uint64_t raidId, std::uint64_t revision, const std::vector<const eft::LootEntry*>& added,
+                           const std::vector<std::uint32_t>& removed, const std::vector<const eft::LootEntry*>& changed) {
+    const auto entries = [](const std::vector<const eft::LootEntry*>& from) {
+        std::vector<crow::json::wvalue> list;
+        list.reserve(from.size());
+        for (const auto* l : from) list.push_back(lootEntry(*l));
+        return list;
+    };
+    std::vector<crow::json::wvalue> ids;
+    ids.reserve(removed.size());
+    for (auto id : removed) ids.emplace_back(id);
+    crow::json::wvalue data;
+    data["added"] = entries(added);
+    data["removed"] = std::move(ids);
+    data["changed"] = entries(changed);
+    return envelope("lootDiff", raidId, revision, std::move(data));
 }
 
 std::string encodeEquipment(const eft::EquipmentSnapshot& snap) {

@@ -1,0 +1,263 @@
+// List views: everything the radar knows, in sortable, filterable tables (one per category, picked
+// from the activity bar).
+// Hovering a row highlights it on the map; clicking (or ↑/↓) selects it and centres the map on it.
+
+import { type OnChangeFn, type SortingState, useTable } from "@tanstack/react-table";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import type { RadarState } from "../connection";
+import { isTyping } from "../hooks";
+import { type TabDef, TABS, features } from "../list/columns";
+import { DEFAULT_FILTERS, type ListFilters, type RowBase, type TabRows, isFiltered, selectionKey, tabOf, withDistances } from "../list/rows";
+import type { ListPrefs, ListRows } from "../list/useListRows";
+import type { Selection } from "../pick";
+
+const ROW_HEIGHT = 22;
+const HEADER_HEIGHT = 24;
+const MIN_VALUES = [0, 10_000, 25_000, 50_000, 100_000, 250_000];
+
+interface Props {
+  state: RadarState;
+  /** Filtered rows (shared with the map, which shows only these). */
+  list: ListRows;
+  prefs: ListPrefs;
+  setPrefs: (update: (prev: ListPrefs) => ListPrefs) => void;
+  selection: Selection | null;
+  /** Row clicked or stepped to: select it and bring it into view on the map. */
+  onActivate: (sel: Selection) => void;
+  onHover: (sel: Selection | null) => void;
+}
+
+export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate, onHover }: Props) {
+  const { tab, filters } = prefs;
+  const { totals } = list;
+  const filterRef = useRef<HTMLInputElement>(null);
+  const stepRef = useRef<(dir: 1 | -1) => void>(undefined);
+
+  const local = state.players.find((p) => p.local && p.pos)?.pos ?? null;
+  const rows = useMemo(
+    (): TabRows => ({
+      players: withDistances(list.rows.players, local),
+      items: withDistances(list.rows.items, local),
+      containers: withDistances(list.rows.containers, local),
+      exfils: withDistances(list.rows.exfils, local),
+      explosives: withDistances(list.rows.explosives, local),
+    }),
+    [list.rows, local],
+  );
+
+  const setFilters = (patch: Partial<ListFilters>) => setPrefs((p) => ({ ...p, filters: { ...p.filters, ...patch } }));
+  const onSortingChange: OnChangeFn<SortingState> = (update) =>
+    setPrefs((p) => ({
+      ...p,
+      sorting: { ...p.sorting, [p.tab]: typeof update === "function" ? update(p.sorting[p.tab]) : update },
+    }));
+
+  // A selection made on the map switches to its tab (the table then scrolls to it).
+  const selKey = selection ? selectionKey(selection) : null;
+  useEffect(() => {
+    const t = selection && tabOf(selection, state);
+    if (t) setPrefs((p) => (p.tab === t ? p : { ...p, tab: t }));
+    // Only on selection changes, not on every data update.
+  }, [selKey]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "/" && !isTyping(e)) {
+        e.preventDefault();
+        filterRef.current?.focus();
+        filterRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => () => onHover(null), []); // closing the list ends any hover
+
+  const empty = totals[tab] === 0 ? "nothing here (yet)" : "no matches";
+  const common = { empty, sorting: prefs.sorting[tab], onSortingChange, selectedKey: selKey, onActivate, onHover, stepRef };
+  const filtered = isFiltered(filters);
+
+  return (
+    <div id="list">
+      <div className="list-filters">
+        <input
+          ref={filterRef}
+          type="search"
+          placeholder="filter all tabs  ( / )"
+          value={filters.text}
+          onChange={(e) => setFilters({ text: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              if (filters.text) setFilters({ text: "" });
+              else e.currentTarget.blur();
+            } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+              e.preventDefault();
+              stepRef.current?.(e.key === "ArrowDown" ? 1 : -1);
+            }
+          }}
+        />
+        {tab === "players" && (
+          <>
+            <Chip on={filters.aliveOnly} onClick={() => setFilters({ aliveOnly: !filters.aliveOnly })}>alive</Chip>
+            <Chip on={filters.humansOnly} onClick={() => setFilters({ humansOnly: !filters.humansOnly })}>humans</Chip>
+            <Chip on={filters.specialOnly} onClick={() => setFilters({ specialOnly: !filters.specialOnly })}>special</Chip>
+          </>
+        )}
+        {(tab === "items" || tab === "containers") && (
+          <select
+            value={filters.minValue}
+            title={tab === "items" ? "Minimum price" : "Minimum total value"}
+            onChange={(e) => setFilters({ minValue: Number(e.target.value) })}
+          >
+            {MIN_VALUES.map((v) => (
+              <option key={v} value={v}>{v === 0 ? "any ₽" : `≥ ${v / 1000}k ₽`}</option>
+            ))}
+          </select>
+        )}
+        {tab === "containers" && (
+          <Chip on={filters.hideEmpty} onClick={() => setFilters({ hideEmpty: !filters.hideEmpty })}>non-empty</Chip>
+        )}
+      </div>
+      {tab === "players" && <TabTable key={tab} def={TABS.players} rows={rows.players} {...common} />}
+      {tab === "items" && <TabTable key={tab} def={TABS.items} rows={rows.items} {...common} />}
+      {tab === "containers" && <TabTable key={tab} def={TABS.containers} rows={rows.containers} {...common} />}
+      {tab === "exfils" && <TabTable key={tab} def={TABS.exfils} rows={rows.exfils} {...common} />}
+      {tab === "explosives" && <TabTable key={tab} def={TABS.explosives} rows={rows.explosives} {...common} />}
+      <div className="list-footer">
+        <span>
+          {filtered ? `${rows[tab].length} of ${totals[tab]}` : `${totals[tab]}`}
+          {filtered && (
+            <button className="link" onClick={() => setFilters(DEFAULT_FILTERS)}>clear filters</button>
+          )}
+        </span>
+        <span className="muted">{filtered && "map shows matches only · "}click: show on map · ↑↓ step · / filter · L close</span>
+      </div>
+    </div>
+  );
+}
+
+function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button className={on ? "active" : undefined} aria-pressed={on} onClick={onClick}>
+      {children}
+    </button>
+  );
+}
+
+interface TableProps<R extends RowBase> {
+  def: TabDef<R>;
+  rows: R[];
+  /** Shown when there are no rows. */
+  empty: string;
+  sorting: SortingState;
+  onSortingChange: OnChangeFn<SortingState>;
+  selectedKey: string | null;
+  onActivate: (sel: Selection) => void;
+  onHover: (sel: Selection | null) => void;
+  /** Set by the table: step the selection through its (sorted) rows. */
+  stepRef: React.RefObject<((dir: 1 | -1) => void) | undefined>;
+}
+
+function TabTable<R extends RowBase>({ def, rows, empty, sorting, onSortingChange, selectedKey, onActivate, onHover, stepRef }: TableProps<R>) {
+  const table = useTable({
+    features,
+    columns: def.columns,
+    data: rows,
+    state: { sorting },
+    onSortingChange,
+    getRowId: (r) => r.key,
+    enableSortingRemoval: false,
+  });
+  const sorted = table.getRowModel().rows;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: sorted.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    getItemKey: (i) => sorted[i]!.id,
+    overscan: 12,
+    scrollMargin: HEADER_HEIGHT, // the sticky header sits above the rows inside the scroller
+    scrollPaddingStart: HEADER_HEIGHT,
+  });
+  const numeric = new Set(def.numeric);
+  const grid = { gridTemplateColumns: def.template };
+
+  const sortedRef = useRef(sorted);
+  useLayoutEffect(() => {
+    sortedRef.current = sorted;
+    stepRef.current = (dir) => {
+      const list = sortedRef.current;
+      if (!list.length) return;
+      const at = list.findIndex((r) => r.id === selectedKey);
+      const next = at < 0 ? (dir > 0 ? 0 : list.length - 1) : Math.min(list.length - 1, Math.max(0, at + dir));
+      onActivate(list[next]!.original.sel);
+    };
+  });
+
+  // Keep the selected row visible when the selection changes (not when rows merely re-sort).
+  useEffect(() => {
+    const i = selectedKey ? sortedRef.current.findIndex((r) => r.id === selectedKey) : -1;
+    if (i >= 0) virtualizer.scrollToIndex(i, { align: "auto" });
+  }, [selectedKey, virtualizer]);
+
+  return (
+    <div
+      className="list-scroll"
+      ref={scrollRef}
+      tabIndex={0}
+      role="grid"
+      aria-rowcount={sorted.length}
+      onMouseLeave={() => onHover(null)}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          stepRef.current?.(e.key === "ArrowDown" ? 1 : -1);
+        }
+      }}
+    >
+      <div className="list-row list-head" role="row" style={{ ...grid, height: HEADER_HEIGHT }}>
+        {table.getHeaderGroups()[0]!.headers.map((h) => {
+          const dir = h.column.getIsSorted();
+          return (
+            <div
+              key={h.id}
+              role="columnheader"
+              aria-sort={dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none"}
+              className={numeric.has(h.column.id) ? "num" : undefined}
+              onClick={h.column.getToggleSortingHandler()}
+              title="Sort (shift-click: add a secondary sort)"
+            >
+              <table.FlexRender header={h} />
+              <span className="sort">{dir === "asc" ? "▲" : dir === "desc" ? "▼" : ""}</span>
+            </div>
+          );
+        })}
+      </div>
+      {sorted.length === 0 && <div className="list-empty muted">{empty}</div>}
+      <div style={{ height: virtualizer.getTotalSize() - HEADER_HEIGHT, position: "relative" }}>
+        {virtualizer.getVirtualItems().map((item) => {
+          const row = sorted[item.index]!;
+          return (
+            <div
+              key={row.id}
+              role="row"
+              aria-selected={row.id === selectedKey}
+              className={`list-row${row.id === selectedKey ? " selected" : ""}${row.original.dim ? " dim" : ""}`}
+              style={{ ...grid, height: ROW_HEIGHT, transform: `translateY(${item.start - HEADER_HEIGHT}px)` }}
+              onClick={() => onActivate(row.original.sel)}
+              onMouseEnter={() => onHover(row.original.sel)}
+            >
+              {row.getAllCells().map((cell) => (
+                <div key={cell.id} role="gridcell" className={numeric.has(cell.column.id) ? "num" : undefined}>
+                  <table.FlexRender cell={cell} />
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

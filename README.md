@@ -26,7 +26,7 @@ so it needs internet access then.
 | `game/eft/items/` | Item tree reading (slots, grids) for equipment and contents |
 | `game/eft/players/`, `game/eft/model/` | Player tracking (`Players`, skeleton-based positions); published snapshots (`WorldState`) |
 | `game/eft/raid/` | Raid discovery (`RaidFinder`), roster reading, raid-end detection (`RaidMonitor`), `RaidSession` |
-| `server/` | HTTP/WebSocket server (Crow), message encoding, stream recording/replay (`docs/protocol.md`) |
+| `server/` | HTTP/WebSocket server (Crow), message encoding, raid recordings (`docs/protocol.md`) |
 | `web/` | Browser frontend (TypeScript, Vite, Canvas 2D) |
 | `maps/` | Map folders (`docs/maps.md`); only `maps/demo` is committed |
 | `tools/` | `il2cpp-dump` + `update-offsets.py` (refresh offsets from a game build; `docs/offset-tools.md`), `mem-dump` (raw physical memory dumps), `vmm-check` (VMM/QEMU setup sanity check: process list, kernel read), `make-demo-stream.py` (synthetic raid for frontend work) |
@@ -83,13 +83,19 @@ exit). `--help` lists every option.
 ### Without a game
 
 ```sh
-python3 tools/make-demo-stream.py demo.jsonl
-./build/bin/radar-backend --replay demo.jsonl          # then open http://127.0.0.1:8080/
+python3 tools/make-demo-stream.py                      # writes recordings/demo.jsonl
+./build/bin/radar-backend --offline                    # then open http://127.0.0.1:8080/
 ```
 
-For frontend development with hot reload, run `npm run dev` in `web/` (it proxies `/ws`, `/maps` and
-`/data` to the backend at `RADAR_BACKEND`, default `http://127.0.0.1:8080`). Record real raids with
-`--record raid.jsonl` and replay them later.
+Every raid is recorded to `recordings/` (one file per raid; `--recordings <dir>`, `--no-record`,
+`--keep-recordings <n>`). In the frontend, the indicator at the left of the status bar opens the
+Timeline view: what happened in the raid (click an entry to jump there) and a scrubber to go back
+in time, with playback at 1–16× (`space` plays/pauses, `[`/`]` step 10 s). The Raids view opens
+past raids. Selecting a player draws where it's been; the Map view can show everyone's trails.
+`--offline` serves the frontend and those recordings without a memory source.
+
+For frontend development with hot reload, run `npm run dev` in `web/` (it proxies `/ws`, `/api`,
+`/maps` and `/data` to the backend at `RADAR_BACKEND`, default `http://127.0.0.1:8080`).
 
 Use `--vmm-printf --vmm-arg -v` to see VMM's own diagnostics.
 

@@ -3,18 +3,39 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { type CatalogStatus, loadCatalog } from "./catalog";
 import { Connection, type RadarState } from "./connection";
+import { type Backfill, LiveTimeline } from "./liveTimeline";
+import { fetchRecordings, parseLine, readRecording } from "./recordings";
 import { type ItemCatalog, emptyCatalog } from "./items";
 import { type LoadedMap, type MapEntry, fetchMapIndex, findMap, loadMap, selectLayer } from "./maps";
 import type { Layers } from "./render";
 
+export interface LiveState {
+  state: RadarState;
+  /** The current raid's history (null outside a raid). */
+  live: LiveTimeline;
+  /** Changes whenever the live timeline does. */
+  liveVersion: number;
+}
+
+const backfill: Backfill = {
+  active: async () => (await fetchRecordings()).find((r) => r.active) ?? null,
+  read: (name, into, signal) => readRecording(name, (line) => {
+    const msg = parseLine(line);
+    if (msg) into.ingest(msg);
+  }, signal),
+};
+
 /** Connects on mount, disconnects on unmount; re-renders on every state change. */
-export function useConnection(url: string): RadarState {
-  const [conn] = useState(() => new Connection(url));
+export function useConnection(url: string): LiveState {
+  const [live] = useState(() => new LiveTimeline(backfill));
+  const [conn] = useState(() => new Connection(url, (msg) => live.handle(msg)));
   useEffect(() => {
     conn.start();
     return () => conn.stop();
   }, [conn]);
-  return useSyncExternalStore(conn.subscribe, conn.getState);
+  const state = useSyncExternalStore(conn.subscribe, conn.getState);
+  const liveVersion = useSyncExternalStore(live.subscribe, live.getVersion);
+  return { state, live, liveVersion };
 }
 
 // Item data (names, prices): loaded once per page load from tarkov.dev, cached for a day. Shared
@@ -87,23 +108,48 @@ export function useAutoLayer(map: LoadedMap | null, localY: number | null): numb
   return ref.current.layer;
 }
 
-const LAYERS_KEY = "radar.layers";
-const DEFAULT_LAYERS: Layers = { loot: false, containers: false, exfils: true, explosives: true };
-
-export function useLayers(): [Layers, (key: keyof Layers) => void] {
-  const [layers, setLayers] = useState<Layers>(() => {
+/** useState persisted to localStorage (merged over the default, so new fields get their defaults). */
+export function usePersistentState<T extends object>(key: string, initial: T): [T, (update: T | ((prev: T) => T)) => void] {
+  const [value, setValue] = useState<T>(() => {
     try {
-      return { ...DEFAULT_LAYERS, ...(JSON.parse(localStorage.getItem(LAYERS_KEY) ?? "{}") as Partial<Layers>) };
+      const stored = JSON.parse(localStorage.getItem(key) ?? "null") as Partial<T> | null;
+      return stored && typeof stored === "object" ? { ...initial, ...stored } : initial;
     } catch {
-      return DEFAULT_LAYERS;
+      return initial;
     }
   });
   useEffect(() => {
     try {
-      localStorage.setItem(LAYERS_KEY, JSON.stringify(layers));
+      localStorage.setItem(key, JSON.stringify(value));
     } catch {
       // storage unavailable: settings just don't persist
     }
-  }, [layers]);
+  }, [key, value]);
+  return [value, setValue];
+}
+
+export interface TrailPrefs {
+  /** The selected player's trail (whole raid). */
+  selected: boolean;
+  /** Everyone's trails. */
+  all: boolean;
+  /** Length of everyone's trails (minutes); null: the whole raid. */
+  minutes: number | null;
+}
+
+export function useTrailPrefs() {
+  return usePersistentState<TrailPrefs>("radar.trails", { selected: true, all: false, minutes: 5 });
+}
+
+const DEFAULT_LAYERS: Layers = { loot: false, containers: false, exfils: true, explosives: true };
+
+export function useLayers(): [Layers, (key: keyof Layers) => void] {
+  const [layers, setLayers] = usePersistentState("radar.layers", DEFAULT_LAYERS);
   return [layers, (key) => setLayers((l) => ({ ...l, [key]: !l[key] }))];
+}
+
+/** Keyboard shortcuts must not fire while the user types into a field. */
+export function isTyping(e: KeyboardEvent): boolean {
+  const t = e.target;
+  return t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement;
 }

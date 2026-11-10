@@ -34,6 +34,8 @@ export interface Player {
   side: Side;
   /** Observed players: voice preset (names bot roles and bosses). */
   voice?: string;
+  /** Full players (ours, bots simulated on this machine): the game's role (WildSpawnType), see roles.ts. */
+  role?: number;
   dead: boolean;
   absent: boolean;
   pos: WorldPos | null;
@@ -90,14 +92,52 @@ export interface LootEntry {
   contents?: ItemNode[];
 }
 
+export interface HelloData {
+  protocol: number;
+  /** False when the backend has no memory source (--offline). Missing from old backends: live. */
+  live?: boolean;
+}
+
 export type Message =
-  | Envelope<"hello", { protocol: number }>
+  | Envelope<"hello", HelloData>
   | Envelope<"status", StatusData>
   | Envelope<"players", PlayersData>
   | Envelope<"exfils", { exfils: Exfil[] }>
   | Envelope<"explosives", ExplosivesData>
   | Envelope<"loot", { loot: LootEntry[] }>
   | Envelope<"equipment", { players: PlayerEquipment[] }>;
+
+// ---- raid recordings (docs/protocol.md, "Raid recordings") ----
+
+export const RECORDING_FORMAT = 1;
+
+export interface RecordingHeader {
+  protocol: number;
+  format: number;
+  locationId: string;
+  offsetsMismatch: boolean;
+}
+
+export interface LootDiffData {
+  added: LootEntry[];
+  removed: number[];
+  /** Complete entries. */
+  changed: LootEntry[];
+}
+
+/** A line of a recording: the stream's messages plus the recording-only ones. */
+export type RecordedMessage = Message | Envelope<"recording", RecordingHeader> | Envelope<"lootDiff", LootDiffData>;
+
+/** GET /api/recordings entry. */
+export interface RecordingInfo {
+  name: string;
+  size: number;
+  locationId: string | null;
+  start: number | null;
+  /** Null while it's being recorded. */
+  end: number | null;
+  active: boolean;
+}
 
 export function parseMessage(text: string): Message | null {
   try {

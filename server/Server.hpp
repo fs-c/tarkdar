@@ -1,6 +1,7 @@
 #pragma once
 
 #include "server/MessageHub.hpp"
+#include "server/Recorder.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -17,6 +18,8 @@ struct ServerConfig {
     std::filesystem::path webRoot = "web/dist";  // built frontend
     std::filesystem::path mapsRoot = "maps";     // one folder per map, each with map.json
     std::filesystem::path dataRoot = "data";     // item/quest data files
+    std::filesystem::path recordingsRoot = "recordings";  // raid recordings
+    bool live = true;  // false: serving recordings only (--offline); sent in "hello"
 };
 
 // HTTP + WebSocket server:
@@ -24,10 +27,13 @@ struct ServerConfig {
 //   GET /maps/index.json  generated list of map folders and their configs
 //   GET /maps/<path>      files under mapsRoot
 //   GET /data/<path>      files under dataRoot
+//   GET /api/recordings   list of raid recordings (JSON)
+//   GET /api/recordings/<name>  one recording file (the active one flushed first)
 //   GET /, /<path>        the frontend (files under webRoot; index.html for /)
 class Server {
 public:
-    Server(ServerConfig config, MessageHub& hub);
+    // `recorder` (optional) is asked for the active recording, which it flushes before it's served.
+    Server(ServerConfig config, MessageHub& hub, RaidRecorder* recorder = nullptr);
     ~Server();
 
     Server(const Server&) = delete;

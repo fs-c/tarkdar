@@ -17,7 +17,7 @@ The project's own design notes. Code comments may refer to sections here.
 ```
 web frontend (TS)      maps, markers, filters, item/quest names and prices, settings
       │  WebSocket (JSON), HTTP (static files, maps, data)
-server/                state stream, recording/replay of the stream
+server/                state stream, raid recordings
 game/eft/              everything EFT-specific: names, offsets, raid lifecycle, subsystems
 core/unity, core/il2cpp   Unity engine structures; IL2CPP managed objects (game-agnostic)
 core/mem               IMemoryBackend, MemoryView, Target
@@ -48,8 +48,8 @@ zone mapping. Nothing in the backend's reading depends on item data.
 - **Offline development:**
   - **Raw physical memory dumps:** `tools/mem-dump` writes one; open it with `VmmBackend` (same
     code, different device string).
-  - **Stream recordings:** record the WebSocket stream and replay it, for frontend work with nothing
-    else running.
+  - **Raid recordings:** every raid is recorded (the message stream, one file per raid) and can be
+    replayed in the frontend, with `radar-backend --offline` when nothing else is running.
   - **Unit tests:** run against `FakeBackend`.
   - **Later:** a Recording/ReplayBackend for moving game state.
 
@@ -118,7 +118,9 @@ locking.
   the server runs the bots). Each kind resolves its own addresses for rotation, corpse, body
   (skeleton) and inventory controller; everything after the build is shared.
 - Observed players carry their own AI flag, side and voice preset (the voice names bot roles and
-  bosses). Client players other than ours are always AI.
+  bosses). Client players other than ours are always AI. Full players (local, client) also carry
+  their role, `Profile.Info.Settings.Role` (`WildSpawnType`), read once at build; a missing one
+  doesn't fail the build.
 - A failed build records the step that failed; it's logged after 5 failures and listed by `--diagnose`.
 - Refreshes rotation (every tick) and the corpse pointer (every 100 ms; non-null means dead, and death
   is permanent).
@@ -196,8 +198,9 @@ an internally published list, so it shares no mutable state with the live tasks.
 - `LiveFeed` polls the lifecycle status and `WorldState` about 30 times per second and broadcasts
   whatever changed through `MessageHub`.
 - `MessageHub` remembers the latest message per type, so new clients get the full state on connect.
-- The hub can be tapped to record the stream (`StreamRecorder`), and `StreamReplay` can feed it from a
-  recording instead of a game.
+- `LiveFeed` also hands every message to `RaidRecorder`, which writes one file per raid (players
+  throttled, loot as keyframes plus diffs) and gzips it when the raid ends. `RecordingIndex` lists
+  them for `/api/recordings`. The frontend builds trails, the event log and replay from these files.
 - The message format is in `docs/protocol.md`.
 - Static files (frontend, maps, data) are served with path checks (`resolveUnder`).
 - WebSocket upgrades are only accepted from pages served by the same host (the `Origin` must match
@@ -208,6 +211,26 @@ an internally published list, so it shares no mutable state with the live tasks.
 
 **Frontend (`web/`, TypeScript + Vite, Canvas 2D, no framework):**
 - `connection.ts` keeps the latest state from the WebSocket (with reconnect).
+- `timeline.ts` holds a raid's history: per-player tracks (typed arrays, a sample only when something
+  moved), the other message types by time, loot as keyframes plus diffs, and events derived from the
+  changes (deaths, players leaving, loot appearing/disappearing/changing, exfil status). `stateAt(t)`
+  rebuilds the state of any moment, keeping unchanged parts' identity so memoised list rows survive.
+  Messages with a revision already seen are dropped.
+- `liveTimeline.ts` builds the current raid's timeline from the stream. A client joining mid-raid
+  fills in the earlier part from the active recording (stream messages buffered meanwhile are
+  replayed on top; the revision rule drops the overlap).
+- `playback.ts` is the time cursor: null means live (the stream's state as is, not the timeline's),
+  otherwise a moment of the live raid or of a recording opened from the Raids view
+  (`recordings.ts`). The status bar only shows a small indicator with the time; it opens the
+  Timeline view (`TimelinePanel.tsx`), which holds the controls.
+- Trails are drawn from the tracks up to the shown moment (`render.ts`), thinned to a point per metre
+  of movement (`Track.trailIndices`, built incrementally). They fade with age; parts on another
+  floor than the shown one are dimmed. The selected player's trail covers the whole raid; everyone's
+  trails (Map view) can be limited to the last few minutes.
+- `events.ts` turns timeline events into log lines (names, contents deltas, where and when to show
+  them). The Timeline view lists them oldest first with a marker at the shown moment (later ones
+  dimmed), next to a vertical scrubber; the details panel's History lists the
+  selected thing's events (later ones dimmed). Loot that only moved is not an event.
 - `maps.ts` loads map folders and picks floors by height.
 - `calibration.ts` fits the world ↔ image transform from control points.
 - `render.ts` draws the map, players and markers.

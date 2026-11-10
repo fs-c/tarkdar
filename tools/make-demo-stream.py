@@ -1,24 +1,29 @@
 #!/usr/bin/env python3
-"""Writes a synthetic raid as a recorded message stream, for frontend work without a game.
+"""Writes a synthetic raid recording, for frontend work without a game.
 
 Usage: make-demo-stream.py [output.jsonl] [--seconds N]
 
-Replay it with:  radar-backend --replay output.jsonl
-The location id is "demo", which matches maps/demo/.
+The default output is recordings/demo.jsonl. Open it in the frontend's raid list, with the backend
+serving the recordings:  radar-backend --offline
+The location id is "demo", which matches maps/demo/. Format: docs/protocol.md, "Raid recordings".
 
 Scenario: the local player walks a loop around the map centre, passing through a two-floor
 "building" (y up to 6 m), while bots wander, one dies after 20 s (leaving a corpse) and one leaves
 the list after 35 s. Also: three exfils (one opens after 10 s), scattered loot and containers, an
-airdrop that lands over 15 s, a tripwire, and a grenade thrown at 12 s that explodes at 17 s.
+airdrop that lands over 15 s, a tripwire, and a grenade thrown at 12 s that explodes at 17 s. The
+local player picks up a LEDX lying on its path at 10 s and takes a GPU out of a container at 20 s
+(both show up in its equipment a few seconds later, as with the real backend's 5 s re-reads).
 """
 import argparse
 import json
 import math
+import os
 import random
 import time
 
 RATE_HZ = 20
 PROTOCOL = 1
+RECORDING_FORMAT = 1
 
 
 def envelope(kind, raid, rev, t_ms, data):
@@ -27,7 +32,7 @@ def envelope(kind, raid, rev, t_ms, data):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("output", nargs="?", default="demo-stream.jsonl")
+    ap.add_argument("output", nargs="?", default=os.path.join("recordings", "demo.jsonl"))
     ap.add_argument("--seconds", type=float, default=60.0)
     args = ap.parse_args()
 
@@ -41,9 +46,9 @@ def main():
                               {"state": state, "raidPending": pending, "locationId": location,
                                "offsetsMismatch": False}))
 
-    status(t0, "waitingForRaid")
-    status(t0 + 500, "waitingForRaid", pending=True)
-    start = t0 + 1500
+    start = t0
+    lines.append(envelope("recording", raid, 0, start, {"protocol": PROTOCOL, "format": RECORDING_FORMAT,
+                                                        "locationId": "demo", "offsetsMismatch": False}))
     status(start, "inRaid", "demo")
 
     bots = []
@@ -65,6 +70,11 @@ def main():
         loot.append({"id": 300 + i, "kind": "container", "tpl": rng.choice(containers), "obj": "container",
                      "pos": [round(rng.uniform(-220, 220), 2), 0.0, round(rng.uniform(-220, 220), 2)]})
     loot.append({"id": 400, "kind": "quest", "tpl": "questtpl", "obj": "quest_item", "pos": [-30.0, 0.0, 80.0]})
+    # On the local player's loop: a LEDX it passes at 10 s, a container it passes at 20 s.
+    LEDX, GPU = "5c0530ee86f774697952d952", "57347ca924597744596b4e71"
+    loot.append({"id": 450, "kind": "item", "tpl": LEDX, "obj": "item_ledx", "pos": [0.5, 0.0, 60.0]})
+    loot.append({"id": 460, "kind": "container", "tpl": "5909d89086f77472591234a0", "obj": "container_pc",
+                 "pos": [-60.5, 0.0, 0.5], "contents": [{"tpl": GPU}, {"tpl": "5734758f24597738025ee253"}]})
     exfils_closed = [{"id": 1, "kind": "regular", "name": "ZB-1011", "status": 1, "pos": [180.0, 0.0, 150.0]},
                      {"id": 2, "kind": "regular", "name": "Crossroads", "status": 4, "pos": [-200.0, 0.0, -120.0]},
                      {"id": 3, "kind": "secret", "name": "Smugglers' Basement", "status": 1, "pos": [90.0, 0.0, -190.0]}]
@@ -83,12 +93,12 @@ def main():
         return slots
 
     for entry in loot:
-        if entry["kind"] == "container":
+        if entry["kind"] == "container" and entry["id"] != 460:
             entry["contents"] = [{"tpl": "5449016a4bdc2d6f028b456f", "count": rng.randint(500, 20000)},
                                  {"tpl": "5734758f24597738025ee253"}] if rng.random() < 0.7 else []
     equipment = {"players": [{"id": 1, "slots": loadout(rng)}] + [{"id": b["id"], "slots": loadout(rng)} for b in bots]}
     tripwire = {"id": 1, "from": [-60.0, 0.2, -10.0], "to": [-52.0, 0.2, -4.0]}
-    rev = {"exfils": 0, "explosives": 0, "loot": 0}
+    rev = {"exfils": 0, "explosives": 0, "loot": 0, "equipment": 0}
 
     def emit(kind, t, data):
         rev[kind] += 1
@@ -122,8 +132,14 @@ def main():
                             "yaw": round(b["heading"], 2), "pitch": 0.0})
         lines.append(envelope("players", raid, step + 1, t, {"players": players}))
 
-        if step == 0:
-            lines.append(envelope("equipment", raid, 1, t, equipment))
+        if step in (0, 15 * RATE_HZ, 24 * RATE_HZ):
+            local_slots = equipment["players"][0]["slots"]
+            rig = next(s for s in local_slots if s["slot"] == "TacticalVest")
+            if secs >= 15 and not any(i["tpl"] == LEDX for i in rig["items"]):
+                rig["items"].append({"tpl": LEDX})
+            if secs >= 24 and not any(i["tpl"] == GPU for i in rig["items"]):
+                rig["items"].append({"tpl": GPU})
+            emit("equipment", t, json.loads(json.dumps(equipment)))
         if step == 0 or step == 10 * RATE_HZ:
             exfils = [dict(e) for e in exfils_closed]
             if secs >= 10:
@@ -137,7 +153,10 @@ def main():
             emit("explosives", t, {"grenades": grenades, "tripwires": [tripwire]})
         if step % (RATE_HZ * 3) == 0:  # loot scans every 3 s
             drop_y = max(0.0, 150.0 - 10.0 * secs)
-            entries = loot + [{"id": 500, "kind": "airdrop", "tpl": "", "obj": "loot_collider", "pos": [20.0, round(drop_y, 2), -60.0]}]
+            entries = [l for l in loot if not (l["id"] == 450 and secs > 10.5)]
+            if secs > 20.5:
+                entries = [dict(l, contents=[c for c in l["contents"] if c["tpl"] != GPU]) if l["id"] == 460 else l for l in entries]
+            entries = entries + [{"id": 500, "kind": "airdrop", "tpl": "", "obj": "loot_collider", "pos": [20.0, round(drop_y, 2), -60.0]}]
             dead = next(b for b in bots if b["id"] == 3)
             if secs > 20:
                 corpse_eq = next(p["slots"] for p in equipment["players"] if p["id"] == 3)
@@ -145,6 +164,9 @@ def main():
                                 "pos": [round(dead["x"], 2), 0.0, round(dead["z"], 2)], "contents": corpse_eq})
             emit("loot", t, {"loot": entries})
 
+    status(t + 1000 // RATE_HZ, "cooldown")
+
+    os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     print(f"wrote {len(lines)} messages ({args.seconds:.0f} s) to {args.output}")

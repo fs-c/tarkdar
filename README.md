@@ -29,7 +29,7 @@ so it needs internet access then.
 | `server/` | HTTP/WebSocket server (Crow), message encoding, stream recording/replay (`docs/protocol.md`) |
 | `web/` | Browser frontend (TypeScript, Vite, Canvas 2D) |
 | `maps/` | Map folders (`docs/maps.md`); only `maps/demo` is committed |
-| `tools/` | `il2cpp-dump` + `update-offsets.py` (refresh offsets from a game build; `docs/offset-tools.md`), `mem-dump` (raw physical memory dumps), `make-demo-stream.py` (synthetic raid for frontend work) |
+| `tools/` | `il2cpp-dump` + `update-offsets.py` (refresh offsets from a game build; `docs/offset-tools.md`), `mem-dump` (raw physical memory dumps), `vmm-check` (VMM/QEMU setup sanity check: process list, kernel read), `make-demo-stream.py` (synthetic raid for frontend work) |
 | `scripts/` | `setup.sh`: dependency check, submodules, VMM runtime files |
 | `app/` | `radar-backend` entry point, CLI options, `--diagnose` |
 | `cmake/` | VMM/LeechCore build (`vmm.cmake`), offsets codegen (`gen_offsets.py`) |

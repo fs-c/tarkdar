@@ -32,6 +32,18 @@ public:
         std::uint64_t size = 0;
     };
 
+    struct ProcessEntry {
+        Pid pid = 0;
+        Pid parentPid = 0;
+        std::string name;  // long image name (VMM truncates to 63 chars)
+        bool running = false;  // EPROCESS state 0
+        bool wow64 = false;
+    };
+
+    struct WindowsVersion {
+        std::uint32_t major = 0, minor = 0, build = 0;
+    };
+
     explicit VmmBackend(VmmConfig config);
     ~VmmBackend() override;
 
@@ -53,6 +65,10 @@ public:
 
     // The guest's physical memory map (RAM ranges, as the guest OS sees them). Empty on failure.
     [[nodiscard]] std::vector<PhysicalRange> physicalMemoryMap();
+    // Every process VMM knows about, including terminated ones. Empty on failure.
+    [[nodiscard]] std::vector<ProcessEntry> processes();
+    // Guest Windows version as detected by VMM; nullopt if unknown.
+    [[nodiscard]] std::optional<WindowsVersion> windowsVersion();
 
 private:
     VmmConfig config_;

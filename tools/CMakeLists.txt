@@ -11,6 +11,10 @@ target_link_libraries(il2cpp-dump PRIVATE il2cpp_dump_lib radar_vmm_backend rada
 add_executable(mem-dump mem-dump/main.cpp)
 target_link_libraries(mem-dump PRIVATE radar_core radar_vmm_backend radar_warnings)
 
+# Sanity check of the VMM/LeechCore setup (process list, kernel read), nothing game-specific.
+add_executable(vmm-check vmm-check/main.cpp)
+target_link_libraries(vmm-check PRIVATE radar_core radar_vmm_backend radar_warnings)
+
 if(RADAR_BUILD_TESTS)
     add_executable(il2cpp-dump-tests il2cpp-dump/tests.cpp)
     target_link_libraries(il2cpp-dump-tests PRIVATE il2cpp_dump_lib radar_warnings)

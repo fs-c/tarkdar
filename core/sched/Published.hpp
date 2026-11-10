@@ -1,7 +1,8 @@
 #pragma once
 
-#include <atomic>
 #include <memory>
+
+#include "core/sched/AtomicSharedPtr.hpp"
 
 namespace radar::sched {
 
@@ -18,7 +19,7 @@ public:
     [[nodiscard]] std::shared_ptr<const T> get() const { return value_.load(std::memory_order_acquire); }
 
 private:
-    std::atomic<std::shared_ptr<const T>> value_;
+    AtomicSharedPtr<const T> value_;
 };
 
 }  // namespace radar::sched

@@ -42,6 +42,13 @@ find_package(Threads REQUIRED)
 
 set(RADAR_VMM_WARNING_FLAGS -w)   # third-party code: don't drown our own warnings
 
+# LeechCore/VMM select their OS layer via LINUX or MACOS (see their Makefile / Makefile.macos).
+if(APPLE)
+    set(RADAR_VMM_OS_DEFINE MACOS)
+else()
+    set(RADAR_VMM_OS_DEFINE LINUX)
+endif()
+
 # ---- LeechCore ----------------------------------------------------------------------------
 file(GLOB LC_SRC CONFIGURE_DEPENDS ${LC_DIR}/leechcore/*.c ${LC_DIR}/leechcore/ob/*.c)
 list(FILTER LC_SRC EXCLUDE REGEX "leechrpcshared\\.c$")      # Windows-only
@@ -50,23 +57,27 @@ set_target_properties(leechcore PROPERTIES PREFIX "" OUTPUT_NAME leechcore
     C_VISIBILITY_PRESET hidden)
 target_include_directories(leechcore PRIVATE ${LC_DIR}/leechcore)
 target_include_directories(leechcore SYSTEM PUBLIC ${LC_DIR}/includes)
-target_compile_definitions(leechcore PUBLIC LINUX PRIVATE _GNU_SOURCE)
+target_compile_definitions(leechcore PUBLIC ${RADAR_VMM_OS_DEFINE} PRIVATE _GNU_SOURCE)
 target_compile_options(leechcore PRIVATE ${RADAR_VMM_WARNING_FLAGS})
 target_link_libraries(leechcore PRIVATE ${CMAKE_DL_LIBS} Threads::Threads)
-if(RADAR_WITH_LIBUSB)
+if(RADAR_WITH_LIBUSB AND NOT APPLE)
     # libusb is only used by the FPGA/USB3380 paths, but LeechCore's oscompatibility.h includes
     # it unconditionally on Linux, so turning this off requires patching LeechCore.
+    # (The macOS build of LeechCore doesn't use libusb at all.)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(LIBUSB REQUIRED IMPORTED_TARGET libusb-1.0)
     target_link_libraries(leechcore PRIVATE PkgConfig::LIBUSB)
 endif()
 
 # ---- QEMU device plugin (dlopen'ed by LeechCore) ------------------------------------------
-add_library(leechcore_device_qemu MODULE ${LCP_DIR}/leechcore_device_qemu/leechcore_device_qemu.c)
-set_target_properties(leechcore_device_qemu PROPERTIES PREFIX "")
-target_include_directories(leechcore_device_qemu PRIVATE ${LCP_DIR}/includes)
-target_compile_options(leechcore_device_qemu PRIVATE ${RADAR_VMM_WARNING_FLAGS})
-target_link_libraries(leechcore_device_qemu PRIVATE leechcore rt)
+# Linux-only: it maps QEMU's guest RAM via /proc/<pid>/fd (hugetlbfs/memfd) and links librt.
+if(LINUX)
+    add_library(leechcore_device_qemu MODULE ${LCP_DIR}/leechcore_device_qemu/leechcore_device_qemu.c)
+    set_target_properties(leechcore_device_qemu PROPERTIES PREFIX "")
+    target_include_directories(leechcore_device_qemu PRIVATE ${LCP_DIR}/includes)
+    target_compile_options(leechcore_device_qemu PRIVATE ${RADAR_VMM_WARNING_FLAGS})
+    target_link_libraries(leechcore_device_qemu PRIVATE leechcore rt)
+endif()
 
 # ---- VMM ----------------------------------------------------------------------------------
 file(GLOB_RECURSE VMM_SRC CONFIGURE_DEPENDS ${VMM_DIR}/vmm/*.c)
@@ -76,6 +87,6 @@ set_target_properties(vmm PROPERTIES PREFIX "" OUTPUT_NAME vmm
     C_STANDARD 11 C_EXTENSIONS OFF C_VISIBILITY_PRESET hidden)
 target_include_directories(vmm PRIVATE ${VMM_DIR}/vmm)
 target_include_directories(vmm SYSTEM PUBLIC ${VMM_DIR}/includes)
-target_compile_definitions(vmm PUBLIC LINUX PRIVATE _GNU_SOURCE SQLITE_THREADSAFE=2 SQLITE_CORE)
+target_compile_definitions(vmm PUBLIC ${RADAR_VMM_OS_DEFINE} PRIVATE _GNU_SOURCE SQLITE_THREADSAFE=2 SQLITE_CORE)
 target_compile_options(vmm PRIVATE ${RADAR_VMM_WARNING_FLAGS})
 target_link_libraries(vmm PRIVATE leechcore m ${CMAKE_DL_LIBS} Threads::Threads)

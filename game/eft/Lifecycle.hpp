@@ -47,7 +47,7 @@ private:
     mem::Target& target_;
     SubsystemFactory factory_;
     sched::Published<Status> status_;
-    std::atomic<std::shared_ptr<const RaidSession>> session_;
+    sched::AtomicSharedPtr<const RaidSession> session_;
     std::uint64_t raidCounter_ = 0;
     bool offsetsMismatch_ = false;
 };

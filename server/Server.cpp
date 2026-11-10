@@ -69,12 +69,15 @@ std::string buildMapsIndex(const fs::path& mapsRoot) {
 struct Server::Impl {
     ServerConfig config;
     MessageHub& hub;
+    RaidRecorder* recorder;
+    RecordingIndex recordings;
     crow::SimpleApp app;
     std::future<void> running;
     std::mutex connMutex;
     std::unordered_map<crow::websocket::connection*, MessageHub::ClientId> connections;
 
-    Impl(ServerConfig c, MessageHub& h) : config(std::move(c)), hub(h) {}
+    Impl(ServerConfig c, MessageHub& h, RaidRecorder* r)
+        : config(std::move(c)), hub(h), recorder(r), recordings(config.recordingsRoot) {}
 
     static crow::response file(const fs::path& root, std::string_view path) {
         const auto resolved = resolveUnder(root, path);
@@ -97,7 +100,7 @@ struct Server::Impl {
             })
             .max_payload(64 * 1024)  // clients don't send anything meaningful yet
             .onopen([this](crow::websocket::connection& conn) {
-                const auto id = hub.connect([&conn](const std::string& m) { conn.send_text(m); }, encodeHello());
+                const auto id = hub.connect([&conn](const std::string& m) { conn.send_text(m); }, encodeHello(config.live));
                 std::lock_guard lock(connMutex);
                 connections[&conn] = id;
                 log::info("server: client connected ({})", conn.get_remote_ip());
@@ -121,13 +124,31 @@ struct Server::Impl {
             return res;
         });
         CROW_ROUTE(app, "/maps/<path>")([this](const std::string& path) { return file(config.mapsRoot, path); });
+        CROW_ROUTE(app, "/api/recordings")([this] {
+            const auto active = recorder ? recorder->flushActive() : std::nullopt;
+            crow::response res(recordings.listJson(active));
+            res.set_header("Content-Type", "application/json");
+            res.set_header("Cache-Control", "no-cache");
+            return res;
+        });
+        CROW_ROUTE(app, "/api/recordings/<string>")([this](const std::string& name) {
+            if (!isRecordingName(name)) return crow::response(404);
+            if (recorder) (void)recorder->flushActive();
+            auto res = file(config.recordingsRoot, name);
+            if (res.code != 200) return res;
+            // Served as stored: the client unpacks .gz itself (no Content-Encoding, so the size is the file's).
+            res.set_header("Content-Type", name.ends_with(".gz") ? "application/gzip" : "application/x-ndjson");
+            res.set_header("Cache-Control", "no-cache");
+            return res;
+        });
         CROW_ROUTE(app, "/data/<path>")([this](const std::string& path) { return file(config.dataRoot, path); });
         CROW_ROUTE(app, "/")([this] { return file(config.webRoot, "index.html"); });
         CROW_ROUTE(app, "/<path>")([this](const std::string& path) { return file(config.webRoot, path); });
     }
 };
 
-Server::Server(ServerConfig config, MessageHub& hub) : impl_(std::make_unique<Impl>(std::move(config), hub)) {
+Server::Server(ServerConfig config, MessageHub& hub, RaidRecorder* recorder)
+    : impl_(std::make_unique<Impl>(std::move(config), hub, recorder)) {
     impl_->routes();
 }
 

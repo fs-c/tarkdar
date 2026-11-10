@@ -10,7 +10,7 @@
 namespace radar::app {
 
 struct Options {
-    radar::mem::VmmConfig vmm;           // --device etc.; required unless replaying
+    radar::mem::VmmConfig vmm;           // --device etc.; required unless --offline
     bool once = false;                   // connectivity check only
     bool diagnose = false;               // one-shot check of the whole read chain
     std::optional<int> timeoutSeconds;   // give up if not attached in time
@@ -18,10 +18,9 @@ struct Options {
 
     radar::server::ServerConfig server;
     bool noServer = false;
-    std::optional<std::filesystem::path> record;  // append the message stream to this file
-    std::optional<std::filesystem::path> replay;  // serve a recorded stream instead of a live game
-    double replaySpeed = 1.0;
-    bool replayLoop = true;
+    bool offline = false;                // no memory source: serve the frontend and the recordings only
+    bool noRecord = false;               // don't record raids
+    std::optional<int> keepRecordings;   // delete older recordings beyond this many
 };
 
 // Parses the command line. On error, returns nullopt and sets `error` (empty for --help).

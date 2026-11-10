@@ -24,7 +24,7 @@ struct Exfil {
 struct ExfilsSnapshot {
     std::uint64_t raidId = 0;
     std::uint64_t revision = 0;
-    std::vector<Exfil> exfils;
+    std::vector<Exfil> exfils{};
 };
 
 struct Grenade {
@@ -49,10 +49,10 @@ struct LootEntry {
     std::uint32_t id = 0;
     Kind kind = Kind::Item;
     std::string templateId;  // item/container template id; empty for airdrops and corpses
-    std::string objectName;  // GameObject name (for debugging; not meant for display)
+    std::string objectName{};  // GameObject name (for debugging; not meant for display)
     math::Vec3 position;
     // Containers: their contents. Corpses: their equipment (one node per occupied slot).
-    std::vector<ItemNode> contents;
+    std::vector<ItemNode> contents{};
 };
 
 struct LootSnapshot {

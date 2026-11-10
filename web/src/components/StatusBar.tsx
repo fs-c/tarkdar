@@ -9,16 +9,16 @@ const STATE_LABELS: Record<string, string> = {
   cooldown: "raid ended",
 };
 
-export function statusText(
+export function statusParts(
   s: RadarState,
   map: LoadedMap | null,
   layer: number,
   manualLayer: number | null,
   catalog: CatalogStatus,
-): string {
-  if (!s.connected) return "⚠ disconnected from backend";
-  if (s.protocolMismatch) return "⚠ protocol version mismatch: rebuild the frontend";
-  if (!s.status) return "connected";
+): string[] {
+  if (!s.connected) return ["⚠ disconnected from backend"];
+  if (s.protocolMismatch) return ["⚠ protocol version mismatch: rebuild the frontend"];
+  if (!s.status) return [s.live ? "connected" : "offline: no game, recorded raids only"];
   const parts: string[] = [];
   const { state } = s.status;
   if (state === "waitingForRaid") parts.push(s.status.raidPending ? "raid loading…" : "waiting for a raid");
@@ -36,7 +36,7 @@ export function statusText(
   if (s.status.offsetsMismatch) parts.push("⚠ game build differs from the offsets' build");
   if (catalog.state === "unavailable") parts.push("⚠ no item data");
   else if (catalog.state === "stale") parts.push("item data stale");
-  return parts.join(" · ");
+  return parts;
 }
 
 interface Props {
@@ -45,8 +45,23 @@ interface Props {
   layer: number;
   manualLayer: number | null;
   catalog: CatalogStatus;
+  /** Timeline indicator (first). */
+  timeline?: React.ReactNode;
+  /** Extra items on the right. */
+  children?: React.ReactNode;
 }
 
-export function StatusBar({ state, map, layer, manualLayer, catalog }: Props) {
-  return <div id="status">{statusText(state, map, layer, manualLayer, catalog)}</div>;
+export function StatusBar({ state, map, layer, manualLayer, catalog, timeline, children }: Props) {
+  const parts = statusParts(state, map, layer, manualLayer, catalog);
+  const warn = !state.connected || state.protocolMismatch;
+  return (
+    <footer id="statusbar" className={warn ? "warn" : undefined}>
+      {timeline}
+      {parts.map((p, i) => (
+        <span key={i} className={p.startsWith("⚠") ? "item alert" : "item"}>{p}</span>
+      ))}
+      <span className="spacer" />
+      {children}
+    </footer>
+  );
 }

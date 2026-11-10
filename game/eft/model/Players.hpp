@@ -41,6 +41,9 @@ struct PlayerState {
     bool absent = false;
     // Observed players: the voice preset (bot roles and bosses have their own); empty otherwise.
     std::string voice{};
+    // Full EFT.Player (local and client bots): Profile.Info.Settings.Role, the raw WildSpawnType value
+    // (names and values are mapped by the frontend). nullopt for observed players, which don't carry it.
+    std::optional<std::int32_t> role{};
 
     // World position (Unity metres: x east, y up, z north); nullopt until first resolved.
     std::optional<math::Vec3> position;

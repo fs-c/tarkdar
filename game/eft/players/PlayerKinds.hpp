@@ -22,6 +22,7 @@ struct PlayerLayout {
     bool ai = false;
     Side side = Side::Unknown;
     std::string voice;  // observed players only: the voice preset, which names bot roles/bosses
+    std::optional<std::int32_t> role;  // full Players only: Profile.Info.Settings.Role (WildSpawnType)
     // Fields read later:
     Address rotationField = 0;             // Vector2 (yaw, pitch) in degrees
     Address corpseField = 0;               // pointer; non-null once the player is dead

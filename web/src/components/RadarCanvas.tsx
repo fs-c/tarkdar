@@ -1,12 +1,15 @@
 // The radar canvas. Drawing stays imperative (Canvas 2D in a requestAnimationFrame loop, only when
-// something changed); React just hands it the latest scene. The camera (View) lives here.
+// something changed); React just hands it the latest scene and the camera.
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { worldToPixel } from "../calibration";
+import { isTyping } from "../hooks";
 import { NO_MAP_TRANSFORM, type Scene, render } from "../render";
-import { View } from "../view";
+import type { View } from "../view";
 
 interface Props {
+  /** Camera; owned by the caller so it can centre the map on things. */
+  view: View;
   scene: Scene;
   /** Keep the local player centred. */
   follow: boolean;
@@ -16,9 +19,8 @@ interface Props {
   onTap: (x: number, y: number, view: View) => void;
 }
 
-export function RadarCanvas({ scene, follow, onPan, onTap }: Props) {
+export function RadarCanvas({ view, scene, follow, onPan, onTap }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [view] = useState(() => Object.assign(new View(), { zoom: 0.75 }));
   const latest = useRef({ scene, follow });
   const dirty = useRef(true);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
@@ -53,7 +55,7 @@ export function RadarCanvas({ scene, follow, onPan, onTap }: Props) {
     canvas.addEventListener("wheel", onWheel, { passive: false });
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLTextAreaElement) return;
+      if (isTyping(e)) return;
       if (e.key === "+" || e.key === "=") view.zoomAt(1.25, view.width / 2, view.height / 2);
       else if (e.key === "-") view.zoomAt(0.8, view.width / 2, view.height / 2);
       else return;

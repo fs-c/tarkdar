@@ -49,7 +49,7 @@ doesn't, split it into separate folders.
 1. Create the folder with the images and a `map.json` with the right `ids` and `layers`. Use any two
    rough points for `calibration` to start with, for example
    `{"world": [0, 0], "pixel": [0, 0]}` and `{"world": [100, 100], "pixel": [100, -100]}`.
-2. Start a raid on that map and open the frontend. Press **calibrate**.
+2. Start a raid on that map and open the frontend. Open **Settings** (cogwheel, bottom left) and press **Calibrate this map**.
 3. Stand somewhere recognisable in game (a building corner, a crossroads), then click that exact spot
    on the map image. The click is paired with your current world position.
 4. Repeat at 2–4 places far apart, ideally spread over the whole map.

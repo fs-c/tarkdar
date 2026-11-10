@@ -803,6 +803,24 @@
       "value": "0x50"
     },
     {
+      "group": "PlayerInfo",
+      "name": "Settings",
+      "class": "EFT.ProfileInfo",
+      "field": "<Settings>k__BackingField",
+      "static": false,
+      "required": true,
+      "value": "0x90"
+    },
+    {
+      "group": "ProfileSettings",
+      "name": "Role",
+      "class": "EFT.ProfileSettings",
+      "field": "Role",
+      "static": false,
+      "required": true,
+      "value": "0x10"
+    },
+    {
       "group": "MovementContext",
       "name": "_rotation",
       "class": "EFT.MovementContext",

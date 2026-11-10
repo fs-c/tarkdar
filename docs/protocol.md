@@ -14,6 +14,8 @@ change, e.g. `0.0.0.0:8080` for LAN access).
 | `GET /maps/index.json` | Generated list of map folders: `[{"folder": "...", "config": {map.json contents}}]`, sorted by folder. See `docs/maps.md`. |
 | `GET /maps/<folder>/<file>` | Map images. |
 | `GET /data/<path>` | Item/quest data files (not used yet). |
+| `GET /api/recordings` | Raid recordings, newest first (below). |
+| `GET /api/recordings/<name>` | One recording file, as stored (`.jsonl`, or `.jsonl.gz` as `application/gzip`: the client unpacks it). The active one is flushed first. |
 | `GET /`, `GET /<path>` | The built frontend (`web/dist`). |
 
 Static files are only served from inside their root directory. Paths that resolve outside it (`..`,
@@ -41,8 +43,9 @@ changes, at most about 30 times per second.
 
 ### `hello`
 ```json
-{ "protocol": 1 }
+{ "protocol": 1, "live": true }
 ```
+- **`live`:** false when the backend has no memory source (`--offline`): only recordings to show.
 
 ### `status`
 ```json
@@ -71,6 +74,9 @@ changes, at most about 30 times per second.
 - **`ai`:** always true for `client`; observed players carry the game's own flag.
 - **`voice`:** observed players only (omitted otherwise): the voice preset, which names bot roles and
   bosses.
+- **`role`:** full players only (`local`, `client`; omitted for `observed`, which don't carry it):
+  `Profile.Info.Settings.Role`, the raw `EFT.WildSpawnType` value (e.g. 1 = assault, 6 = bossKilla).
+  Mapping values to names is the frontend's job (`web/src/roles.ts`).
 - **`side`:** `usec`, `bear`, `savage` (scavs, bosses and other non-PMC bots) or `unknown`.
 - **`dead`:** permanent once set; the player keeps its last position.
 - **`absent`:** left the game's player list without dying (extracted or despawned).
@@ -128,10 +134,43 @@ nodes] (if any) }`. Children are slot attachments (weapon mods, magazine cartrid
 plus grid contents (backpack, rig, container) once the grid offsets are known. Names and prices come
 from item data, keyed by `tpl`.
 
-## Recording and replay
+## Raid recordings
 
-- `radar-backend --record stream.jsonl` appends every message to a file (JSON Lines, one message per
-  line), live or in replay.
-- `radar-backend --replay stream.jsonl` serves a recording instead of a live game, timed by the `t`
-  fields. Options: `--replay-speed 2` and `--replay-once`; it loops by default.
-- `tools/make-demo-stream.py` generates a synthetic raid for `maps/demo`.
+The backend records every raid to its own file in `recordings/` (`--recordings <dir>`; `--no-record`
+turns it off, `--keep-recordings <n>` deletes all but the newest `n`). Recording starts when `status`
+becomes `inRaid` and ends when it leaves it (or the raid id changes). The file is named
+`<local date>_<time>_<locationId>.jsonl` and gzipped to `.jsonl.gz` once the raid ends.
+
+Format **1** (`kRecordingFormat`): JSON Lines, one message per line, the same envelopes as the
+stream, with these differences:
+
+- **The first line is a header:**
+  ```json
+  { "type": "recording", "raid": 3, "rev": 0, "t": 1794174689050,
+    "data": { "protocol": 1, "format": 1, "locationId": "bigmap", "offsetsMismatch": false } }
+  ```
+- **`players`** is written at most every 100 ms, and at once when a player appears, dies, leaves or
+  disappears. The newest one is always written before the file ends.
+- **`loot`** is a keyframe: written at the start and then at most every 60 s. Between keyframes,
+  changes are written as **`lootDiff`** (only when something changed), relative to the loot as of
+  the previous `loot`/`lootDiff` line. `rev` is the loot snapshot's revision.
+  ```json
+  { "type": "lootDiff", "raid": 3, "rev": 42, "t": ..., "data": {
+    "added": [ <loot entries> ], "removed": [ 7, 12 ], "changed": [ <loot entries, complete> ] } }
+  ```
+- `status`, `exfils`, `explosives` and `equipment` are written as sent. The last line is the
+  `status` that ended the raid (unless the backend stopped mid-raid).
+- A last line may be cut off (a raid in progress, or a crash): readers skip lines that don't parse.
+
+Readers also accept plain message streams without a header (format 0: recordings made with the old
+`--record`, `tools/make-demo-stream.py` before this format).
+
+`GET /api/recordings`:
+```json
+[ { "name": "2026-11-10_19-03-12_bigmap.jsonl.gz", "size": 18234112, "locationId": "bigmap",
+    "start": 1794174689050, "end": 1794176489050, "active": false } ]
+```
+- **`active`:** the raid being recorded right now; its `end` is `null`.
+- **`locationId`, `start`, `end`:** `null` when the file doesn't say (empty or unreadable).
+
+`tools/make-demo-stream.py` writes a synthetic raid recording for `maps/demo` (`recordings/demo.jsonl`).

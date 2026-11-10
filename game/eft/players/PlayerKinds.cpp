@@ -19,7 +19,7 @@ constexpr auto kFresh = Freshness::Fresh;
 
 using Result = std::expected<PlayerLayout, std::string>;
 
-// Full EFT.Player: Profile → Info → Side, _playerBody, MovementContext.
+// Full EFT.Player: Profile → Info → Side (and Settings → Role), _playerBody, MovementContext.
 Result buildClient(const Game& game, Address instance, PlayerLayout layout) {
     const Address profile = readPointer(game, instance + off::Player::Profile, kFresh);
     if (!profile) return std::unexpected("Player.Profile is null");
@@ -32,6 +32,11 @@ Result buildClient(const Game& game, Address instance, PlayerLayout layout) {
     if (!game.mem.tryRead(info + off::PlayerInfo::Side, side, kFresh)) return std::unexpected("PlayerInfo.Side unreadable");
 
     layout.side = static_cast<Side>(side);
+    // Role is identity, not needed to track the player: a missing one doesn't fail the build.
+    if (const Address settings = readPointer(game, info + off::PlayerInfo::Settings, kFresh)) {
+        std::int32_t role = 0;
+        if (game.mem.tryRead(settings + off::ProfileSettings::Role, role, kFresh)) layout.role = role;
+    }
     layout.ai = layout.kind != PlayerKind::Local;  // a full Player that isn't ours is a local bot
     layout.rotationField = movement + off::MovementContext::_rotation;
     layout.corpseField = instance + off::Player::Corpse;

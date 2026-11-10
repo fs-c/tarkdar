@@ -199,9 +199,9 @@ void checkPlayers(Report& r, const std::shared_ptr<const eft::RaidSession>& sess
         r.ok(std::format("{} of {} players have a position", positioned, snap->players.size()));
     for (const auto& p : snap->players) {
         if (!p.local && &p - snap->players.data() > 4) continue;  // the local player + a few others
-        r.info(std::format("#{} {}{} side {}{} {}: pos {} yaw {:.1f} pitch {:.1f}", p.id, eft::kindName(p.kind),
+        r.info(std::format("#{} {}{} side {}{}{} {}: pos {} yaw {:.1f} pitch {:.1f}", p.id, eft::kindName(p.kind),
                            p.ai ? " ai" : "", static_cast<int>(p.side), p.voice.empty() ? "" : " voice " + p.voice,
-                           p.dead ? "dead" : "alive",
+                           p.role ? std::format(" role {}", *p.role) : "", p.dead ? "dead" : "alive",
                            p.position ? std::format("({:.1f}, {:.1f}, {:.1f})", p.position->x, p.position->y, p.position->z)
                                       : std::string("none"),
                            p.yaw, p.pitch));

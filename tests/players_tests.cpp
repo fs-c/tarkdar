@@ -54,7 +54,7 @@ TEST_CASE("Players tracks the roster, positions, rotation and death") {
     FakeWorld w;
     w.newWorld(u"bigmap", 0);
     const Address bot1 = w.newPlayer(4, Vec3{50, 2, 60});
-    const Address bot2 = w.newPlayer(2, Vec3{-40, 3, 10});
+    const Address bot2 = w.newPlayer(2, Vec3{-40, 3, 10}, 22);  // bossTagilla
     w.setRosterList({w.localPlayer, bot1, bot2});
     w.movePlayer(w.localPlayer, {1, 1, 1});
     w.setRotation(bot1, 123.0f, -5.0f);
@@ -85,6 +85,8 @@ TEST_CASE("Players tracks the roster, positions, rotation and death") {
     CHECK(p1->yaw == 123.0f);
     CHECK(p1->pitch == -5.0f);
     CHECK(p2->side == eft::Side::Bear);
+    CHECK(p1->role == 1);
+    CHECK(p2->role == 22);
     CHECK(near(*snap->local()->position, {1, 1, 1}));
     const auto id1 = p1->id;
 
@@ -165,6 +167,7 @@ TEST_CASE("Players builds observed players through their own layout") {
     CHECK(b->ai);
     CHECK(b->side == eft::Side::Savage);
     CHECK(b->voice == "BossKilla");
+    CHECK_FALSE(b->role);  // observed players don't carry a role
     CHECK(b->yaw == doctest::Approx(45.0f));
     CHECK(p->kind == eft::PlayerKind::Observed);
     CHECK_FALSE(p->ai);  // a human player on another machine

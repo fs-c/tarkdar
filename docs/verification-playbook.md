@@ -256,9 +256,14 @@ side (USEC/BEAR/Savage). Observed players carry their voice preset (shown in the
 reference mapped voice substrings to roles (`BossKilla` → Killa, `SectantWarrior` → cultist, …),
 which we don't do yet. For SPT these are wanted:
 - **Nickname:** `Profile.Info.Nickname`.
-- **Role:** `Profile.Info.Settings.Role` (`WildSpawnType`), which distinguishes boss, raider, cultist,
-  scav and PMC bots. The reference derived roles only for online players, from their voice line name.
-  The mapping (voice substring → display name) is a fallback if the role field isn't usable.
+- **Role:** done for full players. `Profile.Info.Settings.Role` (`WildSpawnType`) is read and sent
+  as a number. The frontend (`web/src/roles.ts`) maps it with SPT's `WildSpawnTypeNumber` values
+  (0–64, with gaps at 31 and 54–56). The IL2CPP dump lists the same names in the same order but has
+  no values. **To verify in a raid:** select a known boss (Killa, Tagilla, ...) and check that the
+  details panel's role line names it. Roles newer than `infectedTagilla` (64) show as "role N", so
+  write down what they turn out to be and add them. Observed players have no role field: the
+  frontend guesses from the voice preset (`Boss*`, `Sectant*`, `Scav_*`, and PMC voices on savage-side
+  AI = raider/rogue).
 - **Group:** `Profile.Info.GroupId` (or `TeamId`). The reference instead guessed groups once per raid by
   30 m proximity among human players, which finds nothing offline.
 - **Level:** `Profile.Info.Level`, or experience plus the XP table.
@@ -269,10 +274,12 @@ Find these fields in the dump, add them to `eft.offsets.json`, and extend `build
 
 ## 5. Frontend and server (M4)
 
-### 5.1 Record streams for later
-- **Do:** run the backend with `--record <name>.jsonl` during every session at the setup. A few
-  minutes of each map makes realistic offline frontend work possible (`--replay`). Note what happened
-  in each recording.
+### 5.1 Keep raid recordings
+- **Do:** raids are recorded to `recordings/` automatically. Keep a few minutes of each map: they
+  make realistic offline frontend work possible (`--offline`). Note what happened in each recording.
+- **Check:** the "recorder: raid N done" log line at raid end gives lines and MB per message type.
+  Note how many `lootDiff` lines a raid produces and how big the `loot` keyframes are: it decides
+  whether the 60 s keyframe interval needs tuning.
 
 ### 5.2 Facing direction
 - **Check:** in the frontend, compare your marker's facing line with where you look in game (north =

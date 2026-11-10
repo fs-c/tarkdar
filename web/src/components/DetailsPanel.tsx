@@ -1,9 +1,13 @@
 // Details panel for a selected player, loot entry or exfil.
 
 import type { RadarState } from "../connection";
+import { describeEvent, eventConcerns } from "../events";
 import { type ItemCatalog, containerName, exfilStatus, formatPrice, totalValue } from "../items";
 import type { Selection } from "../pick";
 import type { ItemNode, WorldPos } from "../protocol";
+import { WILD_SPAWN_TYPES, roleInfo } from "../roles";
+import type { Timeline, TimelineEvent } from "../timeline";
+import { formatDuration } from "../playback";
 
 interface Props {
   selection: Selection;
@@ -11,11 +15,47 @@ interface Props {
   catalog: ItemCatalog;
 }
 
-export function DetailsPanel(props: Props) {
+/** The raid's history, for the History section. */
+export interface HistoryProps {
+  timeline: Timeline;
+  /** The shown moment. */
+  at: number;
+  /** Raid start. */
+  start: number;
+  onPick: (e: TimelineEvent) => void;
+}
+
+export function DetailsPanel(props: Props & { history: HistoryProps | null }) {
   return (
     <div id="details">
       <Details {...props} />
+      {props.history && <History selection={props.selection} catalog={props.catalog} {...props.history} />}
     </div>
+  );
+}
+
+function History({ selection, catalog, timeline, at, start, onPick }: HistoryProps & { selection: Selection; catalog: ItemCatalog }) {
+  // Later events too (dimmed): in a replay, what's still to come is worth knowing.
+  const events = timeline.events.filter((e) => eventConcerns(e, selection));
+  const track = selection.kind === "player" ? timeline.tracks.get(selection.id) : undefined;
+  if (!events.length && !track) return null;
+  return (
+    <>
+      <h4>history</h4>
+      {track && <Line label="distance" value={`${Math.round(track.distanceUntil(at))} m`} />}
+      <ul className="history">
+        {events.map((e, i) => {
+          const d = describeEvent(e, timeline, catalog);
+          return (
+            <li key={i}>
+              <button className={`link ${d.tone}${e.t > at ? " future" : ""}`} title="Show this moment" onClick={() => onPick(e)}>
+                <span className="t">{formatDuration(e.t - start)}</span> {d.text}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }
 
@@ -24,10 +64,17 @@ function Details({ selection: sel, state, catalog }: Props) {
     const p = state.players.find((x) => x.id === sel.id);
     if (!p) return <div>player gone</div>;
     const eq = state.equipment.get(p.id);
+    const role = roleInfo(p);
+    // The raw value too, so new or mis-mapped roles can be spotted.
+    const roleText =
+      p.role !== undefined
+        ? `${role ? `${role.label} · ` : ""}${WILD_SPAWN_TYPES[p.role]?.[0] ?? "unmapped"} = ${p.role}`
+        : role && `${role.label} (from voice)`;
     return (
       <>
         <h3>{p.local ? `You (#${p.id})` : `Player #${p.id}`}</h3>
         <Line label="side" value={p.side + (p.ai ? " (AI)" : "")} />
+        {roleText && <Line label="role" value={roleText} />}
         {p.voice && <Line label="voice" value={p.voice} />}
         {p.kind && <Line label="kind" value={p.kind} />}
         <Line label="state" value={p.dead ? "dead" : p.absent ? "left the raid" : "alive"} />
@@ -59,6 +106,27 @@ function Details({ selection: sel, state, catalog }: Props) {
             catalog={catalog}
           />
         )}
+      </>
+    );
+  }
+  if (sel.kind === "grenade") {
+    const g = state.explosives.grenades.find((x) => x.id === sel.id);
+    if (!g) return <div>exploded</div>;
+    return (
+      <>
+        <h3>Grenade</h3>
+        <Line label="position" value={formatPos(g.pos)} />
+      </>
+    );
+  }
+  if (sel.kind === "tripwire") {
+    const w = state.explosives.tripwires.find((x) => x.id === sel.id);
+    if (!w) return <div>gone</div>;
+    return (
+      <>
+        <h3>Tripwire</h3>
+        <Line label="from" value={formatPos(w.from)} />
+        <Line label="to" value={formatPos(w.to)} />
       </>
     );
   }

@@ -11,6 +11,7 @@ export default defineConfig({
       "/ws": { target: backend.replace(/^http/, "ws"), ws: true },
       "/maps": backend,
       "/data": backend,
+      "/api": backend,
     },
   },
   test: { globals: true },

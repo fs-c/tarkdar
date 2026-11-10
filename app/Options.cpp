@@ -9,7 +9,7 @@ namespace radar::app {
 void printUsage(const char* argv0) {
     std::fprintf(stderr,
                  "usage: %s --device <leechcore-device> [options]\n"
-                 "       %s --replay <stream.jsonl> [options]\n"
+                 "       %s --offline [options]\n"
                  "\n"
                  "Memory source:\n"
                  "  --device <str>        LeechCore device, e.g. \"qemu://hugepage-pid=<qemu pid>\",\n"
@@ -26,10 +26,12 @@ void printUsage(const char* argv0) {
                  "  --maps-root <dir>     map folders (default maps)\n"
                  "  --data-root <dir>     item/quest data (default data)\n"
                  "  --no-server           don't start the server\n"
-                 "  --record <file>       append every streamed message to <file> (JSON Lines)\n"
-                 "  --replay <file>       serve a recorded stream; no memory source needed\n"
-                 "  --replay-speed <x>    replay speed factor (default 1)\n"
-                 "  --replay-once         stop at the end of the recording instead of looping\n"
+                 "  --offline             no memory source: serve the frontend and past recordings only\n"
+                 "\n"
+                 "Raid recordings (one file per raid, browsed and replayed in the frontend):\n"
+                 "  --recordings <dir>    where recordings go (default recordings)\n"
+                 "  --no-record           don't record raids\n"
+                 "  --keep-recordings <n> keep only the newest <n> recordings\n"
                  "\n"
                  "  --verbose             debug logging\n",
                  argv0, argv0);
@@ -103,47 +105,49 @@ std::optional<Options> parseOptions(int argc, char** argv, std::string& error) {
             opt.server.dataRoot = *v;
         } else if (arg == "--no-server") {
             opt.noServer = true;
-        } else if (arg == "--record") {
+        } else if (arg == "--offline") {
+            opt.offline = true;
+        } else if (arg == "--recordings") {
             VALUE_OR_FAIL(v);
-            opt.record = *v;
-        } else if (arg == "--replay") {
+            opt.server.recordingsRoot = *v;
+        } else if (arg == "--no-record") {
+            opt.noRecord = true;
+        } else if (arg == "--keep-recordings") {
             VALUE_OR_FAIL(v);
-            opt.replay = *v;
-        } else if (arg == "--replay-speed") {
-            VALUE_OR_FAIL(v);
-            try {
-                opt.replaySpeed = std::stod(*v);
-            } catch (...) {
-                opt.replaySpeed = 0;
-            }
-            if (!(opt.replaySpeed > 0)) {
-                error = "--replay-speed: expected a positive number";
+            int n = 0;
+            const auto r = std::from_chars(v->data(), v->data() + v->size(), n);
+            if (r.ec != std::errc{} || r.ptr != v->data() + v->size() || n <= 0) {
+                error = "--keep-recordings: expected a positive number";
                 return std::nullopt;
             }
-        } else if (arg == "--replay-once") {
-            opt.replayLoop = false;
+            opt.keepRecordings = n;
+        } else if (arg == "--record" || arg == "--replay") {
+            error = std::string(arg) + " is gone: raids are recorded automatically (--recordings, --no-record), "
+                                        "and replayed in the frontend (--offline without a game)";
+            return std::nullopt;
         } else {
             error = "unknown option: " + std::string(arg);
             return std::nullopt;
         }
 #undef VALUE_OR_FAIL
     }
-    if (opt.replay && !opt.vmm.device.empty()) {
-        error = "--replay and --device are mutually exclusive";
+    if (opt.offline && !opt.vmm.device.empty()) {
+        error = "--offline and --device are mutually exclusive";
         return std::nullopt;
     }
-    if (!opt.replay && opt.vmm.device.empty()) {
-        error = "--device (or --replay) is required";
+    if (!opt.offline && opt.vmm.device.empty()) {
+        error = "--device (or --offline) is required";
         return std::nullopt;
     }
-    if (opt.replay && opt.diagnose) {
-        error = "--diagnose needs --device, not --replay";
+    if (opt.offline && (opt.diagnose || opt.once)) {
+        error = "--diagnose and --once need --device, not --offline";
         return std::nullopt;
     }
-    if (opt.replay && opt.noServer) {
-        error = "--replay needs the server";
+    if (opt.offline && opt.noServer) {
+        error = "--offline needs the server";
         return std::nullopt;
     }
+    opt.server.live = !opt.offline;
     return opt;
 }
 

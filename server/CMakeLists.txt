@@ -10,6 +10,8 @@ add_library(radar_server STATIC
     Feeds.cpp
     MessageHub.cpp
     Protocol.cpp
+    Recorder.cpp
     Server.cpp
 )
-target_link_libraries(radar_server PUBLIC radar_eft PRIVATE crow radar_warnings)
+find_package(ZLIB REQUIRED)
+target_link_libraries(radar_server PUBLIC radar_eft PRIVATE crow ZLIB::ZLIB radar_warnings)

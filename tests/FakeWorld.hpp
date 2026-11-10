@@ -91,15 +91,18 @@ public:
         Address trs = 0;  // skeleton hierarchy TrsX array: slot 0 = Base, 1 = left foot, 2 = right foot
     };
 
-    // A full EFT.Player (ClientPlayer) with profile, side, movement context and a skeleton whose Base
-    // bone is at `position` and whose feet are 0.15 m to either side.
-    Address newPlayer(int side = 4, std::optional<math::Vec3> position = std::nullopt) {
+    // A full EFT.Player (ClientPlayer) with profile, side, role (WildSpawnType; 1 = assault), movement
+    // context and a skeleton whose Base bone is at `position` and whose feet are 0.15 m to either side.
+    Address newPlayer(int side = 4, std::optional<math::Vec3> position = std::nullopt, int role = 1) {
         FakePlayer fp;
         fp.instance = heap.object(clientPlayerClass, 0x1000);
         const Address profile = heap.alloc(0x200), info = heap.alloc(0x100);
         heap.put<Address>(fp.instance + off::Player::Profile, profile);
         heap.put<Address>(profile + off::Profile::Info, info);
         heap.put<std::int32_t>(info + off::PlayerInfo::Side, side);
+        const Address settings = heap.alloc(0x40);
+        heap.put<Address>(info + off::PlayerInfo::Settings, settings);
+        heap.put<std::int32_t>(settings + off::ProfileSettings::Role, role);
         const Address movement = heap.alloc(0x200);
         heap.put<Address>(fp.instance + off::Player::MovementContext, movement);
         fp.rotation = movement + off::MovementContext::_rotation;

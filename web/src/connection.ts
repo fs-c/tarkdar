@@ -16,6 +16,8 @@ import {
 export interface RadarState {
   connected: boolean;
   protocolMismatch: boolean;
+  /** False when the backend has no game to read (--offline): only recordings to show. */
+  live: boolean;
   status: StatusData | null;
   raid: number | null;
   players: Player[];
@@ -31,6 +33,7 @@ const emptyExplosives = (): ExplosivesData => ({ grenades: [], tripwires: [] });
 export const initialRadarState = (): RadarState => ({
   connected: false,
   protocolMismatch: false,
+  live: true,
   status: null,
   raid: null,
   players: [],
@@ -50,7 +53,11 @@ export class Connection {
   private retryMs = 500;
   private openedAt = 0;
 
-  constructor(private readonly url: string) {}
+  /** `onMessage` sees every message before the state changes (and listeners are told). */
+  constructor(
+    private readonly url: string,
+    private readonly onMessage?: (msg: Message) => void,
+  ) {}
 
   getState = (): RadarState => this.state;
 
@@ -81,7 +88,9 @@ export class Connection {
     };
     ws.onmessage = (e) => {
       const msg = parseMessage(String(e.data));
-      if (msg) this.handle(msg);
+      if (!msg) return;
+      this.onMessage?.(msg);
+      this.handle(msg);
     };
     ws.onclose = () => {
       if (this.ws !== ws) return; // stopped, or replaced
@@ -105,11 +114,11 @@ export class Connection {
   private handle(msg: Message): void {
     switch (msg.type) {
       case "hello":
-        return this.update({ protocolMismatch: msg.data.protocol !== PROTOCOL_VERSION });
+        return this.update({ protocolMismatch: msg.data.protocol !== PROTOCOL_VERSION, live: msg.data.live !== false });
       case "status":
         if (msg.data.state !== "inRaid") {
-          const { connected, protocolMismatch } = this.state;
-          return this.update({ ...initialRadarState(), connected, protocolMismatch, status: msg.data });
+          const { connected, protocolMismatch, live } = this.state;
+          return this.update({ ...initialRadarState(), connected, protocolMismatch, live, status: msg.data });
         }
         return this.update({ status: msg.data });
       case "players":

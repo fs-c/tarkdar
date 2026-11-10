@@ -12,6 +12,9 @@ import type { ItemCatalog } from "../items";
 import { type Selection, selectionKey } from "../pick";
 import { type Playback, SPEEDS, formatDuration } from "../playback";
 import type { Timeline, TimelineEvent } from "../timeline";
+import { Button, Chip, cx, Note, Segmented, selectableRow } from "../ui";
+import { StatusButton } from "./StatusBar";
+import s from "./TimelinePanel.module.css";
 
 const ROW_HEIGHT = 22;
 
@@ -40,20 +43,22 @@ export function TimelineIndicator({ range, playback, replay, open, onClick, onEx
   const Icon = live ? Radio : History;
   return (
     <>
-      <button
-        className={["item", "timeline-indicator", atLive && "live", !live && "replay", open && "open"].filter(Boolean).join(" ")}
+      <StatusButton
+        className={s.indicator}
+        data-mode={live ? (atLive ? "live" : "behind") : "replay"}
+        data-open={open}
         title={live ? (atLive ? "Live, recording: open the timeline" : "Behind live: open the timeline") : "Replaying a recording: open its timeline"}
         onClick={onClick}
       >
         <Icon size={13} />
-        {!live && <span className="tag">replay · {replay}</span>}
-        <span className="time">{timeLabel(range, playback.cursor, live)}</span>
-        {playback.playing && <span className="speed">▶ {playback.speed}×</span>}
-      </button>
+        {!live && <span className={s.tag}>replay · {replay}</span>}
+        <span className={s.clock}>{timeLabel(range, playback.cursor, live)}</span>
+        {playback.playing && <span className={s.speed}>▶ {playback.speed}×</span>}
+      </StatusButton>
       {!live && (
-        <button className="item exit-replay" title="Stop replaying, back to the live raid" onClick={onExitReplay}>
+        <StatusButton className={s.exitReplay} title="Stop replaying, back to the live raid" onClick={onExitReplay}>
           <X size={13} /> Exit replay
-        </button>
+        </StatusButton>
       )}
     </>
   );
@@ -147,22 +152,22 @@ export function TimelinePanel(props: Props) {
   };
 
   const back = (
-    <div className="tl-back">
-      <button className="icon" title="All raids" onClick={onBack}>
+    <div className={s.back}>
+      <Button variant="icon" title="All raids" onClick={onBack}>
         <ChevronLeft size={16} />
-      </button>
-      <div className="tl-title">
+      </Button>
+      <div className={s.titles}>
         <span>{title}</span>
-        <small className="muted">{subtitle}</small>
+        <small className="muted ellipsis">{subtitle}</small>
       </div>
     </div>
   );
 
   if (!timeline || !range) {
     return (
-      <div id="timeline">
+      <div className={s.timeline}>
         {back}
-        <p className="muted pad">No raid right now. Raids are recorded while the backend reads the game.</p>
+        <Note>No raid right now. Raids are recorded while the backend reads the game.</Note>
       </div>
     );
   }
@@ -172,72 +177,71 @@ export function TimelinePanel(props: Props) {
   const selectedKey = selection && selectionKey(selection);
 
   return (
-    <div id="timeline">
+    <div className={s.timeline}>
       {back}
-      <div className="tl-head">
-        <button
-          className="tl-play"
+      <div className={s.head}>
+        <Button
+          className={s.play}
           disabled={atLive}
           title={playback.playing ? "Pause (space)" : atLive ? "Live: go back in time to replay" : "Play (space)"}
           onClick={playback.toggle}
         >
           {playback.playing ? <Pause size={16} /> : <Play size={16} />}
-        </button>
-        <div className="tl-time">
-          <span className="big">{timeLabel(range, playback.cursor, live)}</span>
-          <small className="muted">
+        </Button>
+        <div className={s.now}>
+          <span className={s.nowTime}>{timeLabel(range, playback.cursor, live)}</span>
+          <small className="muted ellipsis">
             {live ? (atLive ? "live" : "behind live") : "replay"}
             {loading && " · loading the raid so far…"}
           </small>
         </div>
         {live ? (
-          <button className={atLive ? "tl-live on" : "tl-live"} disabled={atLive} title="Back to live" onClick={() => seek(null)}>
+          <Button className={s.toLive} disabled={atLive} title="Back to live" onClick={() => seek(null)}>
             <Radio size={14} /> Live
-          </button>
+          </Button>
         ) : (
-          <button className="tl-exit" title="Stop replaying, back to the live raid" onClick={onExitReplay}>
+          <Button className={s.exit} title="Stop replaying, back to the live raid" onClick={onExitReplay}>
             <X size={14} /> Exit replay
-          </button>
+          </Button>
         )}
       </div>
-      <div className="tl-controls">
-        <div className="segmented" role="radiogroup" aria-label="Playback speed">
-          {SPEEDS.map((s) => (
-            <button key={s} role="radio" aria-checked={s === playback.speed} className={s === playback.speed ? "active" : undefined} onClick={() => playback.setSpeed(s)}>
-              {s}×
-            </button>
-          ))}
-        </div>
-        <span className="muted hint">space play · [ ] ±10 s</span>
+      <div className={s.controls}>
+        <Segmented
+          className={s.speeds}
+          label="Playback speed"
+          options={SPEEDS.map((v) => ({ value: v, label: `${v}×` }))}
+          value={playback.speed}
+          onChange={playback.setSpeed}
+        />
+        <span className={cx("muted", s.hint)}>space play · [ ] ±10 s</span>
       </div>
-      <div className="tl-filters">
+      <div className={s.filters}>
         {(Object.keys(EVENT_GROUPS) as EventGroup[]).map((g) => (
-          <button key={g} className={groups[g] ? "chip on" : "chip"} aria-pressed={groups[g]} onClick={() => toggleGroup(g)}>
+          <Chip key={g} on={groups[g]} onClick={() => toggleGroup(g)}>
             {EVENT_GROUPS[g].label}
-          </button>
+          </Chip>
         ))}
-        <button
-          className={prefs.selectedOnly ? "chip on" : "chip"}
-          aria-pressed={prefs.selectedOnly}
+        <Chip
+          on={prefs.selectedOnly}
           title="Only events about the selected player, item or exfil"
           onClick={() => setPrefs((p) => ({ ...p, selectedOnly: !p.selectedOnly }))}
         >
           Selected only
-        </button>
+        </Chip>
       </div>
-      <div className="tl-body">
+      <div className={s.body}>
         <Rail range={range} at={at ?? range[1]} live={live} events={timeline.events} selection={selection} onSeek={seek} />
-        <div ref={scrollRef} className="tl-scroll" onScroll={onScroll}>
+        <div ref={scrollRef} className={s.scroll} onScroll={onScroll}>
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((v) => {
               const row = rowAt(v.index);
               const style = { transform: `translateY(${v.start}px)`, height: ROW_HEIGHT };
               if (row.kind === "now")
                 return (
-                  <div key="now" className="tl-now" style={style}>
-                    <span className="t">{at !== null ? formatDuration(at - range[0]) : ""}</span>
-                    <span className="line" />
-                    <span className="label">{atLive ? "now" : "shown"}</span>
+                  <div key="now" className={s.marker} style={style}>
+                    <span className={s.time}>{at !== null ? formatDuration(at - range[0]) : ""}</span>
+                    <span className={s.markerLine} />
+                    <span className={s.markerLabel}>{atLive ? "now" : "shown"}</span>
                   </div>
                 );
               const e = row.e;
@@ -245,7 +249,11 @@ export function TimelinePanel(props: Props) {
               return (
                 <button
                   key={v.key}
-                  className={`log-row ${d.tone}${v.index > nowIndex ? " future" : ""}${selectedKey === selectionKey(d.sel) ? " selected" : ""}`}
+                  type="button"
+                  className={cx(s.event, selectableRow)}
+                  data-tone={d.tone}
+                  data-future={v.index > nowIndex}
+                  data-selected={selectedKey === selectionKey(d.sel)}
                   style={style}
                   title={d.text}
                   onClick={() => {
@@ -253,9 +261,9 @@ export function TimelinePanel(props: Props) {
                     onPick(e);
                   }}
                 >
-                  <span className="t">{formatDuration(e.t - range[0])}</span>
-                  <span className="dot" />
-                  <span className="text">{d.text}</span>
+                  <span className={s.time}>{formatDuration(e.t - range[0])}</span>
+                  <span className={s.dot} />
+                  <span className={s.text}>{d.text}</span>
                 </button>
               );
             })}
@@ -301,7 +309,7 @@ function Rail({ range, at, live, events, selection, onSeek }: RailProps) {
   return (
     <div
       ref={ref}
-      className="tl-rail"
+      className={s.rail}
       onPointerDown={(e) => {
         dragging.current = true;
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -315,19 +323,21 @@ function Rail({ range, at, live, events, selection, onSeek }: RailProps) {
       onPointerCancel={() => (dragging.current = false)}
       onPointerLeave={() => setHover(null)}
     >
-      <div className="track">
-        <div className="fill" style={{ height: `${frac(at) * 100}%` }} />
+      <div className={s.track}>
+        <div className={s.fill} style={{ height: `${frac(at) * 100}%` }} />
       </div>
       {ticks.map((e, i) => (
         <span
           key={i}
-          className={`tick ${selection !== null && eventConcerns(e, selection) ? "sel" : e.kind}`}
+          className={s.tick}
+          data-kind={e.kind}
+          data-selected={selection !== null && eventConcerns(e, selection)}
           style={{ top: `${frac(e.t) * 100}%` }}
         />
       ))}
-      <span className="thumb" style={{ top: `${frac(at) * 100}%` }} />
+      <span className={s.thumb} style={{ top: `${frac(at) * 100}%` }} />
       {hover !== null && (
-        <span className="hover" style={{ top: `${frac(hover) * 100}%` }}>
+        <span className={s.hover} style={{ top: `${frac(hover) * 100}%` }}>
           {live ? (hover >= to - span * 0.005 ? "live" : `−${formatDuration(to - hover)}`) : formatDuration(hover - from)}
         </span>
       )}

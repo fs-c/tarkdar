@@ -12,6 +12,8 @@ import {
 } from "@tanstack/react-table";
 import { formatPrice } from "../items";
 import { COLORS, ROLE_COLORS } from "../render";
+import { Price } from "../ui";
+import s from "./columns.module.css";
 import type { ContainerRow, ExfilRow, ExplosiveRow, ItemRow, PlayerRow, RowBase, TabId } from "./rows";
 
 export const features = tableFeatures({
@@ -71,7 +73,7 @@ const players: TabDef<PlayerRow> = {
       header: "player",
       cell: (c) => (
         <span className={c.row.original.state === "alive" ? undefined : "muted"}>
-          <span className="dot" style={{ background: sideColor(c.row.original) }} />
+          <span className={s.dot} style={{ background: sideColor(c.row.original) }} />
           {c.row.original.name}
         </span>
       ),
@@ -83,14 +85,14 @@ const players: TabDef<PlayerRow> = {
       cell: (c) => {
         const color = roleColor(c.row.original);
         return (
-          <span title={c.getValue()} style={color ? { color, fontWeight: c.row.original.roleCategory === "boss" ? 600 : undefined } : undefined}>
+          <span title={c.getValue()} className={c.row.original.roleCategory === "boss" ? s.boss : undefined} style={color ? { color } : undefined}>
             {c.getValue()}
           </span>
         );
       },
     }),
     p.accessor("state", { header: "state", sortFn: "text" }),
-    p.accessor("value", { header: "gear ₽", cell: (c) => <span className="price">{price(c.getValue())}</span>, sortUndefined: "last", sortDescFirst: true }),
+    p.accessor("value", { header: "gear ₽", cell: (c) => <Price>{price(c.getValue())}</Price>, sortUndefined: "last", sortDescFirst: true }),
     ...distanceColumns<PlayerRow>(),
   ],
   defaultSort: [{ id: "dist", desc: false }],
@@ -107,7 +109,7 @@ const items: TabDef<ItemRow> = {
       header: "item",
       sortFn: "text",
       cell: (c) => (
-        <span title={c.row.original.name} className={c.row.original.kind === "quest" ? "quest" : undefined}>
+        <span title={c.row.original.name} className={c.row.original.kind === "quest" ? s.quest : undefined}>
           {c.getValue()}
         </span>
       ),
@@ -118,9 +120,7 @@ const items: TabDef<ItemRow> = {
       sortUndefined: "last",
       sortDescFirst: true,
       cell: (c) => (
-        <span className={c.row.original.basePrice ? "price base" : "price"} title={c.row.original.basePrice ? "base price (no flea data)" : undefined}>
-          {price(c.getValue())}
-        </span>
+        <Price base={c.row.original.basePrice}>{price(c.getValue())}</Price>
       ),
     }),
     ...distanceColumns<ItemRow>(),
@@ -138,7 +138,7 @@ const containers: TabDef<ContainerRow> = {
     k.accessor("name", { header: "container", sortFn: "text", cell: (c) => <span title={`${c.getValue()} (${c.row.original.kind})`}>{c.getValue()}</span> }),
     k.accessor("best", { header: "best item", sortFn: "text", sortUndefined: "last", cell: (c) => c.getValue() ?? "" }),
     k.accessor("count", { header: "#", sortDescFirst: true }),
-    k.accessor("value", { header: "₽", sortUndefined: "last", sortDescFirst: true, cell: (c) => <span className="price">{price(c.getValue())}</span> }),
+    k.accessor("value", { header: "₽", sortUndefined: "last", sortDescFirst: true, cell: (c) => <Price>{price(c.getValue())}</Price> }),
     ...distanceColumns<ContainerRow>(),
   ],
   defaultSort: [{ id: "value", desc: true }],
@@ -156,7 +156,11 @@ const exfils: TabDef<ExfilRow> = {
     e.accessor("status", {
       header: "status",
       sortFn: "text",
-      cell: (c) => <span className={c.row.original.kind === "secret" ? "tone-secret" : `tone-${c.row.original.tone}`}>{c.getValue()}</span>,
+      cell: (c) => (
+        <span className={s.tone} data-tone={c.row.original.kind === "secret" ? "secret" : c.row.original.tone}>
+          {c.getValue()}
+        </span>
+      ),
     }),
     ...distanceColumns<ExfilRow>(),
   ],

@@ -11,6 +11,8 @@ import { type TabDef, TABS, features } from "../list/columns";
 import { DEFAULT_FILTERS, type ListFilters, type RowBase, type TabRows, isFiltered, selectionKey, tabOf, withDistances } from "../list/rows";
 import type { ListPrefs, ListRows } from "../list/useListRows";
 import type { Selection } from "../pick";
+import { Button, Chip, cx, selectableRow } from "../ui";
+import s from "./ListPanel.module.css";
 
 const ROW_HEIGHT = 22;
 const HEADER_HEIGHT = 24;
@@ -80,10 +82,11 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
   const filtered = isFiltered(filters);
 
   return (
-    <div id="list">
-      <div className="list-filters">
+    <div className={s.list}>
+      <div className={s.filters}>
         <input
           ref={filterRef}
+          className={s.search}
           type="search"
           placeholder="filter all tabs  ( / )"
           value={filters.text}
@@ -125,24 +128,16 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
       {tab === "containers" && <TabTable key={tab} def={TABS.containers} rows={rows.containers} {...common} />}
       {tab === "exfils" && <TabTable key={tab} def={TABS.exfils} rows={rows.exfils} {...common} />}
       {tab === "explosives" && <TabTable key={tab} def={TABS.explosives} rows={rows.explosives} {...common} />}
-      <div className="list-footer">
+      <div className={s.footer}>
         <span>
           {filtered ? `${rows[tab].length} of ${totals[tab]}` : `${totals[tab]}`}
           {filtered && (
-            <button className="link" onClick={() => setFilters(DEFAULT_FILTERS)}>clear filters</button>
+            <Button variant="link" className={s.clear} onClick={() => setFilters(DEFAULT_FILTERS)}>clear filters</Button>
           )}
         </span>
         <span className="muted">{filtered && "map shows matches only · "}click: show on map · ↑↓ step · / filter · L close</span>
       </div>
     </div>
-  );
-}
-
-function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button className={on ? "active" : undefined} aria-pressed={on} onClick={onClick}>
-      {children}
-    </button>
   );
 }
 
@@ -204,7 +199,7 @@ function TabTable<R extends RowBase>({ def, rows, empty, sorting, onSortingChang
 
   return (
     <div
-      className="list-scroll"
+      className={s.scroll}
       ref={scrollRef}
       tabIndex={0}
       role="grid"
@@ -217,7 +212,7 @@ function TabTable<R extends RowBase>({ def, rows, empty, sorting, onSortingChang
         }
       }}
     >
-      <div className="list-row list-head" role="row" style={{ ...grid, height: HEADER_HEIGHT }}>
+      <div className={cx(s.grid, s.head)} role="row" style={{ ...grid, height: HEADER_HEIGHT }}>
         {table.getHeaderGroups()[0]!.headers.map((h) => {
           const dir = h.column.getIsSorted();
           return (
@@ -230,12 +225,12 @@ function TabTable<R extends RowBase>({ def, rows, empty, sorting, onSortingChang
               title="Sort (shift-click: add a secondary sort)"
             >
               <table.FlexRender header={h} />
-              <span className="sort">{dir === "asc" ? "▲" : dir === "desc" ? "▼" : ""}</span>
+              <span className={s.sort}>{dir === "asc" ? "▲" : dir === "desc" ? "▼" : ""}</span>
             </div>
           );
         })}
       </div>
-      {sorted.length === 0 && <div className="list-empty muted">{empty}</div>}
+      {sorted.length === 0 && <div className={cx(s.empty, "muted")}>{empty}</div>}
       <div style={{ height: virtualizer.getTotalSize() - HEADER_HEIGHT, position: "relative" }}>
         {virtualizer.getVirtualItems().map((item) => {
           const row = sorted[item.index]!;
@@ -244,7 +239,9 @@ function TabTable<R extends RowBase>({ def, rows, empty, sorting, onSortingChang
               key={row.id}
               role="row"
               aria-selected={row.id === selectedKey}
-              className={`list-row${row.id === selectedKey ? " selected" : ""}${row.original.dim ? " dim" : ""}`}
+              data-selected={row.id === selectedKey}
+              data-dim={!!row.original.dim}
+              className={cx(s.grid, s.row, selectableRow)}
               style={{ ...grid, height: ROW_HEIGHT, transform: `translateY(${item.start - HEADER_HEIGHT}px)` }}
               onClick={() => onActivate(row.original.sel)}
               onMouseEnter={() => onHover(row.original.sel)}

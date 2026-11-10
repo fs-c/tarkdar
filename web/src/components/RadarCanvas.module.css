@@ -1,0 +1,5 @@
+.radar {
+  position: fixed; top: 0; left: var(--activity-w); right: 0; bottom: var(--status-h);
+  width: calc(100vw - var(--activity-w)); height: calc(100vh - var(--status-h));
+  touch-action: none; cursor: grab;
+}

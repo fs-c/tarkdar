@@ -1,0 +1,26 @@
+.bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; height: var(--status-h); box-sizing: border-box;
+  display: flex; align-items: center; padding: 0 6px; overflow: hidden; white-space: nowrap;
+  background: var(--chrome); border-top: 1px solid var(--border); color: var(--muted); font-size: var(--fs-sm);
+  /* lost the backend */
+  &[data-mode="warn"] { background: var(--warn-bar); color: var(--warn-bar-text); }
+  /* replaying a recording: tinted (with a frame round the map, see App), so it can't be taken for live */
+  &[data-mode="replay"] { background: var(--replay-bar); border-top-color: var(--link); color: var(--replay-bar-text); }
+}
+.spacer { flex: 1; }
+
+/* StatusText / StatusButton are building blocks other components (the timeline indicator) restyle:
+   in the ui layer, so a plain class overrides them. */
+@layer base, ui;
+@layer ui {
+  .item { padding: 0 8px; }
+  .item + .text { border-left: 1px solid var(--border); }
+  .bar[data-mode="replay"] .item + .text { border-left-color: var(--replay-bar-line); }
+  .alert { color: var(--warn); }
+  .button {
+    height: 100%;
+    &:hover { background: var(--hover); }
+    &[data-tone="warn"] { color: var(--warn); }
+    &[data-tone="link"] { color: var(--link); }
+  }
+}

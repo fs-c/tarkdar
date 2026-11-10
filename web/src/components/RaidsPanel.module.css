@@ -1,0 +1,15 @@
+.list { margin: 0; padding: 0; list-style: none; }
+.raid {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 7px 14px;
+  border-bottom: 1px solid var(--border);
+  /* the live raid, pinned on top */
+  &[data-current="true"] { border-bottom-color: var(--border-strong); }
+  &[data-current="true"] .what { font-weight: 600; }
+}
+.what { color: var(--text); }
+.when { font-size: var(--fs-xs); }
+.pill {
+  margin-left: 8px; padding: 0 6px; border-radius: var(--radius-pill); font-size: var(--fs-2xs);
+  background: var(--accent-soft); color: var(--accent-text);
+  &[data-tone="replay"] { background: var(--link-soft); color: var(--link-text); }
+}

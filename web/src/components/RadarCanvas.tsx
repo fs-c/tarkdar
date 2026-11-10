@@ -6,6 +6,7 @@ import { worldToPixel } from "../calibration";
 import { isTyping } from "../hooks";
 import { NO_MAP_TRANSFORM, type Scene, render } from "../render";
 import type { View } from "../view";
+import s from "./RadarCanvas.module.css";
 
 interface Props {
   /** Camera; owned by the caller so it can centre the map on things. */
@@ -91,7 +92,7 @@ export function RadarCanvas({ view, scene, follow, onPan, onTap }: Props) {
 
   return (
     <canvas
-      id="radar"
+      className={s.radar}
       ref={canvasRef}
       onPointerDown={(e) => {
         drag.current = { x: e.clientX, y: e.clientY, moved: false };

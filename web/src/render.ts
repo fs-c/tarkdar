@@ -5,6 +5,7 @@ import { type LoadedMap, selectLayer } from "./maps";
 import { type ItemCatalog, containerName, exfilStatus, formatPrice } from "./items";
 import type { Exfil, ExplosivesData, LootEntry, Player } from "./protocol";
 import { type RoleCategory, isPlainScav, specialRole } from "./roles";
+import { ui } from "./theme";
 import type { Timeline } from "./timeline";
 import type { View } from "./view";
 
@@ -12,34 +13,34 @@ import type { View } from "./view";
 export const NO_MAP_TRANSFORM: Affine = { a: 2, b: 0, c: 0, d: 0, e: -2, f: 0 };
 
 export const COLORS = {
-  background: "#11161c",
+  background: ui.bg,
   grid: "#1f2a33",
   gridLabel: "#4d5d6b",
-  local: "#4cd964",
-  usec: "#4aa3ff",
-  bear: "#ff5a52",
-  savage: "#f5c542",
+  local: ui.accent,
+  usec: ui.link,
+  bear: ui.danger,
+  savage: ui.gold,
   unknown: "#c0c0c0",
   dead: "#6b6b6b",
   label: "#e8eef2",
   calibration: "#ff4fd8",
   lootItem: "#d9d9d9",
-  lootQuest: "#ffd84d",
+  lootQuest: ui.quest,
   lootContainer: "#b08a5a",
   lootAirdrop: "#4de1ff",
   lootCorpse: "#9a9a9a",
-  exfilOpen: "#4cd964",
-  exfilClosed: "#ff5a52",
-  exfilPending: "#ff9f40",
+  exfilOpen: ui.accent,
+  exfilClosed: ui.danger,
+  exfilPending: ui.warn,
   exfilNeutral: "#e8eef2",
-  exfilSecret: "#e45cff",
+  exfilSecret: ui.secret,
   danger: "#ff3b30",
 };
 
 /** Highlight colours for special bot roles (see roles.ts SPECIAL_CATEGORIES). */
 export const ROLE_COLORS: Partial<Record<RoleCategory, string>> = {
   boss: "#ff4fd8",
-  guard: "#ff9f40",
+  guard: ui.warn,
   raider: "#4de1ff",
   rogue: "#4de1ff",
   cultist: "#b26bff",

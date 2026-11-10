@@ -1,0 +1,5 @@
+@layer base, ui;
+@layer ui {
+  .price { color: var(--gold); }
+  .base { color: var(--gold-base); }
+}

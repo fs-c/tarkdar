@@ -8,6 +8,8 @@ import type { ItemNode, WorldPos } from "../protocol";
 import { WILD_SPAWN_TYPES, roleInfo } from "../roles";
 import type { Timeline, TimelineEvent } from "../timeline";
 import { formatDuration } from "../playback";
+import { Price } from "../ui";
+import s from "./DetailsPanel.module.css";
 
 interface Props {
   selection: Selection;
@@ -27,7 +29,7 @@ export interface HistoryProps {
 
 export function DetailsPanel(props: Props & { history: HistoryProps | null }) {
   return (
-    <div id="details">
+    <div className={s.details}>
       <Details {...props} />
       {props.history && <History selection={props.selection} catalog={props.catalog} {...props.history} />}
     </div>
@@ -41,15 +43,15 @@ function History({ selection, catalog, timeline, at, start, onPick }: HistoryPro
   if (!events.length && !track) return null;
   return (
     <>
-      <h4>history</h4>
+      <h4 className={s.heading}>history</h4>
       {track && <Line label="distance" value={`${Math.round(track.distanceUntil(at))} m`} />}
-      <ul className="history">
+      <ul className={s.history}>
         {events.map((e, i) => {
           const d = describeEvent(e, timeline, catalog);
           return (
             <li key={i}>
-              <button className={`link ${d.tone}${e.t > at ? " future" : ""}`} title="Show this moment" onClick={() => onPick(e)}>
-                <span className="t">{formatDuration(e.t - start)}</span> {d.text}
+              <button type="button" className={s.event} data-tone={d.tone} data-future={e.t > at} title="Show this moment" onClick={() => onPick(e)}>
+                <span className={s.time}>{formatDuration(e.t - start)}</span> {d.text}
               </button>
             </li>
           );
@@ -72,7 +74,7 @@ function Details({ selection: sel, state, catalog }: Props) {
         : role && `${role.label} (from voice)`;
     return (
       <>
-        <h3>{p.local ? `You (#${p.id})` : `Player #${p.id}`}</h3>
+        <h3 className={s.title}>{p.local ? `You (#${p.id})` : `Player #${p.id}`}</h3>
         <Line label="side" value={p.side + (p.ai ? " (AI)" : "")} />
         {roleText && <Line label="role" value={roleText} />}
         {p.voice && <Line label="voice" value={p.voice} />}
@@ -90,7 +92,7 @@ function Details({ selection: sel, state, catalog }: Props) {
     const name = l.kind === "container" ? containerName(l.tpl) : info?.name;
     return (
       <>
-        <h3>{name ?? l.kind}</h3>
+        <h3 className={s.title}>{name ?? l.kind}</h3>
         <Line label="kind" value={l.kind} />
         {!!info?.price && (
           <Line label="price" value={`${formatPrice(info.price)} ₽${info.priceSource === "base" ? " (base price)" : ""}`} />
@@ -114,7 +116,7 @@ function Details({ selection: sel, state, catalog }: Props) {
     if (!g) return <div>exploded</div>;
     return (
       <>
-        <h3>Grenade</h3>
+        <h3 className={s.title}>Grenade</h3>
         <Line label="position" value={formatPos(g.pos)} />
       </>
     );
@@ -124,7 +126,7 @@ function Details({ selection: sel, state, catalog }: Props) {
     if (!w) return <div>gone</div>;
     return (
       <>
-        <h3>Tripwire</h3>
+        <h3 className={s.title}>Tripwire</h3>
         <Line label="from" value={formatPos(w.from)} />
         <Line label="to" value={formatPos(w.to)} />
       </>
@@ -134,7 +136,7 @@ function Details({ selection: sel, state, catalog }: Props) {
   if (!e) return <div>gone</div>;
   return (
     <>
-      <h3>{e.name}</h3>
+      <h3 className={s.title}>{e.name}</h3>
       <Line label="kind" value={e.kind} />
       <Line label="status" value={exfilStatus(e.status).label} />
       <Line label="position" value={formatPos(e.pos)} />
@@ -145,7 +147,7 @@ function Details({ selection: sel, state, catalog }: Props) {
 function Line({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <span className="label">{label}: </span>
+      <span className={s.label}>{label}: </span>
       {value}
     </div>
   );
@@ -156,14 +158,14 @@ function ItemSection(props: { heading: string; nodes: ItemNode[] | undefined; em
   if (!nodes?.length)
     return (
       <>
-        <h4>{heading}</h4>
+        <h4 className={s.heading}>{heading}</h4>
         <div className="muted">{empty}</div>
       </>
     );
   const v = totalValue(nodes, catalog);
   return (
     <>
-      <h4>{`${heading} · ${v > 0 ? `${formatPrice(v)} ₽` : "no price data"}`}</h4>
+      <h4 className={s.heading}>{`${heading} · ${v > 0 ? `${formatPrice(v)} ₽` : "no price data"}`}</h4>
       <ItemTree nodes={nodes} catalog={catalog} />
     </>
   );
@@ -171,19 +173,17 @@ function ItemSection(props: { heading: string; nodes: ItemNode[] | undefined; em
 
 function ItemTree({ nodes, catalog }: { nodes: ItemNode[]; catalog: ItemCatalog }) {
   return (
-    <ul className="items">
+    <ul className={s.items}>
       {nodes.map((n, i) => {
         const info = catalog.lookup(n.tpl);
         const base = info?.priceSource === "base";
         return (
           <li key={i}>
-            {n.slot && <span className="label">{n.slot}: </span>}
+            {n.slot && <span className={s.label}>{n.slot}: </span>}
             <span title={info ? `${info.name}\n${n.tpl}` : undefined}>{info?.shortName ?? n.tpl}</span>
             {!!n.count && n.count > 1 && <span className="muted"> ×{n.count}</span>}
             {!!info?.price && (
-              <span className={base ? "price base" : "price"} title={base ? "base price (no flea data)" : undefined}>
-                {` ${formatPrice(info.price * (n.count ?? 1))}`}
-              </span>
+              <Price base={base}>{` ${formatPrice(info.price * (n.count ?? 1))}`}</Price>
             )}
             {!!n.items?.length && <ItemTree nodes={n.items} catalog={catalog} />}
           </li>

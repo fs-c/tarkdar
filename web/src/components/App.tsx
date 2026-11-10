@@ -21,7 +21,8 @@ import { RaidsPanel } from "./RaidsPanel";
 import { RadarCanvas } from "./RadarCanvas";
 import { SettingsPanel } from "./SettingsPanel";
 import { ActivityBar, SidePanel, type ViewId } from "./Sidebar";
-import { StatusBar } from "./StatusBar";
+import s from "./App.module.css";
+import { StatusBar, StatusButton } from "./StatusBar";
 import { TimelineIndicator, TimelinePanel } from "./TimelinePanel";
 
 const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
@@ -349,10 +350,9 @@ export function App() {
           {panelBody()}
         </SidePanel>
       )}
-      {review && <div id="replay-frame" aria-hidden />}
+      {review && <div className={s.replayFrame} aria-hidden />}
       <button
-        id="follow"
-        className={follow ? "active" : undefined}
+        className={s.follow}
         aria-pressed={follow}
         title={follow ? "Following you (F)" : "Follow the local player (F)"}
         onClick={() => setFollow((f) => !f)}
@@ -389,19 +389,19 @@ export function App() {
         }
       >
         {!conn.live && !review && (
-          <button className="item filtered" title="Open a recorded raid" onClick={() => setUi((u) => ({ ...u, open: true, section: "raids", raidsLevel: "list" }))}>
+          <StatusButton tone="link" title="Open a recorded raid" onClick={() => setUi((u) => ({ ...u, open: true, section: "raids", raidsLevel: "list" }))}>
             ● open a recording
-          </button>
+          </StatusButton>
         )}
         {filtered && (
-          <button className="item filtered" title="The map shows filter matches only: open the list" onClick={() => setUi((u) => ({ ...u, open: true, section: "list" }))}>
+          <StatusButton tone="link" title="The map shows filter matches only: open the list" onClick={() => setUi((u) => ({ ...u, open: true, section: "list" }))}>
             ● map filtered
-          </button>
+          </StatusButton>
         )}
         {calibrating && (
-          <button className="item calibrating" title="Open calibration settings" onClick={() => setUi((u) => ({ ...u, open: true, section: "settings" }))}>
+          <StatusButton tone="warn" title="Open calibration settings" onClick={() => setUi((u) => ({ ...u, open: true, section: "settings" }))}>
             ● calibrating · {calibPoints.length} {calibPoints.length === 1 ? "point" : "points"}
-          </button>
+          </StatusButton>
         )}
       </StatusBar>
     </>

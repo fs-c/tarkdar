@@ -76,7 +76,7 @@ changes, at most about 30 times per second.
   bosses.
 - **`role`:** full players only (`local`, `client`; omitted for `observed`, which don't carry it):
   `Profile.Info.Settings.Role`, the raw `EFT.WildSpawnType` value (e.g. 1 = assault, 6 = bossKilla).
-  Mapping values to names is the frontend's job (`web/src/roles.ts`).
+  Mapping values to names is the frontend's job.
 - **`side`:** `usec`, `bear`, `savage` (scavs, bosses and other non-PMC bots) or `unknown`.
 - **`dead`:** permanent once set; the player keeps its last position.
 - **`absent`:** left the game's player list without dying (extracted or despawned).
@@ -125,8 +125,8 @@ Sent after every loot scan or resolve that changed something (a few thousand ent
     { "tpl": "55d4887d4bdc2d962f8b4570", "slot": "mod_magazine", "items": [
       { "tpl": "54527a984bdc2d4e668b4567", "slot": "cartridges", "count": 30 } ] } ] } ] } ] }
 ```
-Equipment per player id (players without readable equipment are omitted). Each player is re-read at
-most every 5 s, and the message is sent when something changed.
+Equipment per player id (players without readable equipment are omitted). Players are re-read every
+few seconds; the message is sent when something changed.
 
 ### Item nodes
 `{ "tpl": template id, "slot": slot id (if in a slot), "count": stack size (if > 1), "items": [child
@@ -149,9 +149,9 @@ stream, with these differences:
   { "type": "recording", "raid": 3, "rev": 0, "t": 1794174689050,
     "data": { "protocol": 1, "format": 1, "locationId": "bigmap", "offsetsMismatch": false } }
   ```
-- **`players`** is written at most every 100 ms, and at once when a player appears, dies, leaves or
+- **`players`** is throttled, but written at once when a player appears, dies, leaves or
   disappears. The newest one is always written before the file ends.
-- **`loot`** is a keyframe: written at the start and then at most every 60 s. Between keyframes,
+- **`loot`** is a keyframe: written at the start and then periodically. Between keyframes,
   changes are written as **`lootDiff`** (only when something changed), relative to the loot as of
   the previous `loot`/`lootDiff` line. `rev` is the loot snapshot's revision.
   ```json

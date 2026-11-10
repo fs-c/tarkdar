@@ -157,6 +157,39 @@ std::vector<VmmBackend::PhysicalRange> VmmBackend::physicalMemoryMap() {
     return out;
 }
 
+std::vector<VmmBackend::ProcessEntry> VmmBackend::processes() {
+    std::vector<ProcessEntry> out;
+    if (!handle_) return out;
+    PVMMDLL_PROCESS_INFORMATION all = nullptr;
+    DWORD count = 0;
+    if (!VMMDLL_ProcessGetInformationAll(handle_, &all, &count) || !all) return out;
+    out.reserve(count);
+    for (DWORD i = 0; i < count; ++i) {
+        const auto& p = all[i];
+        const char* name = p.szNameLong[0] ? p.szNameLong : p.szName;
+        out.push_back({.pid = p.dwPID,
+                       .parentPid = p.dwPPID,
+                       .name = std::string(name, ::strnlen(name, p.szNameLong[0] ? sizeof(p.szNameLong)
+                                                                                 : sizeof(p.szName))),
+                       .running = p.dwState == 0,
+                       .wow64 = p.win.fWow64 != 0});
+    }
+    VMMDLL_MemFree(all);
+    return out;
+}
+
+std::optional<VmmBackend::WindowsVersion> VmmBackend::windowsVersion() {
+    if (!handle_) return std::nullopt;
+    ULONG64 major = 0, minor = 0, build = 0;
+    if (!VMMDLL_ConfigGet(handle_, VMMDLL_OPT_WIN_VERSION_MAJOR, &major) ||
+        !VMMDLL_ConfigGet(handle_, VMMDLL_OPT_WIN_VERSION_MINOR, &minor) ||
+        !VMMDLL_ConfigGet(handle_, VMMDLL_OPT_WIN_VERSION_BUILD, &build) || major == 0) {
+        return std::nullopt;
+    }
+    return WindowsVersion{static_cast<std::uint32_t>(major), static_cast<std::uint32_t>(minor),
+                          static_cast<std::uint32_t>(build)};
+}
+
 Limits VmmBackend::limits() const {
     // VMM itself has no small per-batch limit (reads up to 1 GiB are accepted). Keep batches to a
     // sane size so a single failure doesn't stall a huge batch; tune with measurements.

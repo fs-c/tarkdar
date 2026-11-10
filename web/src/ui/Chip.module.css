@@ -1,0 +1,9 @@
+@layer base, ui;
+@layer ui {
+  .chip {
+    padding: 2px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+    color: var(--faint); font-size: var(--fs-xs);
+    &:hover { color: var(--text); }
+    &[aria-pressed="true"] { border-color: transparent; background: var(--accent-soft); color: var(--accent-text); }
+  }
+}

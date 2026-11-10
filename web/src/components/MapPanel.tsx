@@ -2,6 +2,7 @@
 
 import type { TrailPrefs } from "../hooks";
 import type { Layers } from "../render";
+import { PanelBody, Section, Segmented, type SegmentedOption, ToggleRow } from "../ui";
 
 interface Props {
   /** Number of map floors (no floor picker below 2). */
@@ -26,74 +27,47 @@ const LAYERS: { key: keyof Layers; label: string; hint: string }[] = [
 ];
 
 export function MapPanel(p: Props) {
-  const floorOptions: (number | null)[] = [null, ...Array.from({ length: p.floors }, (_, i) => i)];
+  const floorOptions: SegmentedOption<number | null>[] = [
+    { value: null, label: "Auto", title: "Follow the local player's floor" },
+    ...Array.from({ length: p.floors }, (_, i) => ({ value: i, label: i + 1, title: i === p.layer ? "Shown now" : undefined })),
+  ];
   return (
-    <div className="panel-body">
-      <section>
-        <h3>Floor</h3>
+    <PanelBody>
+      <Section title="Floor">
         {p.floors < 2 ? (
           <p className="muted">This map has a single floor.</p>
         ) : (
-          <div className="segmented" role="radiogroup">
-            {floorOptions.map((l) => (
-              <button
-                key={String(l)}
-                role="radio"
-                aria-checked={l === p.manualLayer}
-                className={[l === p.manualLayer && "active", l === p.layer && "current"].filter(Boolean).join(" ") || undefined}
-                title={l === null ? "Follow the local player's floor" : l === p.layer ? "Shown now" : undefined}
-                onClick={() => p.onPickFloor(l)}
-              >
-                {l === null ? "Auto" : l + 1}
-              </button>
-            ))}
-          </div>
+          <Segmented label="Floor" options={floorOptions} value={p.manualLayer} marked={p.layer} onChange={p.onPickFloor} />
         )}
-      </section>
-      <section>
-        <h3>Layers</h3>
+      </Section>
+      <Section title="Layers">
         {LAYERS.map(({ key, label, hint }) => (
-          <label key={key} className="toggle-row">
-            <input type="checkbox" className="switch" checked={p.layers[key]} onChange={() => p.onToggleLayer(key)} />
-            <span>
-              {label}
-              <small>{hint}</small>
-            </span>
-          </label>
+          <ToggleRow key={key} label={label} hint={hint} checked={p.layers[key]} onChange={() => p.onToggleLayer(key)} />
         ))}
-      </section>
-      <section>
-        <h3>Trails</h3>
-        <label className="toggle-row">
-          <input type="checkbox" className="switch" checked={p.trails.selected} onChange={() => p.onTrails({ ...p.trails, selected: !p.trails.selected })} />
-          <span>
-            Selected player
-            <small>Where they've been this raid</small>
-          </span>
-        </label>
-        <label className="toggle-row">
-          <input type="checkbox" className="switch" checked={p.trails.all} onChange={() => p.onTrails({ ...p.trails, all: !p.trails.all })} />
-          <span>
-            Everyone
-            <small>Recent paths of all players (those the list's filters let through)</small>
-          </span>
-        </label>
+      </Section>
+      <Section title="Trails">
+        <ToggleRow
+          label="Selected player"
+          hint="Where they've been this raid"
+          checked={p.trails.selected}
+          onChange={() => p.onTrails({ ...p.trails, selected: !p.trails.selected })}
+        />
+        <ToggleRow
+          label="Everyone"
+          hint="Recent paths of all players (those the list's filters let through)"
+          checked={p.trails.all}
+          onChange={() => p.onTrails({ ...p.trails, all: !p.trails.all })}
+        />
         {p.trails.all && (
-          <div className="segmented" role="radiogroup" title="Length of everyone's trails">
-            {TRAIL_LENGTHS.map((m) => (
-              <button
-                key={String(m)}
-                role="radio"
-                aria-checked={m === p.trails.minutes}
-                className={m === p.trails.minutes ? "active" : undefined}
-                onClick={() => p.onTrails({ ...p.trails, minutes: m })}
-              >
-                {m === null ? "Whole raid" : `${m} min`}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            label="Length of everyone's trails"
+            title="Length of everyone's trails"
+            options={TRAIL_LENGTHS.map((m) => ({ value: m, label: m === null ? "Whole raid" : `${m} min` }))}
+            value={p.trails.minutes}
+            onChange={(m) => p.onTrails({ ...p.trails, minutes: m })}
+          />
         )}
-      </section>
-    </div>
+      </Section>
+    </PanelBody>
   );
 }

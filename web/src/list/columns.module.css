@@ -1,0 +1,9 @@
+.dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; }
+.quest { color: var(--quest); }
+.boss { font-weight: 600; }
+.tone {
+  &[data-tone="open"] { color: var(--accent); }
+  &[data-tone="closed"] { color: var(--danger); }
+  &[data-tone="pending"] { color: var(--warn); }
+  &[data-tone="secret"] { color: var(--secret); }
+}

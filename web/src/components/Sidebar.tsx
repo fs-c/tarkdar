@@ -5,6 +5,8 @@ import { Archive, Bomb, DoorOpen, History, Layers, type LucideIcon, Package, Pan
 import type { ReactNode } from "react";
 import { TABS } from "../list/columns";
 import type { TabId } from "../list/rows";
+import { Button, cx } from "../ui";
+import s from "./Sidebar.module.css";
 
 /** The panel's views: one per list tab, plus map options, raid recordings and settings. */
 export type ViewId = TabId | "map" | "raids" | "settings";
@@ -43,21 +45,21 @@ export function ActivityBar({ active, onPick, badges }: ActivityBarProps) {
     return (
       <button
         key={v}
-        className={v === active ? "active" : undefined}
+        className={s.activity}
         aria-pressed={v === active}
         title={VIEW_TITLES[v] + (v === active ? " (click to collapse)" : "")}
         onClick={() => onPick(v)}
       >
         <Icon size={22} strokeWidth={1.6} />
-        {typeof badge === "number" && badge > 0 && <span className="badge">{compact(badge)}</span>}
-        {badge === true && <span className="badge dot" />}
+        {typeof badge === "number" && badge > 0 && <span className={s.badge}>{compact(badge)}</span>}
+        {badge === true && <span className={cx(s.badge, s.dot)} />}
       </button>
     );
   };
   return (
-    <nav id="activitybar">
+    <nav className={s.activityBar}>
       {TOP.map(item)}
-      <div className="spacer" />
+      <div className={s.spacer} />
       {item("settings")}
     </nav>
   );
@@ -77,13 +79,13 @@ interface SidePanelProps {
 
 export function SidePanel({ view, aside, onClose, children }: SidePanelProps) {
   return (
-    <aside id="sidebar" className={view === "map" || view === "settings" ? "narrow" : undefined}>
-      <header>
-        <h2>{VIEW_TITLES[view]}</h2>
-        <span className="aside">{aside}</span>
-        <button className="icon" title="Collapse (L)" onClick={onClose}>
+    <aside className={s.sidebar} data-narrow={view === "map" || view === "settings"}>
+      <header className={s.header}>
+        <h2 className={s.title}>{VIEW_TITLES[view]}</h2>
+        <span className={s.aside}>{aside}</span>
+        <Button variant="icon" title="Collapse (L)" onClick={onClose}>
           <PanelLeftClose size={16} />
-        </button>
+        </Button>
       </header>
       {children}
     </aside>

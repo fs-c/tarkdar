@@ -1,0 +1,33 @@
+/* ---- activity bar ---- */
+.activityBar {
+  position: fixed; top: 0; left: 0; bottom: var(--status-h); z-index: 3; width: var(--activity-w);
+  display: flex; flex-direction: column; align-items: stretch;
+  background: var(--chrome); border-right: 1px solid var(--border);
+}
+.spacer { flex: 1; }
+.activity {
+  position: relative; height: 46px; display: grid; place-items: center; color: var(--faint);
+  &:hover { color: var(--text); }
+  &[aria-pressed="true"] {
+    color: var(--text);
+    &::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px; background: var(--accent); }
+  }
+}
+.badge {
+  position: absolute; right: 5px; bottom: 6px; min-width: 15px; height: 15px; box-sizing: border-box; padding: 0 3px;
+  border-radius: var(--radius-pill); background: var(--control); color: var(--text);
+  font-size: var(--fs-2xs); font-weight: 600; line-height: 15px; text-align: center; font-variant-numeric: tabular-nums;
+  .activity[aria-pressed="true"] & { background: var(--accent); color: var(--on-accent); }
+}
+.dot { min-width: 9px; width: 9px; height: 9px; right: 10px; bottom: 10px; padding: 0; background: var(--warn); }
+
+/* ---- side panel ---- */
+.sidebar {
+  position: fixed; top: 0; left: var(--activity-w); bottom: var(--status-h); z-index: 2;
+  width: min(560px, calc(100vw - var(--activity-w))); display: flex; flex-direction: column;
+  background: var(--surface); border-right: 1px solid var(--border); box-shadow: 6px 0 18px var(--shadow);
+  &[data-narrow="true"] { width: min(340px, calc(100vw - var(--activity-w))); }
+}
+.header { display: flex; flex: none; align-items: center; gap: 8px; height: 35px; padding: 0 6px 0 14px; }
+.title { margin: 0; color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+.aside { flex: 1; color: var(--faint); font-size: var(--fs-xs); }

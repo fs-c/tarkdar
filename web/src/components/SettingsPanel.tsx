@@ -1,5 +1,8 @@
 // Settings view of the side panel. For now: map calibration.
 
+import { Actions, Button, PanelBody, Section } from "../ui";
+import s from "./SettingsPanel.module.css";
+
 interface Props {
   calibrating: boolean;
   onToggleCalibrate: () => void;
@@ -10,21 +13,20 @@ interface Props {
 
 export function SettingsPanel({ calibrating, onToggleCalibrate, calibrationOutput, onClearCalibration }: Props) {
   return (
-    <div className="panel-body">
-      <section>
-        <h3>Calibration</h3>
+    <PanelBody>
+      <Section title="Calibration">
         <p className="muted">
           Stand somewhere recognisable, then click that spot on the map. Repeat at 2–3 places far apart, and paste the
           result into the map's <code>map.json</code>.
         </p>
-        <div className="row">
-          <button className={calibrating ? "primary active" : "primary"} onClick={onToggleCalibrate}>
+        <Actions>
+          <Button variant="primary" pressed={calibrating} onClick={onToggleCalibrate}>
             {calibrating ? "Stop calibrating" : "Calibrate this map"}
-          </button>
-          {calibrating && <button onClick={onClearCalibration}>Clear points</button>}
-        </div>
-        {calibrating && <textarea readOnly rows={12} value={calibrationOutput} />}
-      </section>
-    </div>
+          </Button>
+          {calibrating && <Button onClick={onClearCalibration}>Clear points</Button>}
+        </Actions>
+        {calibrating && <textarea className={s.output} readOnly rows={12} value={calibrationOutput} />}
+      </Section>
+    </PanelBody>
   );
 }

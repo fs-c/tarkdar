@@ -1,6 +1,8 @@
 import type { CatalogStatus } from "../catalog";
 import type { RadarState } from "../connection";
 import type { LoadedMap } from "../maps";
+import { cx } from "../ui";
+import s from "./StatusBar.module.css";
 
 const STATE_LABELS: Record<string, string> = {
   waitingForProcess: "waiting for the game",
@@ -61,13 +63,28 @@ export function StatusBar({ state, map, layer, manualLayer, catalog, timeline, r
   const parts = statusParts(state, map, layer, manualLayer, catalog, replay);
   const warn = !state.connected || state.protocolMismatch;
   return (
-    <footer id="statusbar" className={warn ? "warn" : replay ? "replay" : undefined}>
+    <footer className={s.bar} data-mode={warn ? "warn" : replay ? "replay" : undefined}>
       {timeline}
       {parts.map((p, i) => (
-        <span key={i} className={p.startsWith("⚠") ? "item alert" : "item"}>{p}</span>
+        <StatusText key={i} alert={p.startsWith("⚠")}>{p}</StatusText>
       ))}
-      <span className="spacer" />
+      <span className={s.spacer} />
       {children}
     </footer>
   );
+}
+
+/** A piece of status text; consecutive ones are separated by a rule. */
+export function StatusText({ alert = false, children }: { alert?: boolean; children: React.ReactNode }) {
+  return <span className={cx(s.item, s.text, alert && s.alert)}>{children}</span>;
+}
+
+interface StatusButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  /** warn: something's off (or on, like calibration); link: a way to a view. */
+  tone?: "warn" | "link";
+}
+
+/** A clickable status bar item. */
+export function StatusButton({ tone, className, ...rest }: StatusButtonProps) {
+  return <button type="button" className={cx(s.item, s.button, className)} data-tone={tone} {...rest} />;
 }

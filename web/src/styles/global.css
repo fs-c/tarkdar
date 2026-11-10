@@ -1,0 +1,57 @@
+/* Global styles: non-colour tokens, element defaults and a few utilities. Colours come from
+   theme.ts (applyTheme); component styles live in *.module.css next to each component. */
+
+/* Cascade order: element defaults < primitives (ui/) < utilities < component modules (unlayered),
+   so a component's own class always beats a primitive's default, whatever the import order. */
+@layer base, ui, utilities;
+
+:root {
+  color-scheme: dark;
+
+  /* layout */
+  --activity-w: 48px;
+  --status-h: 24px;
+
+  /* type */
+  --font: system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --fs-2xs: 10px; /* badges, column headers */
+  --fs-xs: 11px; /* captions, section titles, chips */
+  --fs-sm: 12px; /* status bar, dense rows, code */
+  --fs-md: 13px; /* body */
+  --fs-lg: 14px; /* panel titles */
+  --fs-xl: 17px; /* the timeline clock */
+  --tracking-caps: 0.06em; /* uppercase labels */
+
+  /* shape */
+  --radius-sm: 3px;
+  --radius: 4px;
+  --radius-lg: 6px;
+  --radius-pill: 999px;
+}
+
+@layer base {
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font: var(--fs-md)/1.35 var(--font); }
+  * { scrollbar-color: var(--border-strong) transparent; }
+
+  /* Buttons start bare: the look comes from <Button> (ui/Button) or the component's own styles. */
+  button {
+    margin: 0; padding: 0; border: none; border-radius: 0; background: none;
+    color: inherit; font: inherit; text-align: inherit; cursor: pointer;
+  }
+  button:disabled { cursor: default; }
+
+  select {
+    padding: 3px 4px; border: 1px solid var(--border-strong); border-radius: var(--radius);
+    background: var(--raised); color: var(--text); font: inherit;
+  }
+  :focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+
+  code { font: var(--fs-sm) var(--mono); color: var(--accent-text); }
+}
+
+@layer utilities {
+  .muted { color: var(--faint); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}

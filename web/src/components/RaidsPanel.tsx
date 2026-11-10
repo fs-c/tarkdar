@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { formatDuration } from "../playback";
 import type { RecordingInfo } from "../protocol";
 import { fetchRecordings } from "../recordings";
+import { cx, Note, PanelBody, selectableRow } from "../ui";
+import s from "./RaidsPanel.module.css";
 
 export interface CurrentRaid {
   /** The backend reads a game (not --offline). */
@@ -50,22 +52,24 @@ export function RaidsPanel({ current, viewing, loading, error, mapName, onOpen, 
   const past = list?.filter((r) => !(r.active && current.available)) ?? null;
 
   return (
-    <div className="panel-body raids">
-      {error && <p className="alert pad">{error}</p>}
-      {listError && <p className="alert pad">Couldn't list recordings: {listError}</p>}
-      <ul className="raid-list">
+    <PanelBody>
+      {error && <Note tone="alert">{error}</Note>}
+      {listError && <Note tone="alert">Couldn't list recordings: {listError}</Note>}
+      <ul className={s.list}>
         {current.available && (
           <li>
             <button
-              className={["current", viewing === null && "active"].filter(Boolean).join(" ")}
+              className={cx(s.raid, selectableRow)}
+              data-current
+              data-selected={viewing === null}
               disabled={loading !== null}
               onClick={onCurrent}
             >
-              <span className="what">
+              <span className={s.what}>
                 Current raid
-                {viewing === null && <span className="badge-viewing">viewing</span>}
+                {viewing === null && <span className={s.pill}>viewing</span>}
               </span>
-              <span className="when muted">
+              <span className={cx(s.when, "muted")}>
                 {current.inRaid
                   ? `${current.mapName ?? "unknown map"} · in progress${current.elapsed !== null ? ` · ${formatDuration(current.elapsed)}` : ""}`
                   : "waiting for a raid"}
@@ -76,17 +80,18 @@ export function RaidsPanel({ current, viewing, loading, error, mapName, onOpen, 
         {past?.map((r) => (
           <li key={r.name}>
             <button
-              className={viewing === r.name ? "active" : undefined}
+              className={cx(s.raid, selectableRow)}
+              data-selected={viewing === r.name}
               disabled={loading !== null}
               title={r.name}
               onClick={() => onOpen(r)}
             >
-              <span className="what">
+              <span className={s.what}>
                 {mapName(r.locationId)}
-                {viewing === r.name && <span className="badge-viewing replay">replaying</span>}
+                {viewing === r.name && <span className={s.pill} data-tone="replay">replaying</span>}
                 {loading === r.name && <span className="muted"> loading…</span>}
               </span>
-              <span className="when muted">
+              <span className={cx(s.when, "muted")}>
                 {r.start ? new Date(r.start).toLocaleString() : "?"}
                 {" · "}
                 {r.start && r.end ? formatDuration(r.end - r.start) : r.active ? "in progress" : "?"}
@@ -98,11 +103,11 @@ export function RaidsPanel({ current, viewing, loading, error, mapName, onOpen, 
         ))}
       </ul>
       {past?.length === 0 && (
-        <p className="muted pad">
+        <Note>
           No past raids yet. Every raid is recorded while the backend runs (<code>recordings/</code>).
-        </p>
+        </Note>
       )}
-    </div>
+    </PanelBody>
   );
 }
 

@@ -1,0 +1,9 @@
+@layer base, ui;
+@layer ui {
+  /* A clickable row in a list: hover highlight, and data-selected="true" for the selected one. */
+  .selectable {
+    cursor: pointer;
+    &:hover:not(:disabled) { background: var(--hover); }
+    &[data-selected="true"] { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+  }
+}

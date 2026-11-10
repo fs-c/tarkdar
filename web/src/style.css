@@ -137,9 +137,21 @@ button.primary { padding: 5px 12px; }
 #statusbar button.item.timeline-indicator { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font: 11.5px var(--mono); }
 #statusbar button.item.timeline-indicator svg { color: var(--faint); }
 #statusbar button.item.timeline-indicator.live svg { color: var(--accent); }
-#statusbar button.item.timeline-indicator:not(.live) span:first-of-type { color: var(--link); }
+#statusbar button.item.timeline-indicator:not(.live):not(.replay) .time { color: var(--link); }
 #statusbar button.item.timeline-indicator.open { background: var(--hover); color: var(--text); }
 #statusbar .timeline-indicator + .item:not(button) { border-left: 1px solid var(--border); }
+
+/* replaying a recording: a tinted bar (and a frame round the map), so it can't be taken for live */
+#statusbar.replay { background: #0f2740; border-top-color: var(--link); color: #b9d7f5; }
+#statusbar.replay .item + .item:not(button) { border-left-color: #24476a; }
+#statusbar button.item.timeline-indicator.replay { color: #e3f0fc; }
+#statusbar button.item.timeline-indicator.replay svg { color: var(--link); }
+#statusbar button.item.timeline-indicator.replay .tag { font: 600 11px system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.05em; color: #8cc4ff; }
+#statusbar button.item.timeline-indicator.replay .time { color: #e3f0fc; }
+#statusbar button.item.timeline-indicator .speed { color: var(--faint); }
+#statusbar button.item.exit-replay { display: inline-flex; align-items: center; gap: 4px; margin: 0 4px; height: 18px; padding: 0 8px; border-radius: 3px; background: var(--link); color: #06223f; font-weight: 600; font-size: 11.5px; }
+#statusbar button.item.exit-replay:hover { background: #7cbcff; }
+#replay-frame { position: fixed; top: 0; right: 0; bottom: var(--status-h); left: var(--activity-w); z-index: 1; pointer-events: none; box-shadow: inset 0 0 0 2px var(--link); }
 
 /* ---- details ---- */
 #details {
@@ -205,7 +217,16 @@ button.primary { padding: 5px 12px; }
 .raid-list button.active { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
 .raid-list .what { color: var(--text); }
 .raid-list .when { font-size: 11px; }
-.raid-list .badge-rec { margin-left: 8px; color: var(--danger); font-size: 11px; }
+.raid-list .badge-viewing { margin-left: 8px; padding: 0 6px; border-radius: 8px; font-size: 10.5px; background: var(--accent-soft); color: var(--accent-text); }
+.raid-list .badge-viewing.replay { background: rgba(74, 163, 255, 0.18); color: #8cc4ff; }
+.raid-list button.current { border-bottom: 1px solid var(--border-strong); }
+.raid-list button.current .what { font-weight: 600; }
+
+.tl-back { display: flex; align-items: center; gap: 6px; padding: 0 12px 10px 6px; }
+.tl-title { display: flex; flex-direction: column; min-width: 0; }
+.tl-title span { font-weight: 600; }
+.tl-title small { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-exit { color: #8cc4ff; border-color: rgba(74, 163, 255, 0.5); }
 
 /* ---- timeline ---- */
 #timeline { flex: 1; min-height: 0; display: flex; flex-direction: column; }

@@ -88,10 +88,12 @@ python3 tools/make-demo-stream.py                      # writes recordings/demo.
 ```
 
 Every raid is recorded to `recordings/` (one file per raid; `--recordings <dir>`, `--no-record`,
-`--keep-recordings <n>`). In the frontend, the indicator at the left of the status bar opens the
-Timeline view: what happened in the raid (click an entry to jump there) and a scrubber to go back
-in time, with playback at 1–16× (`space` plays/pauses, `[`/`]` step 10 s). The Raids view opens
-past raids. Selecting a player draws where it's been; the Map view can show everyone's trails.
+`--keep-recordings <n>`). In the frontend, the Raids view lists the current raid and past ones;
+picking one opens its timeline: what happened (click an entry to jump there) and a scrubber to go
+back in time, with playback at 1–16× (`space` plays/pauses, `[`/`]` step 10 s). The indicator at
+the left of the status bar opens the timeline of what's shown; while replaying a past raid, the
+status bar turns blue and has an exit button. Selecting a player draws where it's been; the Map
+view can show everyone's trails.
 `--offline` serves the frontend and those recordings without a memory source.
 
 For frontend development with hot reload, run `npm run dev` in `web/` (it proxies `/ws`, `/api`,

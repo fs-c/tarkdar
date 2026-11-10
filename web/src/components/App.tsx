@@ -4,7 +4,7 @@ import { type ControlPoint, formatCalibration, worldToPixel } from "../calibrati
 import type { RadarState } from "../connection";
 import { isTyping, useAutoLayer, useCatalog, useConnection, useLayers, useMapIndex, usePersistentState, useRaidMap, useTrailPrefs } from "../hooks";
 import { describeEvent } from "../events";
-import { type LoadedMap, selectLayer } from "../maps";
+import { type LoadedMap, findMap, selectLayer } from "../maps";
 import { isFiltered, rowKeys } from "../list/rows";
 import { DEFAULT_PREFS, type ListPrefs, useListRows } from "../list/useListRows";
 import { type Selection, pick, selectedPosition, selectionKey } from "../pick";
@@ -48,12 +48,14 @@ export function App() {
   const [trailPrefs, setTrailPrefs] = useTrailPrefs();
 
   const openRecording = (info: RecordingInfo) => {
+    if (review?.info.name === info.name) return setUi((u) => ({ ...u, raidsLevel: "timeline" }));
     setLoadingRecording(info.name);
     setRecordingError(null);
     loadRecording(info.name).then(
       (t) => {
         setReview({ info, timeline: t });
         setLoadingRecording(null);
+        setUi((u) => ({ ...u, raidsLevel: "timeline" }));
       },
       (e: unknown) => {
         setRecordingError(`Couldn't load ${info.name}: ${String(e)}`);
@@ -65,10 +67,16 @@ export function App() {
     setReview(null);
     playback.seek(null);
   };
+  /** The live raid, in the Raids view's timeline. */
+  const openCurrent = () => {
+    if (review) backToLive();
+    setUi((u) => ({ ...u, raidsLevel: "timeline" }));
+  };
 
   const { catalog, status: catalogStatus } = useCatalog();
   const mapIndex = useMapIndex();
   const locationId = state.status?.state === "inRaid" ? state.status.locationId : null;
+  const mapName = (id: string | null) => (id ? (findMap(mapIndex, id)?.config.name ?? id) : "unknown map");
   const map = useRaidMap(mapIndex, locationId);
   const [layers, toggleLayer] = useLayers();
   const [follow, setFollow] = useState(true);
@@ -78,21 +86,34 @@ export function App() {
   const list = useListRows(state, catalog, listPrefs.filters);
 
   // Side panel: open or collapsed, and which section it shows (for "list", the list tab in listPrefs).
-  type Section = "list" | "timeline" | "map" | "raids" | "settings";
-  const [storedUi, setUi] = usePersistentState<{ open: boolean; section: Section }>("radar.sidebar", {
+  // The Raids view has two levels: the list of raids, and the shown raid's timeline.
+  type Section = "list" | "map" | "raids" | "settings";
+  const [storedUi, setUi] = usePersistentState<{ open: boolean; section: Section; raidsLevel: "list" | "timeline" }>("radar.sidebar", {
     open: false,
     section: "list",
+    raidsLevel: "list",
   });
-  // Sections stored by older versions fall back to the list.
-  const ui = (["list", "timeline", "map", "raids", "settings"] as string[]).includes(storedUi.section) ? storedUi : { ...storedUi, section: "list" as const };
+  // Sections stored by older versions: the timeline is now inside Raids; anything else falls back to the list.
+  const legacyTimeline = (storedUi.section as string) === "timeline";
+  useEffect(() => {
+    if (legacyTimeline) setUi((u) => ({ ...u, section: "raids", raidsLevel: "timeline" }));
+  }, [legacyTimeline, setUi]);
+  const ui = legacyTimeline
+    ? { ...storedUi, section: "raids" as const, raidsLevel: "timeline" as const }
+    : (["list", "map", "raids", "settings"] as string[]).includes(storedUi.section)
+      ? storedUi
+      : { ...storedUi, section: "list" as const };
+  const timelineOpen = ui.open && ui.section === "raids" && ui.raidsLevel === "timeline";
+  const toggleTimeline = () =>
+    setUi((u) => (timelineOpen ? { ...u, open: false } : { ...u, open: true, section: "raids", raidsLevel: "timeline" }));
   const view: ViewId = ui.section === "list" ? listPrefs.tab : ui.section;
   const listShown = ui.open && ui.section === "list";
   const togglePanel = () => setUi((u) => ({ ...u, open: !u.open }));
   const pickView = (v: ViewId) => {
     if (ui.open && v === view) return setUi((u) => ({ ...u, open: false }));
-    if (v === "timeline" || v === "map" || v === "raids" || v === "settings") return setUi({ open: true, section: v });
+    if (v === "map" || v === "raids" || v === "settings") return setUi((u) => ({ ...u, open: true, section: v }));
     setListPrefs((p) => ({ ...p, tab: v }));
-    setUi({ open: true, section: "list" });
+    setUi((u) => ({ ...u, open: true, section: "list" }));
   };
 
   // While the list is filtered, the map shows only what the filters let through (and us), panel open or not.
@@ -247,21 +268,6 @@ export function App() {
             onHover={setHovered}
           />
         );
-      case "timeline":
-        return (
-          <TimelinePanel
-            timeline={timeline}
-            range={range}
-            live={!review}
-            recording={review?.info ?? null}
-            loading={!review && live.backfilling}
-            playback={playback}
-            catalog={catalog}
-            selection={selection}
-            onPick={pickEvent}
-            onClose={backToLive}
-          />
-        );
       case "map":
         return (
           <MapPanel
@@ -276,14 +282,35 @@ export function App() {
           />
         );
       case "raids":
-        return (
+        return ui.raidsLevel === "timeline" ? (
+          <TimelinePanel
+            timeline={timeline}
+            range={range}
+            live={!review}
+            title={review ? mapName(review.info.locationId) : "Current raid"}
+            subtitle={review ? (review.info.start ? new Date(review.info.start).toLocaleString() : review.info.name) : mapName(locationId)}
+            onBack={() => setUi((u) => ({ ...u, raidsLevel: "list" }))}
+            loading={!review && live.backfilling}
+            playback={playback}
+            catalog={catalog}
+            selection={selection}
+            onPick={pickEvent}
+            onExitReplay={backToLive}
+          />
+        ) : (
           <RaidsPanel
-            mapIndex={mapIndex}
-            open={review?.info.name ?? null}
+            current={{
+              available: conn.live,
+              inRaid: !!live.timeline,
+              mapName: live.timeline ? mapName(live.timeline.locationId) : null,
+              elapsed: live.timeline && !Number.isNaN(live.timeline.start) ? live.timeline.end - live.timeline.range()[0] : null,
+            }}
+            viewing={review?.info.name ?? null}
             loading={loadingRecording}
             error={recordingError}
+            mapName={mapName}
             onOpen={openRecording}
-            onLive={backToLive}
+            onCurrent={openCurrent}
           />
         );
       case "settings":
@@ -313,6 +340,7 @@ export function App() {
           containers: list.rows.containers.length,
           exfils: list.rows.exfils.length,
           explosives: list.rows.explosives.length,
+          raids: !!review,
           settings: calibrating,
         }}
       />
@@ -321,6 +349,7 @@ export function App() {
           {panelBody()}
         </SidePanel>
       )}
+      {review && <div id="replay-frame" aria-hidden />}
       <button
         id="follow"
         className={follow ? "active" : undefined}
@@ -344,37 +373,44 @@ export function App() {
         layer={layer}
         manualLayer={manualLayer}
         catalog={catalogStatus}
+        replay={!!review}
         timeline={
           timeline &&
           range && (
             <TimelineIndicator
               range={range}
               playback={playback}
-              live={!review}
-              open={ui.open && ui.section === "timeline"}
-              onClick={() => pickView("timeline")}
+              replay={review ? `${mapName(review.info.locationId)}${review.info.start ? ` · ${formatStart(review.info.start)}` : ""}` : null}
+              open={timelineOpen}
+              onClick={toggleTimeline}
+              onExitReplay={backToLive}
             />
           )
         }
       >
         {!conn.live && !review && (
-          <button className="item filtered" title="Open a recorded raid" onClick={() => setUi({ open: true, section: "raids" })}>
+          <button className="item filtered" title="Open a recorded raid" onClick={() => setUi((u) => ({ ...u, open: true, section: "raids", raidsLevel: "list" }))}>
             ● open a recording
           </button>
         )}
         {filtered && (
-          <button className="item filtered" title="The map shows filter matches only: open the list" onClick={() => setUi({ open: true, section: "list" })}>
+          <button className="item filtered" title="The map shows filter matches only: open the list" onClick={() => setUi((u) => ({ ...u, open: true, section: "list" }))}>
             ● map filtered
           </button>
         )}
         {calibrating && (
-          <button className="item calibrating" title="Open calibration settings" onClick={() => setUi({ open: true, section: "settings" })}>
+          <button className="item calibrating" title="Open calibration settings" onClick={() => setUi((u) => ({ ...u, open: true, section: "settings" }))}>
             ● calibrating · {calibPoints.length} {calibPoints.length === 1 ? "point" : "points"}
           </button>
         )}
       </StatusBar>
     </>
   );
+}
+
+/** "10 Nov 19:03" */
+function formatStart(ms: number): string {
+  return new Date(ms).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 function round(v: number, digits: number): number {

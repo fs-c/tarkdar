@@ -1,24 +1,33 @@
-// Raids view of the side panel: the backend's raid recordings. Opening one replays it on the map.
+// Raids view of the side panel, list level: the current (live) raid, pinned, and the backend's past
+// raid recordings. Picking one shows it on the map and opens its timeline (TimelinePanel).
 
 import { useEffect, useState } from "react";
-import { type MapEntry, findMap } from "../maps";
+import { formatDuration } from "../playback";
 import type { RecordingInfo } from "../protocol";
 import { fetchRecordings } from "../recordings";
-import { formatDuration } from "../playback";
+
+export interface CurrentRaid {
+  /** The backend reads a game (not --offline). */
+  available: boolean;
+  /** A raid is running; its map name and how long it's been going. */
+  inRaid: boolean;
+  mapName: string | null;
+  elapsed: number | null;
+}
 
 interface Props {
-  mapIndex: MapEntry[];
-  /** The open recording's name; null: live. */
-  open: string | null;
+  current: CurrentRaid;
+  /** The recording being replayed; null: the live raid is shown. */
+  viewing: string | null;
   /** Loading this one. */
   loading: string | null;
   error: string | null;
+  mapName: (locationId: string | null) => string;
   onOpen: (rec: RecordingInfo) => void;
-  /** The raid being recorded: that's the live raid. */
-  onLive: () => void;
+  onCurrent: () => void;
 }
 
-export function RaidsPanel({ mapIndex, open, loading, error, onOpen, onLive }: Props) {
+export function RaidsPanel({ current, viewing, loading, error, mapName, onOpen, onCurrent }: Props) {
   const [list, setList] = useState<RecordingInfo[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
 
@@ -37,52 +46,62 @@ export function RaidsPanel({ mapIndex, open, loading, error, onOpen, onLive }: P
     };
   }, []);
 
-  const mapName = (id: string | null) => (id ? (findMap(mapIndex, id)?.config.name ?? id) : "unknown map");
+  // The recording being written is the current raid: listed once, as that.
+  const past = list?.filter((r) => !(r.active && current.available)) ?? null;
 
   return (
     <div className="panel-body raids">
-      {open !== null && (
-        <div className="row">
-          <button className="primary" onClick={onLive}>
-            Back to live
-          </button>
-        </div>
-      )}
-      {error && <p className="alert">{error}</p>}
-      {listError && <p className="alert">Couldn't list recordings: {listError}</p>}
-      {list?.length === 0 && (
-        <p className="muted">
-          No recordings yet. Every raid is recorded while the backend runs (<code>recordings/</code>).
+      {error && <p className="alert pad">{error}</p>}
+      {listError && <p className="alert pad">Couldn't list recordings: {listError}</p>}
+      <ul className="raid-list">
+        {current.available && (
+          <li>
+            <button
+              className={["current", viewing === null && "active"].filter(Boolean).join(" ")}
+              disabled={loading !== null}
+              onClick={onCurrent}
+            >
+              <span className="what">
+                Current raid
+                {viewing === null && <span className="badge-viewing">viewing</span>}
+              </span>
+              <span className="when muted">
+                {current.inRaid
+                  ? `${current.mapName ?? "unknown map"} · in progress${current.elapsed !== null ? ` · ${formatDuration(current.elapsed)}` : ""}`
+                  : "waiting for a raid"}
+              </span>
+            </button>
+          </li>
+        )}
+        {past?.map((r) => (
+          <li key={r.name}>
+            <button
+              className={viewing === r.name ? "active" : undefined}
+              disabled={loading !== null}
+              title={r.name}
+              onClick={() => onOpen(r)}
+            >
+              <span className="what">
+                {mapName(r.locationId)}
+                {viewing === r.name && <span className="badge-viewing replay">replaying</span>}
+                {loading === r.name && <span className="muted"> loading…</span>}
+              </span>
+              <span className="when muted">
+                {r.start ? new Date(r.start).toLocaleString() : "?"}
+                {" · "}
+                {r.start && r.end ? formatDuration(r.end - r.start) : r.active ? "in progress" : "?"}
+                {" · "}
+                {formatSize(r.size)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {past?.length === 0 && (
+        <p className="muted pad">
+          No past raids yet. Every raid is recorded while the backend runs (<code>recordings/</code>).
         </p>
       )}
-      <ul className="raid-list">
-        {list?.map((r) => {
-          const current = r.active ? open === null : open === r.name;
-          return (
-            <li key={r.name}>
-              <button
-                className={current ? "active" : undefined}
-                disabled={loading !== null}
-                title={r.name}
-                onClick={() => (r.active ? onLive() : onOpen(r))}
-              >
-                <span className="what">
-                  {mapName(r.locationId)}
-                  {r.active && <span className="badge-rec">● recording</span>}
-                  {loading === r.name && <span className="muted"> loading…</span>}
-                </span>
-                <span className="when muted">
-                  {r.start ? new Date(r.start).toLocaleString() : "?"}
-                  {" · "}
-                  {r.start && r.end ? formatDuration(r.end - r.start) : r.active ? "in progress" : "?"}
-                  {" · "}
-                  {formatSize(r.size)}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
     </div>
   );
 }

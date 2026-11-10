@@ -1,0 +1,4 @@
+[tools]
+node = "26.13.0"
+cmake = "4.4.5"
+python = "3.14"

@@ -46,6 +46,18 @@ Address makeSlots(FakeWorld& w, const std::vector<std::pair<std::u16string_view,
     return w.heap.array(objects);
 }
 
+// Grid[], one grid per list of items (GridItemCollection.ItemsList).
+Address makeGrids(FakeWorld& w, const std::vector<std::vector<Address>>& grids) {
+    std::vector<Address> objects;
+    for (const auto& items : grids) {
+        const Address grid = w.heap.alloc(0x80), collection = w.heap.alloc(0x20);
+        w.heap.put<Address>(grid + *off::Grid::ItemCollection, collection);
+        w.heap.put<Address>(collection + *off::GridItemCollection::ItemsList, w.heap.list(items, 8));
+        objects.push_back(grid);
+    }
+    return w.heap.array(objects);
+}
+
 std::shared_ptr<const eft::RaidSession> makeSession(FakeWorld& w) {
     return std::make_shared<eft::RaidSession>(eft::RaidSession{
         .id = 9,
@@ -102,6 +114,43 @@ TEST_CASE("ItemTreeReader follows slots of compound items only, with limits") {
 
     eft::ItemTreeReader shallow(game, {.maxDepth = 1});
     CHECK(shallow.readSlots(slots)[0].children.empty());
+}
+
+TEST_CASE("ItemTreeReader reads grid contents, nested, after slot contents") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 1);
+    ItemClasses c(w);
+    REQUIRE(off::CompoundItem::Grids);
+    REQUIRE(off::Grid::ItemCollection);
+    REQUIRE(off::GridItemCollection::ItemsList);
+
+    // A container: one slot item, and two grids, the second holding a backpack with its own grid.
+    const Address backpack = makeItem(w, c.compound, u"backpack");
+    w.heap.put<Address>(backpack + *off::CompoundItem::Grids, makeGrids(w, {{makeItem(w, c.item, u"bolts", 3)}}));
+    const Address root = makeItem(w, c.compound, u"container");
+    w.heap.put<Address>(root + off::LootItemMod::Slots, makeSlots(w, {{u"main", makeItem(w, c.item, u"key")}}));
+    w.heap.put<Address>(root + *off::CompoundItem::Grids,
+                        makeGrids(w, {{makeItem(w, c.item, u"roubles", 5000), makeItem(w, c.item, u"gpu")},
+                                      {backpack}}));
+    // Non-compound items have no Grids field: a plausible pointer there must not be followed.
+    const Address plain = makeItem(w, c.item, u"plain");
+    w.heap.put<Address>(plain + *off::CompoundItem::Grids, makeGrids(w, {{makeItem(w, c.item, u"bogus")}}));
+
+    const auto game = w.attachGame();
+    eft::ItemTreeReader reader(game);
+    const auto contents = reader.readContents(root);
+    REQUIRE(contents.size() == 4);
+    CHECK(contents[0].tpl == "key");
+    CHECK(contents[0].slot == "main");
+    CHECK(contents[1].tpl == "roubles");
+    CHECK(contents[1].count == 5000);
+    CHECK(contents[1].slot.empty());
+    CHECK(contents[2].tpl == "gpu");
+    CHECK(contents[3].tpl == "backpack");
+    REQUIRE(contents[3].children.size() == 1);
+    CHECK(contents[3].children[0].tpl == "bolts");
+    CHECK(contents[3].children[0].count == 3);
+    CHECK(reader.readContents(plain).empty());
 }
 
 TEST_CASE("Players publishes equipment trees") {

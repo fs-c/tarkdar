@@ -919,29 +919,29 @@
       "required": false,
       "optional": true,
       "value": "0x78",
-      "note": "StashGridClass[]: the item's container grids (backpack, rig, container). Unverified class/field names."
+      "note": "Grid[]: the item's container grids (backpack, rig, container)."
     },
     {
-      "group": "StashGrid",
+      "group": "Grid",
       "name": "ItemCollection",
-      "class": "EFT.InventoryLogic.StashGridClass",
+      "class": "EFT.InventoryLogic.Grid",
       "field": "<ItemCollection>k__BackingField",
       "static": false,
       "required": false,
       "optional": true,
-      "value": null,
-      "note": "The grid's item collection object. Unverified class/field names."
+      "value": "0x48",
+      "note": "GridItemCollection: the grid's items."
     },
     {
-      "group": "ItemCollection",
-      "name": "Items",
-      "class": "EFT.InventoryLogic.ItemCollection",
-      "field": "_items",
+      "group": "GridItemCollection",
+      "name": "ItemsList",
+      "class": "EFT.InventoryLogic.GridItemCollection",
+      "field": "ItemsList",
       "static": false,
       "required": false,
       "optional": true,
-      "value": null,
-      "note": "List<Item> of the items in a grid collection. Unverified class/field names and type (may be a dictionary)."
+      "value": "0x18",
+      "note": "List<Item> of the grid's items. The dump types it only as genericinst; List<Item> because ItemExtensions.<GetAllItemsFromGridItemCollectionNonAlloc> holds a 24-byte List<Item>.Enumerator. (The sibling field Items at 0x10 is presumably Dictionary<Item, LocationInGrid>.)"
     }
   ],
   "literals": [

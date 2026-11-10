@@ -7,7 +7,7 @@
 namespace radar::eft {
 
 // An item and everything inside it: attachments and slot contents (e.g. a weapon's mods, armour
-// plates), and grid contents (backpack, rig, container) where the grid offsets are known.
+// plates), and grid contents (backpack, rig, container).
 struct ItemNode {
     std::string tpl;         // template id
     std::string slot{};      // slot id when the item sits in a slot (e.g. "FirstPrimaryWeapon"); empty in grids

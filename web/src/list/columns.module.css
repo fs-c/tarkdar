@@ -7,3 +7,5 @@
   &[data-tone="pending"] { color: var(--warn); }
   &[data-tone="secret"] { color: var(--secret); }
 }
+/* Ellipsis on the left: right-to-left box, the text itself isolated as left-to-right. */
+.cutLeft { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }

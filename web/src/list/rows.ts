@@ -53,8 +53,6 @@ export interface ContainerRow extends RowBase {
   /** Number of items, nested ones included. */
   count: number;
   value?: number;
-  /** Most valuable single item (price × stack) inside. */
-  best?: string;
 }
 
 export interface ExfilRow extends RowBase {
@@ -141,7 +139,7 @@ export function lootRows(loot: LootEntry[], catalog: ItemCatalog): Pick<TabRows,
       const summary = summarize(contents, catalog);
       containers.push({
         ...base(sel, l.pos, text(name, l.kind, l.tpl, ...summary.names)),
-        name, kind: l.kind, count: summary.count, value: summary.value || undefined, best: summary.best,
+        name, kind: l.kind, count: summary.count, value: summary.value || undefined,
       });
     } else {
       const info = catalog.lookup(l.tpl);
@@ -177,19 +175,16 @@ export function explosiveRows(explosives: ExplosivesData): ExplosiveRow[] {
 function summarize(nodes: ItemNode[], catalog: ItemCatalog) {
   const names: string[] = [];
   let count = 0;
-  let best: { name: string; value: number } | undefined;
   const walk = (ns: ItemNode[]) => {
     for (const n of ns) {
       count++;
       const info = catalog.lookup(n.tpl);
       if (info) names.push(info.name, info.shortName);
-      const v = (info?.price ?? 0) * (n.count ?? 1);
-      if (info && v > 0 && (!best || v > best.value)) best = { name: info.shortName, value: v };
       if (n.items?.length) walk(n.items);
     }
   };
   walk(nodes);
-  return { names, count, value: totalValue(nodes, catalog), best: best?.name };
+  return { names, count, value: totalValue(nodes, catalog) };
 }
 
 /** Adds distance and height difference to the local player (a new array; rows are shared). */

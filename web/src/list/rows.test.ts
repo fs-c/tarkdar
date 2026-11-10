@@ -38,11 +38,10 @@ describe("buildRows", () => {
     expect(rows.containers.map((r) => [r.sel.id, r.kind])).toEqual([[20, "container"], [21, "corpse"]]);
   });
 
-  it("summarizes container contents: nested count, total value, best item", () => {
+  it("summarizes container contents: nested count, total value", () => {
     const c = rows.containers[0]!;
     expect(c.count).toBe(2);
     expect(c.value).toBe(17_000);
-    expect(c.best).toBe("Bolts");
     expect(rows.containers[1]!.value).toBeUndefined();
   });
 

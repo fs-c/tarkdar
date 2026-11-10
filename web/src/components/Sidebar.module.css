@@ -22,12 +22,17 @@
 .dot { min-width: 9px; width: 9px; height: 9px; right: 10px; bottom: 10px; padding: 0; background: var(--warn); }
 
 /* ---- side panel ---- */
-/* Sits beside the map (which shrinks to make room) rather than over it. */
+/* Sits beside the map (which shrinks to make room) rather than over it. Width set inline (resizable);
+   the max keeps some map visible when the window shrinks after a resize. */
 .sidebar {
-  flex: none; width: 560px; max-width: calc(100vw - var(--activity-w)); box-sizing: border-box;
+  position: relative; flex: none; max-width: calc(100vw - var(--activity-w) - 160px); min-width: 260px; box-sizing: border-box;
   display: flex; flex-direction: column;
   background: var(--surface); border-right: 1px solid var(--border);
-  &[data-narrow="true"] { width: 340px; }
+}
+/* Drag handle over the right border. */
+.sash {
+  position: absolute; top: 0; bottom: 0; right: -3px; z-index: 2; width: 6px; cursor: ew-resize; touch-action: none;
+  &:hover, &:active { background: var(--accent); transition: background 0.1s 0.15s; }
 }
 .header { display: flex; flex: none; align-items: center; gap: 8px; height: 35px; padding: 0 6px 0 14px; }
 .title { margin: 0; color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; }

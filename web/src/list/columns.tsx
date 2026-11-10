@@ -133,10 +133,9 @@ const k = createColumnHelper<Features, ContainerRow>();
 const containers: TabDef<ContainerRow> = {
   id: "containers",
   label: "Containers",
-  template: "minmax(90px, 1fr) minmax(60px, 0.7fr) 40px 56px 52px 40px",
+  template: "minmax(90px, 1fr) 40px 56px 52px 40px",
   columns: [
     k.accessor("name", { header: "container", sortFn: "text", cell: (c) => <span title={`${c.getValue()} (${c.row.original.kind})`}>{c.getValue()}</span> }),
-    k.accessor("best", { header: "best item", sortFn: "text", sortUndefined: "last", cell: (c) => c.getValue() ?? "" }),
     k.accessor("count", { header: "#", sortDescFirst: true }),
     k.accessor("value", { header: "₽", sortUndefined: "last", sortDescFirst: true, cell: (c) => <Price>{price(c.getValue())}</Price> }),
     ...distanceColumns<ContainerRow>(),
@@ -149,9 +148,18 @@ const e = createColumnHelper<Features, ExfilRow>();
 const exfils: TabDef<ExfilRow> = {
   id: "exfils",
   label: "Exfils",
-  template: "minmax(120px, 1fr) 60px 90px 52px 40px",
+  template: "minmax(60px, 1fr) 60px 90px 52px 40px",
   columns: [
-    e.accessor("name", { header: "exfil", sortFn: "text", cell: (c) => <span title={c.getValue()}>{c.getValue()}</span> }),
+    // Long names lose their start rather than their end (the distinguishing part tends to be last).
+    e.accessor("name", {
+      header: "exfil",
+      sortFn: "text",
+      cell: (c) => (
+        <span className={s.cutLeft} title={c.getValue()}>
+          <bdi>{c.getValue()}</bdi>
+        </span>
+      ),
+    }),
     e.accessor("kind", { header: "kind", sortFn: "text" }),
     e.accessor("status", {
       header: "status",

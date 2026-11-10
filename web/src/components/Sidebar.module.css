@@ -1,6 +1,6 @@
 /* ---- activity bar ---- */
 .activityBar {
-  position: fixed; top: 0; left: 0; bottom: var(--status-h); z-index: 3; width: var(--activity-w);
+  flex: none; width: var(--activity-w); box-sizing: border-box;
   display: flex; flex-direction: column; align-items: stretch;
   background: var(--chrome); border-right: 1px solid var(--border);
 }
@@ -22,11 +22,12 @@
 .dot { min-width: 9px; width: 9px; height: 9px; right: 10px; bottom: 10px; padding: 0; background: var(--warn); }
 
 /* ---- side panel ---- */
+/* Sits beside the map (which shrinks to make room) rather than over it. */
 .sidebar {
-  position: fixed; top: 0; left: var(--activity-w); bottom: var(--status-h); z-index: 2;
-  width: min(560px, calc(100vw - var(--activity-w))); display: flex; flex-direction: column;
-  background: var(--surface); border-right: 1px solid var(--border); box-shadow: 6px 0 18px var(--shadow);
-  &[data-narrow="true"] { width: min(340px, calc(100vw - var(--activity-w))); }
+  flex: none; width: 560px; max-width: calc(100vw - var(--activity-w)); box-sizing: border-box;
+  display: flex; flex-direction: column;
+  background: var(--surface); border-right: 1px solid var(--border);
+  &[data-narrow="true"] { width: 340px; }
 }
 .header { display: flex; flex: none; align-items: center; gap: 8px; height: 35px; padding: 0 6px 0 14px; }
 .title { margin: 0; color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; }

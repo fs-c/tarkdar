@@ -35,7 +35,15 @@ export function RadarCanvas({ view, scene, follow, onPan, onTap }: Props) {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
 
+    // Resizes (the side panel opening, the window) keep the map where it is on screen, rather than
+    // re-centring it in the new size: the camera centre follows the canvas's centre.
+    let lastRect: DOMRect | null = null;
     const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      if (lastRect && view.zoom > 0) {
+        view.panBy(-(rect.left + rect.right - lastRect.left - lastRect.right) / 2, -(rect.top + rect.bottom - lastRect.top - lastRect.bottom) / 2);
+      }
+      lastRect = rect;
       const dpr = window.devicePixelRatio || 1;
       view.width = canvas.clientWidth;
       view.height = canvas.clientHeight;

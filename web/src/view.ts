@@ -4,7 +4,6 @@ export class View {
   centerU = 0;
   centerV = 0;
   zoom = 1;
-  follow = true;
   width = 0; // canvas size in CSS pixels
   height = 0;
 
@@ -19,7 +18,6 @@ export class View {
   panBy(dx: number, dy: number): void {
     this.centerU -= dx / this.zoom;
     this.centerV -= dy / this.zoom;
-    this.follow = false;
   }
 
   /** Zooms by `factor`, keeping the map point under screen position (x, y) fixed. */

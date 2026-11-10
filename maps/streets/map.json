@@ -1,0 +1,13 @@
+{
+  "name": "Streets",
+  "ids": ["TarkovStreets"],
+  "calibration": {
+  "points": [
+      { "world": [272.65, 509.52], "pixel": [2772.9, 184.3] },
+      { "world": [285, 416.82], "pixel": [2831.7, 643.8] }
+    ]
+  },
+  "layers": [
+    { "image": "ground.png" }
+  ]
+}

@@ -2,11 +2,17 @@
   "schema": 1,
   "note": "Initial values: live-EFT reference values from MeatyEFTRelease cac603e. Expect different values for SPT builds; regenerate with tools/update-offsets.py.",
   "build": {
-    "GameAssembly.dll": null,
-    "UnityPlayer.dll": null
+    "GameAssembly.dll": {
+      "peTimestamp": "0x6AE87AA9",
+      "imageSize": "0x79C2000"
+    },
+    "UnityPlayer.dll": {
+      "peTimestamp": "0x693FDD26",
+      "imageSize": "0x1C57000"
+    }
   },
   "bootstrap": {
-    "typeInfoTableRva": "0x5FB0F48"
+    "typeInfoTableRva": "0x7180AD8"
   },
   "unityRvas": {
     "gameObjectManager": "0x1A233A0",
@@ -894,7 +900,7 @@
       "static": false,
       "required": false,
       "optional": true,
-      "value": null,
+      "value": "0x78",
       "note": "StashGridClass[]: the item's container grids (backpack, rig, container). Unverified class/field names."
     },
     {

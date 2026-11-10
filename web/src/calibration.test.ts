@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type ControlPoint, directionToPixel, fitTransform, pixelToWorld, pixelsPerMetre, worldToPixel } from "./calibration";
+import { type ControlPoint, directionToPixel, fitTransform, formatCalibration, pixelToWorld, pixelsPerMetre, worldToPixel } from "./calibration";
 
 const close = (a: [number, number], b: [number, number]) => {
   expect(a[0]).toBeCloseTo(b[0], 6);
@@ -74,5 +74,16 @@ describe("fitTransform", () => {
         { world: [2, 2], pixel: [2, 2] },
       ]),
     ).toThrow(); // collinear
+  });
+});
+
+describe("formatCalibration", () => {
+  it("hints when empty, asks for a second point, then gives the block", () => {
+    expect(formatCalibration([])).toMatch(/^Click the map/);
+    const one: ControlPoint = { world: [1, 2], pixel: [3, 4] };
+    expect(formatCalibration([one])).toContain("add at least one more point");
+    const two = formatCalibration([one, { world: [5, 6], pixel: [7, 8] }]);
+    expect(two).not.toContain("add at least");
+    expect(JSON.parse(`{${two}}`)).toEqual({ calibration: { points: [one, { world: [5, 6], pixel: [7, 8] }] } });
   });
 });

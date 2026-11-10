@@ -106,3 +106,13 @@ export function directionToPixel(t: Affine, dx: number, dz: number): [number, nu
 export function pixelsPerMetre(t: Affine): number {
   return Math.sqrt(Math.abs(t.a * t.e - t.b * t.d));
 }
+
+/** The `calibration` block for a map.json, or a hint when there are no points yet. */
+export function formatCalibration(points: ControlPoint[]): string {
+  if (points.length === 0) return "Click the map where your character stands.";
+  const lines = points.map((p) => `      { "world": [${p.world.join(", ")}], "pixel": [${p.pixel.join(", ")}] }`);
+  return (
+    `"calibration": {\n  "points": [\n${lines.join(",\n")}\n  ]\n}` +
+    (points.length < 2 ? "\n\n(add at least one more point, far from the first)" : "")
+  );
+}

@@ -6,26 +6,7 @@
     <title>radar</title>
   </head>
   <body>
-    <canvas id="radar"></canvas>
-    <div id="hud">
-      <div id="status">connecting…</div>
-      <div id="controls">
-        <button id="follow" title="Follow the local player (F)">follow</button>
-        <span id="floors"></span>
-        <button id="layer-loot" title="Loose items, quest items, corpses">loot</button>
-        <button id="layer-containers" title="Containers and airdrops">containers</button>
-        <button id="layer-exfils">exfils</button>
-        <button id="layer-explosives" title="Grenades and tripwires">explosives</button>
-        <button id="calibrate" title="Calibrate the current map">calibrate</button>
-      </div>
-    </div>
-    <div id="details" hidden></div>
-    <div id="calibration" hidden>
-      <p>Stand somewhere recognisable, then click that spot on the map. Repeat at 2–3 places far apart.
-        Paste the result into the map's <code>map.json</code>.</p>
-      <textarea id="calibration-output" readonly rows="10"></textarea>
-      <button id="calibration-clear">clear points</button>
-    </div>
-    <script type="module" src="/src/main.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

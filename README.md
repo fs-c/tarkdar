@@ -1,6 +1,6 @@
 # radar
 
-Read-only 2D radar for SP-Tarkov, reading the game's memory from a QEMU guest on a Linux host
+Read-only 2D radar for SP-Tarkov, the single-player mod for Tarkov, reading the game's memory from a QEMU guest on a Linux host
 via VMM (MemProcFS) + LeechCore. See `docs/design.md` for the design, and
 `docs/verification-playbook.md` for what to verify on the real setup.
 
@@ -39,21 +39,17 @@ so it needs internet access then.
 
 ## Building
 
-Requirements: CMake ≥ 3.20, a C++23 compiler (GCC 14 tested), Python 3, git, pkg-config, curl,
-libusb-1.0 headers (`libusb-1.0-0-dev`; LeechCore's headers include it unconditionally). Ninja is
-optional.
-
 ```sh
-scripts/setup.sh            # checks dependencies, inits submodules, fetches the VMM runtime files
+# checks dependencies, inits submodules, fetches the VMM runtime files
+scripts/setup.sh
 cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Frontend (Node.js 20+):
-
 ```sh
-cd web && npm install && npm test && npm run build   # → web/dist, served by radar-backend
+# web/dist, served by radar-backend
+cd web && npm install && npm test && npm run build
 ```
 
 Everything ends up in `build/bin/`: `radar-backend`, `vmm.so`, `leechcore.so` and
@@ -72,7 +68,7 @@ marked `ignore = dirty`, so it doesn't show as modified.
 
 ```sh
 # Live QEMU guest (guest RAM must be a memfd or hugetlbfs memory backend):
-sudo ./build/bin/radar-backend --device "qemu://hugepage-pid=$(pgrep -f 'guest=<vm name>')" --once
+sudo ./build/bin/radar-backend --device "qemu://hugepage-pid=$(pgrep -f 'guest=')" --once
 
 # Offline, against a raw physical memory dump:
 ./build/bin/radar-backend --device /path/to/dump.raw

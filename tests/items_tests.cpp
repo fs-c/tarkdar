@@ -140,6 +140,30 @@ TEST_CASE("Players publishes equipment trees") {
     CHECK(world.equipment.get()->players.empty());
 }
 
+TEST_CASE("Players reads observed players' equipment through their controller") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 0);
+    ItemClasses c(w);
+    const Address observed = w.newObservedPlayer();
+    w.setRosterList({w.localPlayer, observed});
+    const Address opc = mem::MemoryView(w.fake, FakeWorld::kPid).read<Address>(observed + off::ObservedPlayerView::ObservedPlayerController);
+    const Address controller = w.heap.alloc(0x200), inventory = w.heap.alloc(0x100);
+    const Address equipment = makeItem(w, c.equipment, u"equipmentroot");
+    w.heap.put<Address>(opc + off::ObservedPlayerController::InventoryController, controller);
+    w.heap.put<Address>(controller + off::InventoryController::Inventory, inventory);
+    w.heap.put<Address>(inventory + off::Inventory::Equipment, equipment);
+    w.heap.put<Address>(equipment + off::InventoryEquipment::_cachedSlots, makeLoadout(w, c));
+
+    eft::WorldState world;
+    eft::Players players(makeSession(w), world);
+    const auto t = Clock::now();
+    players.rosterTick(t);
+    players.equipmentTick(t);
+    const auto snap = world.equipment.get();
+    REQUIRE(snap->players.size() == 1);
+    checkLoadout(snap->players[0].slots);
+}
+
 TEST_CASE("Loot reads container contents and corpse equipment") {
     FakeWorld w;
     w.newWorld(u"bigmap", 1);

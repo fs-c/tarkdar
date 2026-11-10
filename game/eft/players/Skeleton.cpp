@@ -28,8 +28,8 @@ bool nearOrigin(Vec3 p, float range) {
 
 }  // namespace
 
-std::optional<PositionBones> resolvePositionBones(const Game& game, Address player) {
-    const Address body = readPointer(game, player + off::Player::_playerBody, Freshness::Fresh);
+std::optional<PositionBones> resolvePositionBones(const Game& game, Address bodyField) {
+    const Address body = readPointer(game, bodyField, Freshness::Fresh);
     const Address root = body ? readPointer(game, body + off::PlayerBody::SkeletonRootJoint, Freshness::Fresh) : 0;
     const Address list = root ? readPointer(game, root + off::Skeleton::Values, Freshness::Fresh) : 0;
     if (!list) return std::nullopt;

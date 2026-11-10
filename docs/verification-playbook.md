@@ -96,7 +96,8 @@ All offsets in `eft.offsets.json` are from a live EFT build and almost certainly
     versions but worth a glance.
   - `types` / `fields`: class and field names come from the live client. Check each against the
     SPT dump: names may differ (obfuscated `GClassXXXX` names, renamed backing fields), and live-only
-    classes (`ObservedPlayerView`, …) may not exist offline.
+    classes may not exist offline (`ObservedPlayerView` and friends matter if SPT bots are observed
+    players; see 4.1).
 - **Note:** classes are added to the type-info table lazily. Some slots stay null until the class is
   used (e.g. raid-only classes in the main menu). Dump from inside a raid.
 
@@ -190,15 +191,28 @@ and look direction, and (verbose) every other player.
 ### 4.1 Players are built
 - **Expect:** the alive count matches the bots around (roughly), with "players: +#N …" lines as bots
   spawn.
-- **If players are missing:** with `--verbose`, "failed to build N times" names the class of the object
-  that couldn't be built.
-  - **Class isn't an `EFT.Player` subclass.** We track only objects whose class is (or derives from)
-    `EFT.Player`. The reference matched the exact class names `ClientPlayer`/`LocalPlayer` and treated
-    everything else as the online-only `ObservedPlayerView` representation, which we don't support.
-    If SPT bots show up as something else (Fika's remote players, a mod's class), check that class's
-    base classes in the dump.
-  - **Required fields unreadable.** A build needs `Player.Profile` → `Profile.Info` →
-    `PlayerInfo.Side`, `Player._playerBody` and `Player.MovementContext`. Check those offsets.
+- **First:** run `--diagnose` in a raid with bots around. The Players section lists the registered
+  classes, how many built per kind (`local`, `client`, `observed`), and for each entry that didn't
+  build its class and the step that failed. The log says the same after 5 failures ("failed to build
+  5 times, backing off: <reason>").
+- **Context: two layouts.** Entries are either full `EFT.Player` objects (class
+  `ClientPlayer`/`LocalPlayer`: bots simulated in this client) or `ObservedPlayerView` replicas (bots
+  and players simulated elsewhere, e.g. by the server). Which one SPT uses depends on its version: if
+  bots are server-side (co-op style), expect `observed`. The classification matches the reference;
+  the only extension is that any `EFT.Player` subclass counts as client.
+- **If only the local player is registered** while bots are clearly around: the roster list isn't the
+  one the game fills. Check `ClientLocalGameWorld.RegisteredPlayers` in the dump (and whether the game
+  world class has another player list or dictionary).
+- **If client players fail:** a build needs `Player.Profile` → `Profile.Info` → `PlayerInfo.Side`,
+  `Player._playerBody` and `Player.MovementContext`. Check those offsets.
+- **If observed players fail:** a build needs `ObservedPlayerView.ObservedPlayerController` →
+  `ObservedPlayerController.HealthController` / `.MovementController` →
+  `ObservedMovementController.ObservedPlayerStateContext`, plus `ObservedPlayerView.IsAI` and `.Side`.
+  The failure reason names the first null pointer. Rotation is `ObservedPlayerStateContext.Rotation`,
+  death is `ObservedHealthController.PlayerCorpse`, the skeleton starts at `ObservedPlayerView.PlayerBody`,
+  equipment at `ObservedPlayerController.InventoryController`.
+- **Not ported:** the reference's BTR handling (the BTR's turret operator is a separate kind with a
+  position from `BTRView`); add it if the BTR matters.
 
 ### 4.2 Positions
 - **Expect:** the local position changes as you walk; bots' positions are plausible (the same order of
@@ -237,8 +251,10 @@ and look direction, and (verbose) every other player.
   removes them, and keep their last position.
 
 ### 4.5 Identity: what's missing
-The reference reads no identity for full `EFT.Player` objects, so every bot is just "AI" with a side
-(USEC/BEAR/Savage). That matches the reference, but for SPT these are wanted:
+The reference reads no identity for full `EFT.Player` objects, so every client bot is just "AI" with a
+side (USEC/BEAR/Savage). Observed players carry their voice preset (shown in the details panel); the
+reference mapped voice substrings to roles (`BossKilla` → Killa, `SectantWarrior` → cultist, …),
+which we don't do yet. For SPT these are wanted:
 - **Nickname:** `Profile.Info.Nickname`.
 - **Role:** `Profile.Info.Settings.Role` (`WildSpawnType`), which distinguishes boss, raider, cultist,
   scav and PMC bots. The reference derived roles only for online players, from their voice line name.
@@ -247,7 +263,7 @@ The reference reads no identity for full `EFT.Player` objects, so every bot is j
   30 m proximity among human players, which finds nothing offline.
 - **Level:** `Profile.Info.Level`, or experience plus the XP table.
 
-Find these fields in the dump, add them to `eft.offsets.json`, and extend `Players::build`.
+Find these fields in the dump, add them to `eft.offsets.json`, and extend `buildPlayerLayout` (`game/eft/players/PlayerKinds.cpp`).
 
 ---
 

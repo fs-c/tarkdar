@@ -58,13 +58,19 @@ changes, at most about 30 times per second.
 ### `players`
 ```json
 { "players": [
-  { "id": 1, "local": true, "ai": false, "side": "usec", "dead": false, "absent": false,
-    "pos": [12.5, 3.1, -40.2], "yaw": 271.4, "pitch": -3.0 }
+  { "id": 1, "local": true, "kind": "local", "ai": false, "side": "usec", "dead": false, "absent": false,
+    "pos": [12.5, 3.1, -40.2], "yaw": 271.4, "pitch": -3.0 },
+  { "id": 2, "local": false, "kind": "observed", "ai": true, "side": "savage", "voice": "BossKilla",
+    "dead": false, "absent": false, "pos": [40.0, 3.0, -12.0], "yaw": 90.0, "pitch": 0.0 }
 ] }
 ```
 - **`id`:** small integer, stable within a raid and never reused in it.
 - **`local`:** the player whose game this is.
-- **`ai`:** every non-local player in an offline raid.
+- **`kind`:** the object layout the backend read: `local` (ours), `client` (a bot simulated in this
+  game client) or `observed` (a network replica of a player or bot simulated elsewhere).
+- **`ai`:** always true for `client`; observed players carry the game's own flag.
+- **`voice`:** observed players only (omitted otherwise): the voice preset, which names bot roles and
+  bosses.
 - **`side`:** `usec`, `bear`, `savage` (scavs, bosses and other non-PMC bots) or `unknown`.
 - **`dead`:** permanent once set; the player keeps its last position.
 - **`absent`:** left the game's player list without dying (extracted or despawned).

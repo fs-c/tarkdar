@@ -111,7 +111,9 @@ std::string encodePlayers(const eft::PlayersSnapshot& snap) {
         crow::json::wvalue v;
         v["id"] = p.id;
         v["local"] = p.local;
+        v["kind"] = eft::kindName(p.kind);
         v["ai"] = p.ai;
+        if (!p.voice.empty()) v["voice"] = p.voice;
         v["side"] = sideId(p.side);
         v["dead"] = p.dead;
         v["absent"] = p.absent;

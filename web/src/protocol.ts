@@ -20,6 +20,7 @@ export interface StatusData {
 }
 
 export type Side = "usec" | "bear" | "savage" | "unknown";
+export type PlayerKind = "local" | "client" | "observed";
 
 /** World coordinates in metres (Unity axes): [x east, y up, z north]. */
 export type WorldPos = [number, number, number];
@@ -27,8 +28,12 @@ export type WorldPos = [number, number, number];
 export interface Player {
   id: number;
   local: boolean;
+  /** Object layout: "client" = bot simulated on this machine, "observed" = network replica. */
+  kind?: PlayerKind;
   ai: boolean;
   side: Side;
+  /** Observed players: voice preset (names bot roles and bosses). */
+  voice?: string;
   dead: boolean;
   absent: boolean;
   pos: WorldPos | null;

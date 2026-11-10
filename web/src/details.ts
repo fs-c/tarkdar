@@ -33,6 +33,8 @@ export function renderDetails(panel: HTMLElement, sel: Selection | null, src: De
     if (!p) return void panel.append(el("div", "player gone"));
     title(p.local ? `You (#${p.id})` : `Player #${p.id}`);
     line("side", p.side + (p.ai ? " (AI)" : ""));
+    if (p.voice) line("voice", p.voice);
+    if (p.kind) line("kind", p.kind);
     line("state", p.dead ? "dead" : p.absent ? "left the raid" : "alive");
     line("position", pos(p.pos));
     const eq = src.equipment.get(p.id);

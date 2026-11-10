@@ -46,6 +46,25 @@ TEST_CASE("diagnose reports each step, with hints for failures") {
     CHECK(has(out, "FAIL no loot resolved"));
 }
 
+TEST_CASE("diagnose lists player kinds and why entries didn't build") {
+    FakeWorld w;
+    w.newWorld(u"Woods", 2);
+    const mem::Address observed = w.newObservedPlayer();
+    const mem::Address broken = w.heap.object(w.observedClass);
+    const auto roster = w.rosterPlayers();
+    std::vector<mem::Address> list(roster.begin(), roster.end());
+    list.push_back(observed);
+    list.push_back(broken);
+    w.setRosterList(list);
+    mem::Target target(w.fake, std::string(eft::kProcessName),
+                       {std::string(eft::kGameAssembly), std::string(eft::kUnityPlayer)});
+    const auto out = runToString(target);
+    INFO(out);
+    CHECK(has(out, "FAIL only 3 of 4 players built (client ×1, local ×1, observed ×1)"));
+    CHECK(has(out, "(ObservedPlayerView): ObservedPlayerView.ObservedPlayerController is null"));
+    CHECK(has(out, "observed ai side 4 voice BossKilla alive"));
+}
+
 TEST_CASE("diagnose without a raid stops after discovery") {
     FakeWorld w;
     w.newWorld(u"hideout", 1);

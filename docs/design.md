@@ -111,8 +111,15 @@ locking.
 - Reads the registered-player list.
 - Builds new players: at most 4 attempts per tick; a failing player is retried freely 5 times, then
   every 2 s.
-- Only objects whose class derives from `EFT.Player` are tracked. That's every player in an offline
-  raid. The online-only `ObservedPlayerView` isn't supported.
+- Classifies each entry the way the reference does (`players/PlayerKinds`): the world's main player is
+  **local**; class `ClientPlayer`/`LocalPlayer` (or anything deriving from `EFT.Player`) is **client**,
+  a full `Player` simulated on this machine; anything else is **observed**, the network-replicated
+  `ObservedPlayerView` (players and bots simulated elsewhere: online raids, and SPT/co-op setups where
+  the server runs the bots). Each kind resolves its own addresses for rotation, corpse, body
+  (skeleton) and inventory controller; everything after the build is shared.
+- Observed players carry their own AI flag, side and voice preset (the voice names bot roles and
+  bosses). Client players other than ours are always AI.
+- A failed build records the step that failed; it's logged after 5 failures and listed by `--diagnose`.
 - Refreshes rotation (every tick) and the corpse pointer (every 100 ms; non-null means dead, and death
   is permanent).
 - Players missing from the list for ≥ 3 ticks and ≥ 2 s become "absent".

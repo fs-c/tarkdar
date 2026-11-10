@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace radar::eft {
@@ -11,15 +12,35 @@ namespace radar::eft {
 // EPlayerSide flags, as stored in Profile.Info.Side.
 enum class Side : std::int32_t { Unknown = 0, Usec = 1, Bear = 2, Savage = 4 };
 
+// Which object layout the player has (see game/eft/players/PlayerKinds.hpp).
+enum class PlayerKind : std::uint8_t {
+    Local,     // our own player (full EFT.Player)
+    Client,    // another full EFT.Player: a bot simulated on this machine
+    Observed,  // ObservedPlayerView: a network replica of a player or bot simulated elsewhere
+};
+
+// "local", "client", "observed" (also the protocol's names).
+[[nodiscard]] constexpr const char* kindName(PlayerKind k) noexcept {
+    switch (k) {
+    case PlayerKind::Local: return "local";
+    case PlayerKind::Client: return "client";
+    case PlayerKind::Observed: return "observed";
+    }
+    return "client";
+}
+
 struct PlayerState {
     std::uint32_t id = 0;  // small, stable within a raid, never reused in a raid
     bool local = false;
-    // Every non-local full EFT.Player is treated as AI (offline raids have no other humans).
+    PlayerKind kind = PlayerKind::Client;
+    // Client players are always AI; observed players carry their own flag.
     bool ai = false;
     Side side = Side::Unknown;
     bool dead = false;
     // No longer in the registered-player list (extracted, despawned) but not dead.
     bool absent = false;
+    // Observed players: the voice preset (bot roles and bosses have their own); empty otherwise.
+    std::string voice{};
 
     // World position (Unity metres: x east, y up, z north); nullopt until first resolved.
     std::optional<math::Vec3> position;

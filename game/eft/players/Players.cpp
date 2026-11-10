@@ -46,30 +46,6 @@ void Players::registerTasks(sched::TaskRunner& live, sched::TaskRunner& backgrou
              [this] { positionsTick(Clock::now()); });
 }
 
-std::optional<Players::Entry> Players::build(Address instance, Address localPlayer) const {
-    if (!game_.managed.isInstanceOf(instance, "EFT.Player")) return std::nullopt;
-
-    // Fresh reads: a just-spawned player's fields may still be zero, and a cached zero would make
-    // every retry fail the same way.
-    constexpr auto fresh = Freshness::Fresh;
-    const Address profile = readPointer(game_, instance + off::Player::Profile, fresh);
-    const Address info = profile ? readPointer(game_, profile + off::Profile::Info, fresh) : 0;
-    const Address body = readPointer(game_, instance + off::Player::_playerBody, fresh);
-    const Address movement = readPointer(game_, instance + off::Player::MovementContext, fresh);
-    std::int32_t side = 0;
-    if (!profile || !info || !body || !movement || !game_.mem.tryRead(info + off::PlayerInfo::Side, side, fresh))
-        return std::nullopt;
-
-    Entry e;
-    e.instance = instance;
-    e.local = instance == localPlayer;
-    e.ai = !e.local;
-    e.side = static_cast<Side>(side);
-    e.rotationField = movement + off::MovementContext::_rotation;
-    e.corpseField = instance + off::Player::Corpse;
-    return e;
-}
-
 void Players::rosterTick(Clock::time_point now) {
     const auto roster = readRoster(game_, session_->start.localGameWorld);
     if (!roster) return;  // keep the previous state; the raid monitor decides whether the raid is over
@@ -89,26 +65,37 @@ void Players::rosterTick(Clock::time_point now) {
         if (failure.attempts > 0 && now - failure.last < (failure.attempts >= kMaxFreeBuildAttempts ? kBuildRetry : kMinBuildSpacing))
             continue;
         ++attempts;
-        if (auto entry = build(instance, roster->localPlayer)) {
-            entry->id = nextId_++;
+        const bool isLocal = instance == roster->localPlayer;
+        if (auto layout = buildPlayerLayout(game_, instance, isLocal)) {
+            Entry entry;
+            entry.id = nextId_++;
+            entry.instance = instance;
+            entry.local = isLocal;
+            entry.layout = std::move(*layout);
             failures_.erase(instance);
-            log::debug("players: +#{} {:#x}{} side {}", entry->id, instance, entry->local ? " (local)" : "",
-                       static_cast<int>(entry->side));
-            entries_.emplace(instance, std::move(*entry));
+            log::debug("players: +#{} {:#x} {} ({}) side {} ai {}{}", entry.id, instance, kindName(entry.layout.kind),
+                       entry.layout.className, static_cast<int>(entry.layout.side), entry.layout.ai,
+                       entry.layout.voice.empty() ? "" : " voice " + entry.layout.voice);
+            entries_.emplace(instance, std::move(entry));
         } else {
+            failure.error = std::move(layout.error());
+            failure.className = game_.managed.classNameOf(instance);
             if (++failure.attempts == kMaxFreeBuildAttempts)
-                log::debug("players: {:#x} ({}) failed to build {} times, backing off", instance,
-                           game_.managed.classNameOf(instance), failure.attempts);
+                log::info("players: {:#x} ({}) failed to build {} times, backing off: {}", instance,
+                          failure.className, failure.attempts, failure.error);
             failure.last = now;
         }
     }
     if (!list.empty()) buildCursor_ = (buildCursor_ + std::max<std::size_t>(1, inspected)) % list.size();
     std::erase_if(failures_, [&](const auto& kv) { return !registered_.contains(kv.first); });
 
-    // Local flag follows GameWorld.MainPlayer (it can change, e.g. after death).
+    // Local flag follows GameWorld.MainPlayer (it can change, e.g. after death). Full Players other
+    // than ours are local bots; observed players keep the flag they were built with.
     for (auto& [instance, e] : entries_) {
         e.local = instance == roster->localPlayer;
-        e.ai = !e.local;
+        if (e.layout.kind == PlayerKind::Observed) continue;
+        e.layout.kind = e.local ? PlayerKind::Local : PlayerKind::Client;
+        e.layout.ai = !e.local;
     }
 
     // Players that left the list: mark absent after a few misses (dead players stay dead).
@@ -133,15 +120,23 @@ void Players::rosterTick(Clock::time_point now) {
 void Players::publishRefs() {
     std::vector<Ref> refs;
     refs.reserve(entries_.size());
-    for (const auto& [instance, e] : entries_) refs.push_back({e.id, instance, e.dead});
+    for (const auto& [instance, e] : entries_) refs.push_back({e.id, e.layout.inventoryControllerField, e.dead});
     std::sort(refs.begin(), refs.end(), [](const Ref& a, const Ref& b) { return a.id < b.id; });
     if (refs == lastRefs_) return;
     lastRefs_ = refs;
     refs_.publish(std::move(refs));
 }
 
-std::vector<ItemNode> Players::readEquipment(Address player) const {
-    const Address controller = readPointer(game_, player + off::Player::_inventoryController);
+std::vector<Players::BuildFailureInfo> Players::buildFailures() const {
+    std::vector<BuildFailureInfo> out;
+    for (const auto& [instance, f] : failures_)
+        if (f.attempts > 0) out.push_back({instance, f.className, f.error, f.attempts});
+    std::sort(out.begin(), out.end(), [](const auto& a, const auto& b) { return a.instance < b.instance; });
+    return out;
+}
+
+std::vector<ItemNode> Players::readEquipment(Address inventoryControllerField) const {
+    const Address controller = readPointer(game_, inventoryControllerField);
     const Address inventory = controller ? readPointer(game_, controller + off::InventoryController::Inventory) : 0;
     const Address equipment = inventory ? readPointer(game_, inventory + off::Inventory::Equipment) : 0;
     if (!equipment) return {};
@@ -170,7 +165,7 @@ void Players::equipmentTick(Clock::time_point now) {
     bool changed = false;
     for (std::size_t i = 0; i < std::min(kEquipmentPerTick, due.size()); ++i) {
         EquipmentState& state = equipment_[due[i]->id];
-        auto slots = readEquipment(due[i]->instance);
+        auto slots = readEquipment(due[i]->inventoryControllerField);
         state.lastRead = now;
         state.read = true;
         if (slots != state.slots) {
@@ -208,9 +203,9 @@ void Players::refresh(Clock::time_point now) {
 
     mem::ReadBatch batch(game_.mem);
     for (auto& p : pending) {
-        p.rotationHandle = batch.add(p.entry->rotationField, p.rotation);
+        p.rotationHandle = batch.add(p.entry->layout.rotationField, p.rotation);
         if (now >= p.entry->nextCorpseCheck) {
-            p.corpseHandle = batch.add(p.entry->corpseField, p.corpse);
+            p.corpseHandle = batch.add(p.entry->layout.corpseField, p.corpse);
             p.entry->nextCorpseCheck = now + kCorpseInterval;
         }
     }
@@ -234,7 +229,7 @@ void Players::positionsTick(Clock::time_point now) {
     for (auto& [instance, e] : entries_) {
         if (e.dead || e.absent) continue;
         if (!e.bones && now >= e.nextBoneResolve) {
-            e.bones = resolvePositionBones(game_, instance);
+            e.bones = resolvePositionBones(game_, e.layout.bodyField);
             if (!e.bones) e.nextBoneResolve = now + kBoneRetry;
         }
         if (e.bones) tracked.push_back(&e);
@@ -273,10 +268,12 @@ void Players::publish() {
         snap.players.push_back(PlayerState{
             .id = e.id,
             .local = e.local,
-            .ai = e.ai,
-            .side = e.side,
+            .kind = e.layout.kind,
+            .ai = e.layout.ai,
+            .side = e.layout.side,
             .dead = e.dead,
             .absent = e.absent,
+            .voice = e.layout.voice,
             .position = e.position,
             .yaw = e.yaw,
             .pitch = e.pitch,

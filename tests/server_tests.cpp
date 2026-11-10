@@ -50,13 +50,17 @@ TEST_CASE("protocol encoding") {
     eft::PlayersSnapshot snap;
     snap.raidId = 3;
     snap.revision = 9;
-    snap.players.push_back({.id = 1, .local = true, .side = eft::Side::Usec, .position = math::Vec3{1.234f, 2, -3.456f},
-                            .yaw = 90.0f});
-    snap.players.push_back({.id = 2, .ai = true, .side = eft::Side::Savage, .dead = true, .position = std::nullopt});
+    snap.players.push_back({.id = 1, .local = true, .kind = eft::PlayerKind::Local, .side = eft::Side::Usec,
+                            .voice = {}, .position = math::Vec3{1.234f, 2, -3.456f}, .yaw = 90.0f});
+    snap.players.push_back({.id = 2, .kind = eft::PlayerKind::Observed, .ai = true, .side = eft::Side::Savage,
+                            .dead = true, .voice = "BossKilla", .position = std::nullopt});
     const auto p = server::encodePlayers(snap);
     CHECK(contains(p, R"("pos":[1.23,2,-3.46])"));
     CHECK(contains(p, R"("pos":null)"));
     CHECK(contains(p, R"("side":"savage")"));
+    CHECK(contains(p, R"("kind":"local")"));
+    CHECK(contains(p, R"("kind":"observed")"));
+    CHECK(contains(p, R"("voice":"BossKilla")"));
     CHECK(contains(p, R"("rev":9)"));
 
     eft::LootSnapshot loot;

@@ -24,4 +24,10 @@ inline constexpr std::string_view kLootClassItem = "LootItem";
 // Items that can hold other items (slots and/or grids): weapons, mods, armour, rigs, containers.
 inline constexpr std::string_view kCompoundItemClass = "CompoundItem";
 
+// Player classes in the registered-player list (see game/eft/players/PlayerKinds.hpp). Entries whose
+// class is one of these (or derives from EFT.Player) have the full Player layout; anything else is
+// read as a networked ObservedPlayerView.
+inline constexpr std::array kClientPlayerClasses = {std::string_view("ClientPlayer"), std::string_view("LocalPlayer")};
+inline constexpr std::string_view kPlayerBaseClass = "EFT.Player";
+
 }  // namespace radar::eft

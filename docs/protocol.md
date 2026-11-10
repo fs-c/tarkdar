@@ -131,7 +131,7 @@ few seconds; the message is sent when something changed.
 ### Item nodes
 `{ "tpl": template id, "slot": slot id (if in a slot), "count": stack size (if > 1), "items": [child
 nodes] (if any) }`. Children are slot attachments (weapon mods, magazine cartridges, armour plates),
-plus grid contents (backpack, rig, container) once the grid offsets are known. Names and prices come
+plus grid contents (backpack, rig, container), slot items first. Names and prices come
 from item data, keyed by `tpl`.
 
 ## Raid recordings

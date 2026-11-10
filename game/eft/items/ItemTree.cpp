@@ -46,13 +46,13 @@ void ItemTreeReader::readChildren(Address item, int depth, std::vector<ItemNode>
     if (!game_.managed.isInstanceOf(item, kCompoundItemClass)) return;
     readSlotArray(readPointer(game_, item + off::LootItemMod::Slots), depth, out);
 
-    if (!off::CompoundItem::Grids || !off::StashGrid::ItemCollection || !off::ItemCollection::Items) return;
+    if (!off::CompoundItem::Grids || !off::Grid::ItemCollection || !off::GridItemCollection::ItemsList) return;
     const auto grids = game_.managed.readArray<Address>(readPointer(game_, item + *off::CompoundItem::Grids), 32);
     if (!grids) return;
     for (Address grid : *grids) {
-        const Address collection = readPointer(game_, grid + *off::StashGrid::ItemCollection);
+        const Address collection = readPointer(game_, grid + *off::Grid::ItemCollection);
         const auto items = collection ? game_.managed.readList<Address>(
-                                            readPointer(game_, collection + *off::ItemCollection::Items),
+                                            readPointer(game_, collection + *off::GridItemCollection::ItemsList),
                                             limits_.maxGridItems)
                                       : std::nullopt;
         if (!items) continue;

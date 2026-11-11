@@ -2,7 +2,8 @@ import { decodePack } from "./container";
 import { bytesOf, encodePack } from "./container.test";
 import { MapData, sceneGroupName, worldBox, type ChunkMeta, type DatasetIndex } from "./dataset";
 import { categoryCounts, defaultFilter, filterReport, groupCounts, summarize, visibleSlots } from "./filter";
-import { groupRuns, srgbBytesToLinear } from "./instances";
+import { desaturate, GAIN, LIFT, liftColor, srgbBytesToLinear } from "./color";
+import { groupRuns } from "./instances";
 import { describeSlot, selectionReport } from "./picker";
 
 const CATEGORIES = ["structure", "terrain", "foliage", "water", "glass", "shadow", "decal", "background"];
@@ -175,7 +176,16 @@ describe("picker report", () => {
       partTris: 1,
     });
     const report = JSON.parse(selectionReport([s], "test", "explore"));
-    expect(report.selection[0]).toMatchObject({ mesh: "wall", category: "decal", path: "root/b", triangles: 2 });
+    expect(report.selection[0]).toMatchObject({ mesh: "wall", category: "decal", path: "root/b", triangles: 2, point: null });
+    expect(report.camera).toBeNull();
+  });
+
+  it("reports the clicked point in viewer and game coordinates, and the camera", () => {
+    const s = describeSlot(data, 0, null, [12.345, 1.5, -40.004]);
+    const report = JSON.parse(selectionReport([s], "test", "overview", { position: [1, 2, 3.14159], target: [0, 0, 0] }));
+    expect(report.selection[0].point).toEqual([12.35, 1.5, -40]);
+    expect(report.selection[0].unity).toEqual([12.35, 1.5, 40]);
+    expect(report.camera).toEqual({ position: [1, 2, 3.14], target: [0, 0, 0] });
   });
 
   it("copes with missing material and path", () => {
@@ -229,8 +239,44 @@ describe("groupRuns", () => {
   });
 });
 
-describe("srgbBytesToLinear", () => {
-  it("converts colour channels and keeps alpha", () => {
+describe("colour", () => {
+  it("converts sRGB to linear and keeps alpha", () => {
     expect([...srgbBytesToLinear(new Uint8Array([0, 255, 128, 77, 188, 10, 64, 255]))]).toEqual([0, 255, 55, 77, 128, 1, 13, 255]);
+  });
+
+  const luma = (c: number[]) => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+
+  it("lifts luma into a lighter, narrower range and keeps the hue", () => {
+    for (const input of [[40, 40, 40], [128, 128, 128], [230, 230, 230], [120, 60, 30]]) {
+      const c = [...input];
+      liftColor(c);
+      expect(luma(c)).toBeCloseTo(LIFT + GAIN * luma(input), 1);
+    }
+    const brick = [120, 60, 30];
+    liftColor(brick);
+    expect(brick[0]).toBeGreaterThan(brick[1]);
+    expect(brick[1]).toBeGreaterThan(brick[2]);
+    expect(brick[1] / brick[0]).toBeCloseTo(0.5, 1);
+  });
+
+  it("turns near-black into grey rather than amplifying noise", () => {
+    const c = [3, 0, 0];
+    liftColor(c);
+    expect(Math.max(...c) - Math.min(...c)).toBeLessThan(12);
+    expect(luma(c)).toBeCloseTo(LIFT, 1);
+  });
+
+  it("desaturates towards the colour's own grey", () => {
+    const c = [200, 100, 0];
+    desaturate(c, 0.5);
+    expect(c).toEqual([157, 107, 57]);
+    const grey = [80, 80, 80];
+    desaturate(grey, 1);
+    expect(grey).toEqual([80, 80, 80]);
+  });
+
+  it("optionally lifts while converting", () => {
+    const lifted = srgbBytesToLinear(new Uint8Array([40, 40, 40, 255]), true);
+    expect(lifted[0]).toBeGreaterThan(srgbBytesToLinear(new Uint8Array([40, 40, 40, 255]))[0]);
   });
 });

@@ -64,8 +64,9 @@ test-harness:
 	cd harness && node --test
 
 # --- measurement harness (needs `make dev` running; see harness/README.md) ---
-# The quality bar: explore restricted to these categories.
-REF_CATS := structure,terrain,water,glass
+# The quality bar: explore restricted to these categories. Captures use the
+# category colours (color=0): geometry is compared, not colouring.
+REF_CATS := structure,terrain,water,glass&color=0
 DATASET ?= customs
 MAP = $(firstword $(subst -, ,$(DATASET)))
 

@@ -62,6 +62,14 @@ export interface ChunkMeta {
   error: number;
   cell: string | null;
   meshNames: string[];
+  /** Colour images draped over meshes (terrain), by mesh index. */
+  meshTextures?: Record<string, MeshTexture>;
+}
+
+export interface MeshTexture {
+  file: string;
+  /** Local XZ rectangle [x0, z0, size x, size z]: u = (x - x0) / size x, v = (z - z0) / size z. */
+  rect: [number, number, number, number];
 }
 
 export const DATASET_FORMAT = 2;
@@ -113,6 +121,7 @@ function typed<T extends NumericArray>(pack: Pack, name: string, ctor: { new (..
 
 export class MapData {
   readonly meshNames: string[];
+  readonly meshTextures: Map<number, MeshTexture>;
   readonly meshCount: number;
   readonly meshVertexStart: Uint32Array;
   readonly meshVertexCount: Uint32Array;
@@ -166,6 +175,7 @@ export class MapData {
     if (pack.meta.kind !== "instanced") throw new Error(`unsupported chunk kind "${pack.meta.kind}"`);
     this.meshNames = pack.meta.meshNames;
     this.meshCount = this.meshNames.length;
+    this.meshTextures = new Map(Object.entries(pack.meta.meshTextures ?? {}).map(([mesh, t]) => [Number(mesh), t]));
     this.meshVertexStart = typed(pack, "mesh_vertex_start", Uint32Array);
     this.meshVertexCount = typed(pack, "mesh_vertex_count", Uint32Array);
     this.meshIndexStart = typed(pack, "mesh_index_start", Uint32Array);

@@ -64,12 +64,22 @@ function showHeader(index: DatasetIndex): void {
 }
 
 function start(index: DatasetIndex, data: MapData): VisibleStats {
-  const stage = new Stage($("app"), index.categories);
-  const instances = new InstanceRenderer(stage, data);
+  const stage = new Stage($("app"), index.categories, index.build?.cells !== undefined);
+  const terrain = data.categoryId("terrain");
+  let low = Infinity;
+  let high = -Infinity;
+  for (let s = 0; s < data.slotCount; s++) {
+    if (data.slotCategory[s] !== terrain) continue;
+    const b = data.slotInstance[s] * 6;
+    low = Math.min(low, data.instBox[b + 1]);
+    high = Math.max(high, data.instBox[b + 4]);
+  }
+  if (low < high) stage.setTerrainHeights(low, high);
+  const instances = new InstanceRenderer(stage, data, DATA_BASE);
   const filter: FilterState = defaultFilter(data, MODE, URL_STATE.categories);
   const picker = new Picker(stage, data, $("pick-list"), $("pick-count"), () => loadSources(DATA_BASE, index));
   let visible: VisibleStats = { instances: 0, triangles: 0, meshes: 0 };
-  let colored = false;
+  let colored = URL_STATE.colored;
   let timer: number | undefined;
 
   const rebuild = () => {
@@ -89,6 +99,13 @@ function start(index: DatasetIndex, data: MapData): VisibleStats {
   const gridCell = stage.makeGrid(index.focusBounds);
   $("grid-scale").textContent = `grid ${Math.round(gridCell)} m`;
   stage.frame(index.focusBounds);
+  if (URL_STATE.camera) {
+    const [x, y, z, tx, ty, tz] = URL_STATE.camera;
+    stage.camera.position.set(x, y, z);
+    stage.controls.target.set(tx, ty, tz);
+    stage.controls.update();
+    stage.updateNear();
+  }
 
   // --- top bar -------------------------------------------------------------
   const toggle = (id: string, initial: boolean, apply: (on: boolean) => void) => {
@@ -111,17 +128,17 @@ function start(index: DatasetIndex, data: MapData): VisibleStats {
     const foliage = stage.group("foliage");
     if (foliage) foliage.visible = on;
   });
-  const flipColor = toggle("btn-color", false, (on) => {
+  const flipColor = toggle("btn-color", colored, (on) => {
     colored = on;
     rebuild();
   });
-  const flipPick = toggle("btn-pick", MODE !== "overview", (on) => {
+  const flipPick = toggle("btn-pick", true, (on) => {
     picker.enabled = on;
     $("picker").hidden = !on;
     if (!on) picker.clear();
   });
-  picker.enabled = MODE !== "overview";
-  $("picker").hidden = !picker.enabled;
+  picker.enabled = true;
+  $("picker").hidden = false;
   $("btn-reset").addEventListener("click", () => stage.lookFrom("home"));
   $("btn-top").addEventListener("click", () => stage.lookFrom("top"));
 

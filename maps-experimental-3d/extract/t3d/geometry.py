@@ -162,3 +162,35 @@ def terrain_mesh(heights: np.ndarray, scale, step: int):
     v11 = v01 + 1
     indices = np.stack([v00, v10, v01, v10, v11, v01], axis=-1).reshape(-1).astype(np.uint32)
     return positions, normals, indices, np.array([[0, len(indices)]], dtype=np.uint32)
+
+
+def terrain_colors(splat_maps: list, layer_colors: list) -> np.ndarray | None:
+    """Ground colour image of a terrain: its layers' mean colours blended by
+    the splat (alpha) maps.
+
+    splat_maps: (H, W, 4) uint8 arrays; channel c of map k is the weight of
+    layer 4k + c. layer_colors: one (r, g, b) per layer (sRGB, 0..255) or None.
+    Returns (H, W, 3) uint8, row 0 at the terrain's local z = 0, or None when
+    there is nothing to blend.
+    """
+    total = None
+    weight = None
+    for k, splat in enumerate(splat_maps):
+        w = np.asarray(splat, dtype=np.float32)
+        for c in range(w.shape[2]):
+            layer = 4 * k + c
+            if layer >= len(layer_colors) or layer_colors[layer] is None:
+                continue
+            color = np.asarray(layer_colors[layer][:3], dtype=np.float32)
+            if total is None:
+                total = np.zeros((*w.shape[:2], 3), dtype=np.float32)
+                weight = np.zeros(w.shape[:2], dtype=np.float32)
+            total += w[..., c, None] * color
+            weight += w[..., c]
+    if total is None or not (weight > 0).any():
+        return None
+    covered = weight > 0
+    out = np.empty_like(total)
+    out[covered] = total[covered] / weight[covered, None]
+    out[~covered] = total[covered].sum(axis=0) / weight[covered].sum()     # uncovered: the average ground
+    return np.clip(np.rint(out), 0, 255).astype(np.uint8)

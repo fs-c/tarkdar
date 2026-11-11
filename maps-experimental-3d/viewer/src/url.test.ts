@@ -1,6 +1,6 @@
 import { buildUrl, datasetFor, hasInspect, parseUrl } from "./url";
 
-const DEFAULTS = { categories: null, paused: false };
+const DEFAULTS = { categories: null, colored: true, camera: null, paused: false };
 
 describe("parseUrl", () => {
   it("defaults to the Customs overview", () => {
@@ -36,6 +36,17 @@ describe("parseUrl", () => {
       paused: true,
     });
     expect(parseUrl("?cats=").categories).toBeNull();
+  });
+
+  it("can start without material colours", () => {
+    expect(parseUrl("?color=0").colored).toBe(false);
+    expect(parseUrl("?color=1").colored).toBe(true);
+  });
+
+  it("reads a camera pose", () => {
+    expect(parseUrl("?cam=1,2,3,4,5,-6.5").camera).toEqual([1, 2, 3, 4, 5, -6.5]);
+    expect(parseUrl("?cam=1,2,3").camera).toBeNull();
+    expect(parseUrl("?cam=1,2,3,4,5,x").camera).toBeNull();
   });
 
   it("ignores unknown modes", () => {

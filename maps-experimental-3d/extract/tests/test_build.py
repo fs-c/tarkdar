@@ -146,6 +146,38 @@ class SyntheticBuildTest(unittest.TestCase):
         self.assertEqual(categories(ds), [["terrain"]])
         np.testing.assert_array_equal(ds.instances[0].matrix[:3, 3], [5, 0, -7])
 
+    def test_terrain_ground_image(self):
+        splat = np.zeros((4, 4, 4), dtype=np.uint8)
+        splat[..., 1] = 255
+        terrain = {"enabled": True, "active": True, "name": "Slice", "goPath": "terrain/Slice",
+                   "scale": [2.0, 100.0, 3.0], "matrix": np.eye(4).reshape(-1).tolist(),
+                   "splatMaps": [{"array": "terrain0_splat0"}],
+                   "layers": [{"diffuse": 0}, {"diffuse": 0}]}    # texture 0: mean (100, 150, 200)
+        write_cache(self.root, [], meshes=[], terrains=[terrain],
+                    terrain_arrays={"terrain0_heights": np.zeros((5, 5), dtype=np.int16), "terrain0_splat0": splat})
+        ds = assemble(self.root)
+        (geom,) = ds.geoms
+        self.assertEqual(geom.texture.shape, (4, 4, 3))
+        np.testing.assert_array_equal(geom.texture[0, 0], [100, 150, 200])
+        # the image spans the heightmap: 4 intervals of 2 m in x and 3 m in z (negative in three.js space)
+        self.assertEqual(geom.texture_rect, (0.0, 0.0, 8.0, -12.0))
+        np.testing.assert_allclose(geom.positions[:, 0].max(), 8.0)
+        np.testing.assert_allclose(geom.positions[:, 2].min(), -12.0)
+
+        out = self.root / "out"
+        dataset.write(ds, out)
+        _, chunks, _ = dataset.read(out)
+        self.assertEqual(chunks[0][0]["meshTextures"], {"0": {"file": "texture-0.png", "rect": [0.0, 0.0, 8.0, -12.0]}})
+        data = (out / "texture-0.png").read_bytes()
+        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
+        import struct
+        import zlib
+        self.assertEqual(struct.unpack(">II", data[16:24]), (4, 4))
+        idat = data[data.index(b"IDAT") + 4: data.index(b"IEND") - 8]
+        rows = np.frombuffer(zlib.decompress(idat), dtype=np.uint8).reshape(4, 13)
+        np.testing.assert_array_equal(rows[:, 0], 0)                       # filter type none
+        np.testing.assert_array_equal(rows[0, 1:4], [100, 150, 200])
+
     def test_unknown_map(self):
         write_cache(self.root, [], meshes=[])
         with self.assertRaises(SystemExit):

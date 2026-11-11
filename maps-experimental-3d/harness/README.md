@@ -17,8 +17,8 @@ or by hand, from `harness/`:
 
 ```bash
 node capture.mjs --views views/customs.json --out runs/customs-reference \
-     --query "?mode=explore&cats=structure,terrain,water,glass"
-node capture.mjs --views views/customs.json --out runs/customs --query "?cats=structure,terrain,water,glass"
+     --query "?mode=explore&cats=structure,terrain,water,glass&color=0"
+node capture.mjs --views views/customs.json --out runs/customs --query "?cats=structure,terrain,water,glass&color=0"
 node compare.mjs runs/customs-reference runs/customs --diff runs/customs/diff
 ```
 
@@ -26,7 +26,8 @@ node compare.mjs runs/customs-reference runs/customs --diff runs/customs/diff
 
 - **Reference** = the explore dataset (full LOD geometry, nothing dropped)
   restricted to the categories structure + terrain + water + glass: the
-  quality bar. `?cats=` is the viewer's category filter.
+  quality bar. `?cats=` is the viewer's category filter; `color=0` selects the
+  category colours so that geometry is compared, not colouring.
 - **Views** (`views/<map>.json`, committed): `top`, `home`, and for the eight
   busiest scene groups `area:<group>` (45° down) and `low:<group>` (12°,
   close). They are generated once from the explore dataset by

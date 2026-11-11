@@ -98,6 +98,29 @@ class TerrainTest(unittest.TestCase):
         self.assertIsNone(geometry.terrain_mesh(np.zeros((1, 1), dtype=np.int16), [1, 1, 1], 1))
 
 
+class TerrainColorTest(unittest.TestCase):
+    def test_blend_by_splat_weights(self):
+        a = np.zeros((2, 2, 4), dtype=np.uint8)
+        b = np.zeros((2, 2, 4), dtype=np.uint8)
+        a[0, 0, 0] = 255                 # layer 0 only
+        a[0, 1, 0] = a[0, 1, 1] = 100    # layers 0 and 1, equal weight
+        b[1, 0, 1] = 40                  # layer 5 only (second map, channel 1)
+        colors = [[200, 0, 0, 255], [0, 100, 0], None, None, None, [10, 20, 30]]
+        out = geometry.terrain_colors([a, b], colors)
+        self.assertEqual(out.shape, (2, 2, 3))
+        np.testing.assert_array_equal(out[0, 0], [200, 0, 0])
+        np.testing.assert_array_equal(out[0, 1], [100, 50, 0])
+        np.testing.assert_array_equal(out[1, 0], [10, 20, 30])
+        # uncovered pixels take the weighted average ground: (255*red + 100*red + 100*green + 40*c5) / 495
+        np.testing.assert_array_equal(out[1, 1], [144, 22, 2])
+
+    def test_nothing_to_blend(self):
+        empty = np.zeros((2, 2, 4), dtype=np.uint8)
+        self.assertIsNone(geometry.terrain_colors([], []))
+        self.assertIsNone(geometry.terrain_colors([empty], [[1, 2, 3]]))
+        self.assertIsNone(geometry.terrain_colors([empty + 9], [None]))
+
+
 class NormalsTest(unittest.TestCase):
     def test_compute_normals(self):
         p = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float32)

@@ -71,6 +71,16 @@ def material_color(mat: dict, textures: list) -> tuple:
     return (r, g, b, 255)
 
 
+def _layer_color(layer: dict, textures: list):
+    """Mean colour of a terrain layer's diffuse texture, or None."""
+    ref = layer.get("diffuse")
+    if isinstance(ref, int):
+        ref = textures[ref] if 0 <= ref < len(textures) else None
+    if isinstance(ref, dict):
+        ref = ref.get("mean")
+    return ref if isinstance(ref, (list, tuple)) and len(ref) >= 3 else None
+
+
 class Tables:
     """Dataset-wide material and hierarchy-path tables, deduplicated."""
 
@@ -112,7 +122,7 @@ def collect(root: Path, scene_keys: list[str], target_lod: int, skip_names: bool
     """Pass 1: apply per-renderer filters. Returns ordered events + needed mesh hashes.
 
     Events: ("mesh", scene, hash, name, unity matrix, material ids, path id)
-          | ("terrain", scene, name, geom, unity matrix, path id)
+          | ("terrain", scene, name, geom, unity matrix, path id, colour image, its rect)
     """
     events = []
     needed = set()
@@ -181,7 +191,12 @@ def collect(root: Path, scene_keys: list[str], target_lod: int, skip_names: bool
                 continue
             m = np.array(t["matrix"], dtype=np.float64).reshape(4, 4)
             path = tables.path(t["goPath"]) if t.get("goPath") else -1
-            events.append(("terrain", scene_index, f"Terrain_{t['name'] or 'slice'}", built, m, path))
+            # Ground colour from the splat maps; it covers the whole heightmap.
+            colors = geometry.terrain_colors([a[sm["array"]] for sm in t.get("splatMaps", [])],
+                                             [_layer_color(layer, meta["textures"]) for layer in t.get("layers", [])])
+            size = (np.array(heights.shape[::-1]) - 1) * np.array([t["scale"][0], t["scale"][2]], dtype=np.float64)
+            rect = (0.0, 0.0, float(size[0]), -float(size[1]))     # local z runs negative in three.js space
+            events.append(("terrain", scene_index, f"Terrain_{t['name'] or 'slice'}", built, m, path, colors, rect))
         del meta, a
     return events, needed, skipped, scenes
 
@@ -277,8 +292,10 @@ def assemble(root: Path, map_name: str, name: str, profile: str, *, lod: int, mi
             slots = _slots(tables, mesh_name, len(geoms[gi].parts), mats, dominant)
             instances.append(dataset.Instance(gi, m, scene_index, slots, path))
         else:
-            _, scene_index, tname, geom, unity_m, path = ev
+            _, scene_index, tname, geom, unity_m, path, colors, rect = ev
             gi = register(tname, "terrain", geom)
+            if colors is not None:
+                geoms[gi].texture, geoms[gi].texture_rect = colors, rect
             instances.append(dataset.Instance(gi, geometry.to_three_matrix(unity_m), scene_index,
                                               [tables.slot(tname, "terrain", -1)], path))
     if small:

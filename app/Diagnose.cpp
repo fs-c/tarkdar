@@ -206,6 +206,22 @@ void checkPlayers(Report& r, const std::shared_ptr<const eft::RaidSession>& sess
                                       : std::string("none"),
                            p.yaw, p.pitch));
     }
+    // Identity of every player, for checking role/voice/group against what's actually in the raid
+    // (the observed-player role source is unverified).
+    int observedAi = 0, observedAiWithRole = 0;
+    for (const auto& p : snap->players) {
+        if (p.kind == eft::PlayerKind::Observed && p.ai) {
+            ++observedAi;
+            observedAiWithRole += p.role ? 1 : 0;
+        }
+        r.info(std::format("identity #{} {}{} side {} role {} voice '{}' nick '{}' group '{}'", p.id,
+                           eft::kindName(p.kind), p.ai ? " ai" : "", static_cast<int>(p.side),
+                           p.role ? std::to_string(*p.role) : "-", p.voice, p.nickname, p.groupId));
+    }
+    if (observedAi > 0)
+        r.info(std::format("{} of {} observed AI players have a role (ObservedPlayerView.AIData → "
+                           "StubAIData/AIData.BotHostilityData → BotHostilityData._role)",
+                           observedAiWithRole, observedAi));
     if (!snap->local()) r.fail("no local player in the roster", "ClientLocalGameWorld.MainPlayer");
 
     const auto eq = world.equipment.get();

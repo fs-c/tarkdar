@@ -34,8 +34,12 @@ export interface Player {
   side: Side;
   /** Observed players: voice preset (names bot roles and bosses). */
   voice?: string;
-  /** Full players (ours, bots simulated on this machine): the game's role (WildSpawnType), see roles.ts. */
+  /** The game's role (WildSpawnType), see roles.ts; only meaningful for AI. Observed players' may
+   *  appear a moment after the player does. */
   role?: number;
+  nickname?: string;
+  /** Players spawned together share one (a boss and its guards). */
+  groupId?: string;
   dead: boolean;
   absent: boolean;
   pos: WorldPos | null;

@@ -130,6 +130,22 @@ public:
         return addSkeleton(fp, fp.instance + off::ObservedPlayerView::PlayerBody, position);
     }
 
+    // Nickname and group id of an observed player.
+    void setObservedIdentity(Address instance, std::u16string_view nickname, std::u16string_view groupId) {
+        heap.put<Address>(instance + off::ObservedPlayerView::NickName, heap.managedString(nickname));
+        heap.put<Address>(instance + off::ObservedPlayerView::GroupId, heap.managedString(groupId));
+    }
+
+    // An observed player's AI data (class `aiClass`: StubAIData or AIData) → BotHostilityData._role.
+    void setObservedRole(Address instance, int role, std::string_view aiClass = "StubAIData") {
+        const bool stub = aiClass == "StubAIData";
+        const Address aiData = heap.object(heap.klass(aiClass), 0x200);
+        const Address hostility = heap.alloc(0x80);
+        heap.put<Address>(aiData + (stub ? off::StubAIData::BotHostilityData : off::AIData::BotHostilityData), hostility);
+        heap.put<std::int32_t>(hostility + off::BotHostilityData::Role, role);
+        heap.put<Address>(instance + off::ObservedPlayerView::AIData, aiData);
+    }
+
     Address addSkeleton(FakePlayer fp, Address bodyField, std::optional<math::Vec3> position) {
         const math::Vec3 pos = position.value_or(math::Vec3{100.0f + 3.0f * float(fakePlayers.size()), 5, 200});
         // Skeleton: body → root joint → List<Transform> (managed) → native transforms in one hierarchy.

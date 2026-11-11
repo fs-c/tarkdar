@@ -57,7 +57,8 @@ TEST_CASE("protocol encoding") {
     snap.players.push_back({.id = 1, .local = true, .kind = eft::PlayerKind::Local, .side = eft::Side::Usec,
                             .voice = {}, .position = math::Vec3{1.234f, 2, -3.456f}, .yaw = 90.0f});
     snap.players.push_back({.id = 2, .kind = eft::PlayerKind::Observed, .ai = true, .side = eft::Side::Savage,
-                            .dead = true, .voice = "BossKilla", .position = std::nullopt});
+                            .dead = true, .voice = "BossKilla", .nickname = "Killa",
+                            .groupId = "g1", .position = std::nullopt});
     snap.players.push_back({.id = 3, .kind = eft::PlayerKind::Client, .ai = true, .side = eft::Side::Savage, .role = 6,
                             .position = std::nullopt});
     const auto p = server::encodePlayers(snap);
@@ -68,6 +69,8 @@ TEST_CASE("protocol encoding") {
     CHECK(contains(p, R"("kind":"observed")"));
     CHECK(contains(p, R"("voice":"BossKilla")"));
     CHECK(contains(p, R"("role":6)"));
+    CHECK(contains(p, R"("nickname":"Killa")"));
+    CHECK(contains(p, R"("groupId":"g1")"));
     // Only the player that has a role gets the field.
     std::size_t roles = 0;
     for (auto at = p.find(R"("role":)"); at != std::string::npos; at = p.find(R"("role":)", at + 1)) ++roles;

@@ -22,7 +22,10 @@ struct PlayerLayout {
     bool ai = false;
     Side side = Side::Unknown;
     std::string voice;  // observed players only: the voice preset, which names bot roles/bosses
-    std::optional<std::int32_t> role;  // full Players only: Profile.Info.Settings.Role (WildSpawnType)
+    // WildSpawnType. Full Players: Profile.Info.Settings.Role. Observed players: see readObservedRole.
+    std::optional<std::int32_t> role;
+    std::string nickname;
+    std::string groupId;
     // Fields read later:
     Address rotationField = 0;             // Vector2 (yaw, pitch) in degrees
     Address corpseField = 0;               // pointer; non-null once the player is dead
@@ -37,5 +40,10 @@ struct PlayerLayout {
 //  - anything else → Observed.
 [[nodiscard]] std::expected<PlayerLayout, std::string> buildPlayerLayout(const Game& game, Address instance,
                                                                        bool isLocal);
+
+// The role of an observed player: ObservedPlayerView.AIData (StubAIData on observers, AIData if
+// simulated here) → BotHostilityData._role. nullopt while any link is missing (the AI data may be set
+// up after the player is registered) or if the AI data has an unexpected class.
+[[nodiscard]] std::optional<std::int32_t> readObservedRole(const Game& game, Address instance);
 
 }  // namespace radar::eft

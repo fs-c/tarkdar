@@ -41,9 +41,14 @@ struct PlayerState {
     bool absent = false;
     // Observed players: the voice preset (bot roles and bosses have their own); empty otherwise.
     std::string voice{};
-    // Full EFT.Player (local and client bots): Profile.Info.Settings.Role, the raw WildSpawnType value
-    // (names and values are mapped by the frontend). nullopt for observed players, which don't carry it.
+    // The raw WildSpawnType value (names and values are mapped by the frontend); nullopt if unread.
+    // Full EFT.Player (local and client bots): Profile.Info.Settings.Role. Observed players:
+    // AIData → BotHostilityData._role (unverified source; may be read some time after the player
+    // appears). Only meaningful for AI: humans carry a default (our own PMC reads 1, assault).
     std::optional<std::int32_t> role{};
+    // Nickname and group id (players spawned together share one, e.g. a boss and its guards).
+    std::string nickname{};
+    std::string groupId{};
 
     // World position (Unity metres: x east, y up, z north); nullopt until first resolved.
     std::optional<math::Vec3> position;

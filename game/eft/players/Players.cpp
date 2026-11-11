@@ -74,10 +74,11 @@ void Players::rosterTick(Clock::time_point now) {
             entry.local = isLocal;
             entry.layout = std::move(*layout);
             failures_.erase(instance);
-            log::debug("players: +#{} {:#x} {} ({}) side {} ai {}{}{}", entry.id, instance, kindName(entry.layout.kind),
-                       entry.layout.className, static_cast<int>(entry.layout.side), entry.layout.ai,
-                       entry.layout.voice.empty() ? "" : " voice " + entry.layout.voice,
-                       entry.layout.role ? std::format(" role {}", *entry.layout.role) : "");
+            log::debug("players: +#{} {:#x} {} ({}) side {} ai {}{}{} nick '{}' group '{}'", entry.id, instance,
+                       kindName(entry.layout.kind), entry.layout.className, static_cast<int>(entry.layout.side),
+                       entry.layout.ai, entry.layout.voice.empty() ? "" : " voice " + entry.layout.voice,
+                       entry.layout.role ? std::format(" role {}", *entry.layout.role) : "", entry.layout.nickname,
+                       entry.layout.groupId);
             entries_.emplace(instance, std::move(entry));
         } else {
             failure.error = std::move(layout.error());
@@ -90,6 +91,17 @@ void Players::rosterTick(Clock::time_point now) {
     }
     if (!list.empty()) buildCursor_ = (buildCursor_ + std::max<std::size_t>(1, inspected)) % list.size();
     std::erase_if(failures_, [&](const auto& kv) { return !registered_.contains(kv.first); });
+
+    // Observed players whose AI data wasn't set up at build time: try again for a while.
+    for (auto& [instance, e] : entries_) {
+        if (e.layout.kind != PlayerKind::Observed || e.layout.role || e.roleAttempts >= kMaxRoleAttempts ||
+            now < e.nextRoleRead || !registered_.contains(instance))
+            continue;
+        ++e.roleAttempts;
+        e.nextRoleRead = now + kRoleRetry;
+        if ((e.layout.role = readObservedRole(game_, instance)))
+            log::debug("players: #{} role {} (after {} attempts)", e.id, *e.layout.role, e.roleAttempts);
+    }
 
     // Local flag follows GameWorld.MainPlayer (it can change, e.g. after death). Full Players other
     // than ours are local bots; observed players keep the flag they were built with.
@@ -277,6 +289,8 @@ void Players::publish() {
             .absent = e.absent,
             .voice = e.layout.voice,
             .role = e.layout.role,
+            .nickname = e.layout.nickname,
+            .groupId = e.layout.groupId,
             .position = e.position,
             .yaw = e.yaw,
             .pitch = e.pitch,

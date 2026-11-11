@@ -136,6 +136,8 @@ std::string encodePlayers(const eft::PlayersSnapshot& snap) {
         v["ai"] = p.ai;
         if (!p.voice.empty()) v["voice"] = p.voice;
         if (p.role) v["role"] = *p.role;
+        if (!p.nickname.empty()) v["nickname"] = p.nickname;
+        if (!p.groupId.empty()) v["groupId"] = p.groupId;
         v["side"] = sideId(p.side);
         v["dead"] = p.dead;
         v["absent"] = p.absent;

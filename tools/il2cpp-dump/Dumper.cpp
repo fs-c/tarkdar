@@ -7,9 +7,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <format>
 #include <functional>
+#include <limits>
 #include <map>
 #include <set>
 #include <thread>
@@ -396,6 +398,8 @@ std::vector<ClassRecord> Il2CppDumper::readClasses(Address table, std::int32_t t
         byKlass.emplace(c.klass, classes.size());
         const Address byval = ptrAt(raws[i], L::ClassByvalArg + L::TypeData);
         if (byval) byByvalData.emplace(byval, classes.size());
+        c.typeDefinition = byval;
+        c.fieldCount = fromBytes<std::uint16_t>(raws[i].header.data() + L::ClassFieldCount);
         classes.push_back(std::move(c));
         rawOf.push_back(&raws[i]);
     }
@@ -540,10 +544,12 @@ std::vector<ClassRecord> Il2CppDumper::readClasses(Address table, std::int32_t t
             FieldRecord fr;
             fr.name = *fieldNames[f];
             fr.offset = fromBytes<std::int32_t>(rf.bytes.data() + off + L::FieldOffset);
+            fr.metadataIndex = static_cast<std::int32_t>(off / L::FieldSize);
             const Address typePtr = fieldTypePtrs[f];
             if (auto t = types.find(typePtr); t != types.end() && t->second.ok) {
                 fr.isStatic = (t->second.attrs & kFieldAttrStatic) != 0;
                 fr.isLiteral = (t->second.attrs & kFieldAttrLiteral) != 0;
+                fr.typeKind = t->second.kind;
             }
             fr.type = typeName(typePtr, 0);
             const Address owner = fromBytes<Address>(rf.bytes.data() + off + L::FieldParent);
@@ -552,6 +558,263 @@ std::vector<ClassRecord> Il2CppDumper::readClasses(Address table, std::int32_t t
         }
     }
     return classes;
+}
+
+// ---- Literal values (global metadata) -----------------------------------------------------------
+//
+// Constants (enum members, const fields) have no storage: their values live only in the global
+// metadata (global-metadata.dat, loaded into memory by the runtime). It's found through the classes:
+// each class's byval_arg points at its Il2CppTypeDefinition, an array indexed by type index inside
+// the metadata. From there:
+//  1. the stride of that array is the common difference between consecutive classes' pointers;
+//  2. the metadata header is page-aligned below it: sanity 0xFAB11BAF, then (offset, size) pairs whose
+//     typeDefinitions entry (0xA0) must point back at the array;
+//  3. Il2CppTypeDefinition.fieldStart is the int32 that grows by each class's field_count from one
+//     type to the next (found by trying every offset, so the struct layout needn't be known);
+//  4. fieldDefaultValues (0x40) maps global field indices (fieldStart + position) to offsets into
+//     fieldAndParameterDefaultValueData (0x48), where the value is encoded by type.
+
+namespace {
+constexpr std::uint32_t kMetadataSanity = 0xFAB11BAF;
+constexpr std::uint32_t kHeaderFieldDefaultValues = 0x40;
+constexpr std::uint32_t kHeaderDefaultValueData = 0x48;
+constexpr std::uint32_t kHeaderTypeDefinitions = 0xA0;
+constexpr std::uint32_t kHeaderSize = 0x100;
+constexpr std::uint64_t kPage = 0x1000;
+constexpr std::size_t kChunk = 1 << 20;
+constexpr std::uint32_t kMaxSection = 256u << 20;
+
+// Reads [va, va + size) in chunks; false if any byte is missing.
+bool readRange(const MemoryView& mem, Address va, std::vector<std::uint8_t>& out, std::size_t size) {
+    out.assign(size, 0);
+    mem::ReadBatch batch(mem);
+    std::vector<mem::ReadBatch::Handle> handles;
+    for (std::size_t at = 0; at < size; at += kChunk)
+        handles.push_back(batch.addBytes(va + at, out.data() + at, std::min(kChunk, size - at)));
+    batch.execute(Freshness::Fresh);
+    return std::ranges::all_of(handles, [&](auto h) { return batch.complete(h); });
+}
+
+// libil2cpp's compressed integers (utils/MemoryRead.h).
+std::optional<std::uint32_t> readCompressedU32(std::span<const std::uint8_t> b, std::size_t& at) {
+    auto byte = [&]() -> std::optional<std::uint32_t> {
+        if (at >= b.size()) return std::nullopt;
+        return b[at++];
+    };
+    const auto first = byte();
+    if (!first) return std::nullopt;
+    const std::uint32_t r = *first;
+    if ((r & 0x80) == 0) return r;
+    if ((r & 0xC0) == 0x80) {
+        const auto b1 = byte();
+        if (!b1) return std::nullopt;
+        return ((r & ~0x80u) << 8) | *b1;
+    }
+    if ((r & 0xE0) == 0xC0) {
+        const auto b1 = byte(), b2 = byte(), b3 = byte();
+        if (!b1 || !b2 || !b3) return std::nullopt;
+        return ((r & ~0xC0u) << 24) | (*b1 << 16) | (*b2 << 8) | *b3;
+    }
+    if (r == 0xF0) {
+        if (at + 4 > b.size()) return std::nullopt;
+        const auto v = fromBytes<std::uint32_t>(b.data() + at);
+        at += 4;
+        return v;
+    }
+    if (r == 0xFE) return 0xFFFFFFFEu;
+    if (r == 0xFF) return 0xFFFFFFFFu;
+    return std::nullopt;
+}
+
+std::optional<std::int32_t> readCompressedI32(std::span<const std::uint8_t> b, std::size_t& at) {
+    const auto u = readCompressedU32(b, at);
+    if (!u) return std::nullopt;
+    if (*u == 0xFFFFFFFFu) return std::numeric_limits<std::int32_t>::min();
+    const std::uint32_t magnitude = *u >> 1;
+    return (*u & 1) ? -static_cast<std::int32_t>(magnitude) - 1 : static_cast<std::int32_t>(magnitude);
+}
+}  // namespace
+
+std::optional<LiteralValue> decodeConstant(std::span<const std::uint8_t> blob, std::size_t at, std::uint8_t kind,
+                                           std::int32_t version) {
+    auto fixed = [&]<class T>(T) -> std::optional<T> {
+        if (at > blob.size() || blob.size() - at < sizeof(T)) return std::nullopt;
+        return fromBytes<T>(blob.data() + at);
+    };
+    const bool compressed = version >= 29;
+    switch (kind) {
+    case 0x02: if (auto v = fixed(std::uint8_t{})) return LiteralValue{*v != 0}; break;
+    case 0x03: if (auto v = fixed(std::uint16_t{})) return LiteralValue{std::uint64_t{*v}}; break;  // char
+    case 0x04: if (auto v = fixed(std::int8_t{})) return LiteralValue{std::int64_t{*v}}; break;
+    case 0x05: if (auto v = fixed(std::uint8_t{})) return LiteralValue{std::uint64_t{*v}}; break;
+    case 0x06: if (auto v = fixed(std::int16_t{})) return LiteralValue{std::int64_t{*v}}; break;
+    case 0x07: if (auto v = fixed(std::uint16_t{})) return LiteralValue{std::uint64_t{*v}}; break;
+    case 0x08:
+        if (compressed) {
+            if (auto v = readCompressedI32(blob, at)) return LiteralValue{std::int64_t{*v}};
+        } else if (auto v = fixed(std::int32_t{})) return LiteralValue{std::int64_t{*v}};
+        break;
+    case 0x09:
+        if (compressed) {
+            if (auto v = readCompressedU32(blob, at)) return LiteralValue{std::uint64_t{*v}};
+        } else if (auto v = fixed(std::uint32_t{})) return LiteralValue{std::uint64_t{*v}};
+        break;
+    case 0x0A: if (auto v = fixed(std::int64_t{})) return LiteralValue{*v}; break;
+    case 0x0B: if (auto v = fixed(std::uint64_t{})) return LiteralValue{*v}; break;
+    case 0x0C: if (auto v = fixed(float{})) return LiteralValue{double{*v}}; break;
+    case 0x0D: if (auto v = fixed(double{})) return LiteralValue{*v}; break;
+    case 0x0E: {
+        std::optional<std::int32_t> length;
+        if (compressed) length = readCompressedI32(blob, at);
+        else if (auto v = fixed(std::int32_t{})) {
+            length = *v;
+            at += 4;
+        }
+        if (!length || *length < 0 || static_cast<std::size_t>(*length) > blob.size() - std::min(at, blob.size()))
+            return std::nullopt;  // null string or out of range
+        std::string s(reinterpret_cast<const char*>(blob.data() + at), static_cast<std::size_t>(*length));
+        if (!s.empty() && !plausibleName(s)) return std::nullopt;
+        return LiteralValue{std::move(s)};
+    }
+    default: break;
+    }
+    return std::nullopt;
+}
+
+std::optional<MetadataInfo> Il2CppDumper::readLiteralValues(std::vector<ClassRecord>& classes,
+                                                            std::vector<std::string>& notes) const {
+    auto fail = [&](std::string why) -> std::optional<MetadataInfo> {
+        notes.push_back("literal values: " + why);
+        return std::nullopt;
+    };
+
+    // 1. Type-definition array: stride and start.
+    std::vector<const ClassRecord*> defs;
+    for (const auto& c : classes)
+        if (MemoryView::isUserPointer(c.typeDefinition) && c.typeIndex >= 0) defs.push_back(&c);
+    std::sort(defs.begin(), defs.end(), [](auto* a, auto* b) { return a->typeIndex < b->typeIndex; });
+    if (defs.size() < 2) return fail("too few classes with a type definition");
+    std::map<std::uint64_t, std::size_t> strides;
+    for (std::size_t i = 1; i < defs.size(); ++i) {
+        const auto di = static_cast<std::uint64_t>(defs[i]->typeIndex - defs[i - 1]->typeIndex);
+        if (di == 0 || defs[i]->typeDefinition <= defs[i - 1]->typeDefinition) continue;
+        const std::uint64_t delta = defs[i]->typeDefinition - defs[i - 1]->typeDefinition;
+        if (delta % di == 0) ++strides[delta / di];
+    }
+    const auto best = std::max_element(strides.begin(), strides.end(),
+                                       [](const auto& a, const auto& b) { return a.second < b.second; });
+    if (best == strides.end() || best->second * 10 < (defs.size() - 1) * 9 || best->first < 0x20 || best->first > 0x200)
+        return fail("class type definitions aren't one evenly spaced array");
+    const auto stride = static_cast<std::uint32_t>(best->first);
+    const Address first = defs[0]->typeDefinition - static_cast<Address>(defs[0]->typeIndex) * stride;
+
+    // 2. Header: page-aligned at or below the array.
+    std::optional<Address> base;
+    std::array<std::uint8_t, kHeaderSize> header{};
+    std::int32_t version = 0;
+    const std::uint64_t pages = options_.metadataScanLimit / kPage;
+    constexpr std::uint64_t kPagesPerBatch = 4096;
+    for (std::uint64_t done = 0; done < pages && !base; done += kPagesPerBatch) {
+        const std::uint64_t n = std::min(kPagesPerBatch, pages - done);
+        std::vector<std::array<std::uint32_t, 2>> heads(n);
+        std::vector<Address> at(n);
+        mem::ReadBatch batch(mem_);
+        for (std::uint64_t k = 0; k < n; ++k) {
+            const Address top = (first & ~(kPage - 1));
+            if (top < (done + k) * kPage) break;
+            at[k] = top - (done + k) * kPage;
+            batch.add(at[k], heads[k]);
+        }
+        batch.execute(Freshness::Fresh);
+        for (std::uint64_t k = 0; k < n && !base; ++k) {
+            if (!at[k] || heads[k][0] != kMetadataSanity) continue;
+            const auto v = static_cast<std::int32_t>(heads[k][1]);
+            if (v < 24 || v > 40) continue;
+            if (!mem_.readBytes(at[k], std::as_writable_bytes(std::span{header}), Freshness::Fresh)) continue;
+            if (fromBytes<std::uint32_t>(header.data() + kHeaderTypeDefinitions) != first - at[k]) continue;
+            base = at[k];
+            version = v;
+        }
+    }
+    if (!base)
+        return fail(std::format("no metadata header (sanity {:#X}, typeDefinitions at +{:#X}) within {:#X} bytes below the "
+                                "type definitions at {:#X} (stride {:#X})",
+                                kMetadataSanity, kHeaderTypeDefinitions, options_.metadataScanLimit, first, stride));
+
+    // 3. fieldStart: the int32 that advances by field_count from one type to the next.
+    const auto typeCount = static_cast<std::size_t>(defs.back()->typeIndex) + 1;
+    std::vector<std::uint8_t> typeDefs;
+    if (!readRange(mem_, first, typeDefs, typeCount * stride)) return fail("type definitions unreadable");
+    std::vector<std::int32_t> fieldCounts(typeCount, -1);
+    for (const auto* c : defs)
+        if (c->typeDefinition == first + static_cast<Address>(c->typeIndex) * stride) fieldCounts[c->typeIndex] = c->fieldCount;
+    std::optional<std::uint32_t> fieldStartOffset;
+    std::size_t bestHits = 0, pairs = 0, ties = 0;
+    for (std::uint32_t o = 0; o + 4 <= stride; o += 4) {
+        std::size_t hits = 0, n = 0;
+        for (std::size_t i = 0; i + 1 < typeCount; ++i) {
+            if (fieldCounts[i] <= 0 || fieldCounts[i + 1] <= 0) continue;
+            ++n;
+            const auto a = fromBytes<std::int32_t>(typeDefs.data() + i * stride + o);
+            const auto b = fromBytes<std::int32_t>(typeDefs.data() + (i + 1) * stride + o);
+            hits += (static_cast<std::int64_t>(b) - a == fieldCounts[i]) ? 1 : 0;
+        }
+        pairs = n;
+        if (hits > bestHits) {
+            bestHits = hits;
+            fieldStartOffset = o;
+            ties = 0;
+        } else if (hits == bestHits && hits > 0) {
+            ++ties;
+        }
+    }
+    if (!fieldStartOffset || ties > 0 || pairs < 2 || bestHits * 10 < pairs * 9)
+        return fail(std::format("no unambiguous Il2CppTypeDefinition.fieldStart ({} of {} type pairs at best)", bestHits, pairs));
+
+    // 4. Default values.
+    const auto section = [&](std::uint32_t at) {
+        return std::pair{fromBytes<std::uint32_t>(header.data() + at), fromBytes<std::uint32_t>(header.data() + at + 4)};
+    };
+    const auto [valuesOffset, valuesSize] = section(kHeaderFieldDefaultValues);
+    const auto [dataOffset, dataSize] = section(kHeaderDefaultValueData);
+    if (valuesSize % 12 != 0 || valuesSize > kMaxSection || dataSize > kMaxSection)
+        return fail(std::format("implausible default-value sections ({:#X} bytes, {:#X} bytes)", valuesSize, dataSize));
+    std::vector<std::uint8_t> valueTable, data;
+    if (!readRange(mem_, *base + valuesOffset, valueTable, valuesSize) || !readRange(mem_, *base + dataOffset, data, dataSize))
+        return fail("default-value sections unreadable");
+    std::unordered_map<std::int32_t, std::int32_t> dataIndexOf;  // global field index → data index
+    for (std::size_t at = 0; at + 12 <= valueTable.size(); at += 12)
+        dataIndexOf.emplace(fromBytes<std::int32_t>(valueTable.data() + at), fromBytes<std::int32_t>(valueTable.data() + at + 8));
+
+    // Enums are stored as their underlying type (the value__ field).
+    std::unordered_map<std::string, std::uint8_t> enumKinds;
+    for (const auto& c : classes)
+        if (c.parent == "System.Enum")
+            for (const auto& f : c.fields)
+                if (f.name == "value__" && !f.isStatic) enumKinds[c.fullName] = f.typeKind;
+
+    MetadataInfo info{*base, version, stride, *fieldStartOffset, 0, 0};
+    for (auto& c : classes) {
+        if (c.typeIndex < 0 || static_cast<std::size_t>(c.typeIndex) >= typeCount || fieldCounts[c.typeIndex] < 0) continue;
+        const auto fieldStart = fromBytes<std::int32_t>(typeDefs.data() + static_cast<std::size_t>(c.typeIndex) * stride + *fieldStartOffset);
+        for (auto& f : c.fields) {
+            if (!f.isLiteral) continue;
+            ++info.literalFields;
+            const auto it = dataIndexOf.find(fieldStart + f.metadataIndex);
+            if (it == dataIndexOf.end() || it->second < 0) continue;
+            std::uint8_t kind = f.typeKind;
+            if (kind == 0x11 || kind == 0x55) {
+                const auto e = enumKinds.find(f.type);
+                if (e == enumKinds.end()) continue;
+                kind = e->second;
+            }
+            if ((f.value = decodeConstant(data, static_cast<std::size_t>(it->second), kind, version))) ++info.literalValues;
+        }
+    }
+    notes.push_back(std::format("literal values: {} of {} literal fields (metadata v{} at {:#X}, type definitions "
+                                "{:#X} bytes each, fieldStart at +{:#X})",
+                                info.literalValues, info.literalFields, version, info.base, stride, *fieldStartOffset));
+    return info;
 }
 
 // ---- Unity globals ------------------------------------------------------------------------------
@@ -669,6 +932,7 @@ Dump Il2CppDumper::run() {
     } else {
         dump.notes.push_back("no type-info table: no classes dumped");
     }
+    if (options_.literals && !dump.classes.empty()) dump.metadata = readLiteralValues(dump.classes, dump.notes);
     if (options_.unity) dump.unity = findUnityGlobals();
     return dump;
 }
@@ -694,6 +958,17 @@ std::string quote(std::string_view s) {
     return out + "\"";
 }
 std::string hex(std::uint64_t v) { return quote(std::format("0x{:X}", v)); }
+std::string literalJson(const LiteralValue& v) {
+    return std::visit(
+        [](const auto& x) -> std::string {
+            using T = std::decay_t<decltype(x)>;
+            if constexpr (std::is_same_v<T, bool>) return x ? "true" : "false";
+            else if constexpr (std::is_same_v<T, std::string>) return quote(x);
+            else if constexpr (std::is_same_v<T, double>) return std::isfinite(x) ? std::format("{}", x) : quote(std::format("{}", x));
+            else return std::to_string(x);
+        },
+        v);
+}
 template <class T>
 std::string optional(const std::optional<T>& v, auto&& fmt) {
     return v ? fmt(*v) : "null";
@@ -728,6 +1003,13 @@ std::string toJson(const Dump& d, const DumpOptions& options) {
     else
         out += "  \"typeInfoTable\": null,\n";
     out += std::format("  \"staticFieldsOffset\": {},\n", hex(off::managed::Il2CppClass::StaticFields));
+    if (d.metadata)
+        out += std::format("  \"metadata\": {{ \"base\": {}, \"version\": {}, \"typeDefinitionSize\": {}, "
+                           "\"fieldStartOffset\": {}, \"literalFields\": {}, \"literalValues\": {} }},\n",
+                           hex(d.metadata->base), d.metadata->version, hex(d.metadata->typeDefinitionSize),
+                           hex(d.metadata->fieldStartOffset), d.metadata->literalFields, d.metadata->literalValues);
+    else
+        out += "  \"metadata\": null,\n";
     out += std::format("  \"typeCount\": {},\n", d.typeCount);
 
     out += "  \"unity\": {";
@@ -763,10 +1045,11 @@ std::string toJson(const Dump& d, const DumpOptions& options) {
         for (std::size_t k = 0; k < c.fields.size(); ++k) {
             const auto& f = c.fields[k];
             out += std::format("{}\n      {{ \"name\": {}, \"type\": {}, \"offset\": {}, \"offsetHex\": {}, "
-                               "\"isStatic\": {}, \"isLiteral\": {}, \"declaringClass\": {} }}",
+                               "\"isStatic\": {}, \"isLiteral\": {}, \"declaringClass\": {}{} }}",
                                k ? "," : "", quote(f.name), quote(f.type), f.offset,
                                hex(static_cast<std::uint32_t>(f.offset)), f.isStatic ? "true" : "false",
-                               f.isLiteral ? "true" : "false", quote(f.declaringClass));
+                               f.isLiteral ? "true" : "false", quote(f.declaringClass),
+                               f.value ? ", \"value\": " + literalJson(*f.value) : std::string());
         }
         out += c.fields.empty() ? "] }" : "\n    ] }";
     }

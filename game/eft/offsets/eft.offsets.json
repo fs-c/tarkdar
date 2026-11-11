@@ -506,6 +506,60 @@
       "value": "0xF8"
     },
     {
+      "group": "ObservedPlayerView",
+      "name": "AIData",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerView",
+      "field": "<AIData>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x78"
+    },
+    {
+      "group": "ObservedPlayerView",
+      "name": "GroupId",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerView",
+      "field": "<GroupId>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x98"
+    },
+    {
+      "group": "ObservedPlayerView",
+      "name": "NickName",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerView",
+      "field": "<NickName>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0xD8"
+    },
+    {
+      "group": "StubAIData",
+      "name": "BotHostilityData",
+      "class": "StubAIData",
+      "field": "<BotHostilityData>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x20"
+    },
+    {
+      "group": "AIData",
+      "name": "BotHostilityData",
+      "class": "AIData",
+      "field": "<BotHostilityData>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x118"
+    },
+    {
+      "group": "BotHostilityData",
+      "name": "Role",
+      "class": "BotHostilityData",
+      "field": "_role",
+      "static": false,
+      "required": false,
+      "value": "0x20"
+    },
+    {
       "group": "ObservedPlayerController",
       "name": "InventoryController",
       "class": "EFT.NextObservedPlayer.ObservedPlayerController",
@@ -810,6 +864,24 @@
       "static": false,
       "required": true,
       "value": "0x90"
+    },
+    {
+      "group": "PlayerInfo",
+      "name": "Nickname",
+      "class": "EFT.ProfileInfo",
+      "field": "Nickname",
+      "static": false,
+      "required": false,
+      "value": "0x10"
+    },
+    {
+      "group": "PlayerInfo",
+      "name": "GroupId",
+      "class": "EFT.ProfileInfo",
+      "field": "GroupId",
+      "static": false,
+      "required": false,
+      "value": "0x58"
     },
     {
       "group": "ProfileSettings",

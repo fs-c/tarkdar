@@ -124,7 +124,11 @@ std::optional<Loot::Resolved> Loot::resolveOne(Address instance, bool& permanent
             const Address owner = readPointer(game_, instance + off::LootableContainer::ItemOwner);
             const Address root = owner ? readPointer(game_, owner + off::LootableContainerItemOwner::RootItem) : 0;
             auto id = root ? templateIdOf(root) : std::nullopt;
-            if (!id) return std::nullopt;
+            if (!id) {
+                log::debug("loot: container {:#x} '{}': no root item (owner {:#x}, root {:#x})", instance,
+                           loot.objectName, owner, root);
+                return std::nullopt;
+            }
             loot.templateId = std::move(*id);
             r.entry.contentsRoot = root;
         }

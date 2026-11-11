@@ -102,11 +102,14 @@ std::vector<Managed::ClassNames> Managed::ancestry(Address klass) const {
         if (auto it = classCache_->ancestry.find(klass); it != classCache_->ancestry.end()) return it->second;
     }
     std::vector<ClassNames> chain;
-    bool complete = false;
+    bool complete = false, namesComplete = true;
     std::optional<Address> k = klass;
     for (int depth = 0; k && depth < kMaxClassDepth; ++depth) {
         ClassNames names{className(*k), fullClassName(*k)};
-        if (names.shortName.empty()) break;  // unreadable: don't cache a partial chain
+        // An unnamed class (unreadable or empty name) must not end the walk: its ancestors still
+        // count (e.g. Vest < <unnamed> < CompoundItem). Keep walking, but don't cache the chain
+        // in case the name read was transient.
+        if (names.shortName.empty()) namesComplete = false;
         chain.push_back(std::move(names));
         const Address parentField = mem_.read<Address>(*k + layout_.classParent);
         if (parentField == 0) {
@@ -117,7 +120,7 @@ std::vector<Managed::ClassNames> Managed::ancestry(Address klass) const {
         if (!parent || parent == k) break;  // unreadable or corrupt
         k = parent;
     }
-    if (complete) {
+    if (complete && namesComplete) {
         std::lock_guard lock(classCache_->mutex);
         classCache_->ancestry.emplace(klass, chain);
     }

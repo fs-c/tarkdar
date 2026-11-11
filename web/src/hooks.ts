@@ -141,6 +141,15 @@ export function useTrailPrefs() {
   return usePersistentState<TrailPrefs>("radar.trails", { selected: true, all: false, minutes: 5 });
 }
 
+export interface LootPrefs {
+  /** Items worth less than this (₽, per unit) never get a map label; unpriced items count as 0. */
+  minLabelPrice: number;
+}
+
+export function useLootPrefs() {
+  return usePersistentState<LootPrefs>("radar.loot", { minLabelPrice: 0 });
+}
+
 const DEFAULT_LAYERS: Layers = { loot: false, containers: false, exfils: true, explosives: true };
 
 export function useLayers(): [Layers, (key: keyof Layers) => void] {

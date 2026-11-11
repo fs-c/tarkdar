@@ -1,6 +1,7 @@
 // Map view of the side panel: which floor to show and which layers to draw.
 
-import type { TrailPrefs } from "../hooks";
+import type { LootPrefs, TrailPrefs } from "../hooks";
+import { formatPrice } from "../items";
 import type { Layers } from "../render";
 import { PanelBody, Section, Segmented, type SegmentedOption, ToggleRow } from "../ui";
 
@@ -15,7 +16,11 @@ interface Props {
   onToggleLayer: (key: keyof Layers) => void;
   trails: TrailPrefs;
   onTrails: (t: TrailPrefs) => void;
+  loot: LootPrefs;
+  onLoot: (l: LootPrefs) => void;
 }
+
+const LABEL_PRICES = [0, 10_000, 25_000, 50_000, 100_000];
 
 const TRAIL_LENGTHS: (number | null)[] = [1, 5, 15, null];
 
@@ -44,6 +49,15 @@ export function MapPanel(p: Props) {
         {LAYERS.map(({ key, label, hint }) => (
           <ToggleRow key={key} label={label} hint={hint} checked={p.layers[key]} onChange={() => p.onToggleLayer(key)} />
         ))}
+        {p.layers.loot && (
+          <Segmented
+            label="Label items worth at least"
+            title="Label items worth at least (per unit)"
+            options={LABEL_PRICES.map((v) => ({ value: v, label: v === 0 ? "All" : `≥${formatPrice(v)}` }))}
+            value={p.loot.minLabelPrice}
+            onChange={(v) => p.onLoot({ ...p.loot, minLabelPrice: v })}
+          />
+        )}
       </Section>
       <Section title="Trails">
         <ToggleRow

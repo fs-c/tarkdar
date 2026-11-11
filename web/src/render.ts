@@ -1,8 +1,9 @@
 // Draws the radar: map layer (or a world grid when there's no map), players, calibration markers.
 
 import { type Affine, directionToPixel, pixelsPerMetre, worldToPixel } from "./calibration";
+import { LabelPlacer, candidatesAround } from "./labels";
 import { type LoadedMap, selectLayer } from "./maps";
-import { type ItemCatalog, containerName, exfilStatus, formatPrice } from "./items";
+import { type ItemCatalog, type ValueTier, containerName, exfilStatus, formatPrice, valueTier } from "./items";
 import type { Exfil, ExplosivesData, LootEntry, Player } from "./protocol";
 import { type PlayerType, type PlayerTypeInfo, SPECIAL_TYPES, bossGroups, playerType } from "./roles";
 import { ui } from "./theme";
@@ -19,8 +20,8 @@ export const COLORS = {
   local: ui.accent,
   dead: "#6b6b6b",
   label: "#e8eef2",
+  labelHalo: "rgba(8, 12, 16, 0.85)",
   calibration: "#ff4fd8",
-  lootItem: "#d9d9d9",
   lootQuest: ui.quest,
   lootContainer: "#b08a5a",
   lootAirdrop: "#4de1ff",
@@ -49,6 +50,16 @@ export const TYPE_COLORS: Record<PlayerType, string> = {
   other: "#c0c0c0",
 };
 
+/** Loose item markers by value tier: colour and side length (px). */
+const ITEM_MARKERS: Record<ValueTier, { color: string; size: number }> = {
+  low: { color: "#8b969f", size: 3 },
+  mid: { color: "#e8eef2", size: 4 },
+  high: { color: ui.gold, size: 5 },
+};
+
+/** Item labels show from this zoom on (and then only where they fit). */
+const ITEM_LABEL_ZOOM = 2.5;
+
 export interface Layers {
   loot: boolean;
   containers: boolean;
@@ -65,6 +76,8 @@ export interface Scene {
   explosives: ExplosivesData;
   loot: LootEntry[];
   layers: Layers;
+  /** Items worth less than this (₽) get no label. */
+  minLabelPrice: number;
   selected: [number, number, number] | null;
   /** Hovered in the list view: drawn as a soft highlight. */
   hovered: [number, number, number] | null;
@@ -96,7 +109,7 @@ export function render(ctx: CanvasRenderingContext2D, view: View, scene: Scene):
     drawGrid(ctx, view, transform);
   }
 
-  if (scene.layers.loot || scene.layers.containers) drawLoot(ctx, view, transform, scene.loot, scene.layers, scene.catalog);
+  if (scene.layers.loot || scene.layers.containers) drawLoot(ctx, view, transform, scene);
   if (scene.layers.exfils) for (const e of scene.exfils) drawExfil(ctx, view, transform, e);
   if (scene.layers.explosives) drawExplosives(ctx, view, transform, scene.explosives);
 
@@ -308,28 +321,56 @@ function onScreen(view: View, x: number, y: number, margin = 50): boolean {
   return x >= -margin && y >= -margin && x <= view.width + margin && y <= view.height + margin;
 }
 
+/** A loot label waiting for placement: `texts` from most to least detailed, tried in that order. */
+interface LabelRequest {
+  x: number;
+  y: number;
+  texts: string[];
+  /** Always drawn (quest items, airdrops, containers), placed before everything else. */
+  forced: boolean;
+  /** Higher places first. */
+  priority: number;
+}
+
+const LOOT_FONT = "10px sans-serif";
+const LABEL_HEIGHT = 12;
+const LABEL_GAP = 6;
+const textWidths = new Map<string, number>();
+
+function textWidth(ctx: CanvasRenderingContext2D, text: string): number {
+  let w = textWidths.get(text);
+  if (w === undefined) {
+    w = ctx.measureText(text).width;
+    textWidths.set(text, w);
+  }
+  return w;
+}
+
 function drawLoot(
   ctx: CanvasRenderingContext2D,
   view: View,
   t: Affine,
-  loot: LootEntry[],
-  layers: Layers,
-  catalog: ItemCatalog,
+  { loot, layers, catalog, minLabelPrice }: Scene,
 ): void {
-  const labels = view.zoom >= 1.5;
-  ctx.font = "10px sans-serif";
+  const containerLabels = view.zoom >= 1.5;
+  const itemLabels = view.zoom >= ITEM_LABEL_ZOOM;
+  const requests: LabelRequest[] = [];
   for (const l of loot) {
     const isContainer = l.kind === "container" || l.kind === "airdrop";
     if (isContainer ? !layers.containers : !layers.loot) continue;
     const [x, y] = view.toScreen(...worldToPixel(t, l.pos[0], l.pos[2]));
     if (!onScreen(view, x, y, 10)) continue;
-    let label: string | undefined;
     switch (l.kind) {
       case "item": {
-        ctx.fillStyle = COLORS.lootItem;
-        ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
         const info = catalog.lookup(l.tpl);
-        if (info && view.zoom >= 2.5) label = info.price ? `${info.shortName} ${formatPrice(info.price)}` : info.shortName;
+        const price = info?.price;
+        const marker = ITEM_MARKERS[valueTier(price)];
+        ctx.fillStyle = marker.color;
+        ctx.fillRect(x - marker.size / 2, y - marker.size / 2, marker.size, marker.size);
+        if (info && itemLabels && (price ?? 0) >= minLabelPrice) {
+          const texts = info.price ? [`${info.shortName} ${formatPrice(info.price)}`, formatPrice(info.price)] : [info.shortName];
+          requests.push({ x, y, texts, forced: false, priority: info.price ?? 0 });
+        }
         break;
       }
       case "quest":
@@ -340,18 +381,20 @@ function drawLoot(
         ctx.lineTo(x, y + 5);
         ctx.lineTo(x - 5, y);
         ctx.fill();
-        label = "quest item";
+        requests.push({ x, y, texts: ["quest item"], forced: true, priority: 2 });
         break;
-      case "container":
+      case "container": {
         ctx.strokeStyle = COLORS.lootContainer;
         ctx.lineWidth = 1.5;
         ctx.strokeRect(x - 3, y - 3, 6, 6);
-        label = containerName(l.tpl);
+        const name = containerName(l.tpl);
+        if (name && containerLabels) requests.push({ x, y, texts: [name], forced: true, priority: 0 });
         break;
+      }
       case "airdrop":
         ctx.fillStyle = COLORS.lootAirdrop;
         ctx.fillRect(x - 5, y - 5, 10, 10);
-        label = "airdrop";
+        requests.push({ x, y, texts: ["airdrop"], forced: true, priority: 1 });
         break;
       case "corpse":
         ctx.strokeStyle = COLORS.lootCorpse;
@@ -364,11 +407,35 @@ function drawLoot(
         ctx.stroke();
         break;
     }
-    if (label && (labels || l.kind === "airdrop" || l.kind === "quest")) {
-      ctx.fillStyle = COLORS.label;
-      ctx.fillText(label, x + 7, y + 3);
+  }
+
+  // Labels go on top of all markers, most important first; items whose label doesn't fit anywhere
+  // keep just their marker.
+  requests.sort((a, b) => Number(b.forced) - Number(a.forced) || b.priority - a.priority);
+  ctx.font = LOOT_FONT;
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = COLORS.labelHalo;
+  ctx.fillStyle = COLORS.label;
+  const placer = new LabelPlacer();
+  for (const req of requests) {
+    for (const text of req.texts) {
+      const candidates = candidatesAround(req.x, req.y, textWidth(ctx, text), LABEL_HEIGHT, LABEL_GAP);
+      let rect = placer.place(candidates);
+      if (!rect && req.forced) {
+        rect = candidates[0];
+        placer.reserve(rect);
+      }
+      if (rect) {
+        ctx.strokeText(text, rect.x, rect.y + rect.h / 2);
+        ctx.fillText(text, rect.x, rect.y + rect.h / 2);
+        break;
+      }
     }
   }
+  ctx.textBaseline = "alphabetic";
+  ctx.lineJoin = "miter";
 }
 
 function drawExfil(ctx: CanvasRenderingContext2D, view: View, t: Affine, e: Exfil): void {

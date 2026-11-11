@@ -32,6 +32,16 @@ export function formatPrice(roubles: number): string {
   return `${Math.round(roubles)}`;
 }
 
+/** How valuable a loose item is, for its map marker. Unpriced items count as low. */
+export type ValueTier = "low" | "mid" | "high";
+
+export const VALUE_TIERS = { mid: 20_000, high: 100_000 };
+
+export function valueTier(price: number | undefined): ValueTier {
+  if (price === undefined || price < VALUE_TIERS.mid) return "low";
+  return price < VALUE_TIERS.high ? "mid" : "high";
+}
+
 /** No item data loaded: every lookup misses. */
 export const emptyCatalog: ItemCatalog = { lookup: () => undefined };
 

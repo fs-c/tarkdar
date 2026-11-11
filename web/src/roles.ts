@@ -29,12 +29,13 @@ export type PlayerType =
   | "raider"
   | "rogue"
   | "cultist"
+  | "bd"
   | "zombie"
   | "other";
 
 /** In display/sort order. */
 export const PLAYER_TYPES: readonly PlayerType[] = [
-  "self", "usec", "bear", "p-scav", "boss", "follower", "raider", "rogue", "cultist", "zombie", "ai-scav", "other",
+  "self", "usec", "bear", "p-scav", "boss", "follower", "raider", "rogue", "cultist", "bd", "zombie", "ai-scav", "other",
 ];
 
 export interface PlayerTypeInfo {
@@ -176,6 +177,8 @@ function classify(p: PlayerIdentity, groups?: ReadonlyMap<string, string>): Play
 
   const byRole = p.role !== undefined ? fromRole(p.role) : null;
   const byVoice = fromVoice(p);
+  // Black Division has a role in the enum, but it may be unmapped or a default: the voice is exact.
+  if (byVoice?.type === "bd" && (!byRole || byRole.type === "ai-scav" || byRole.type === "other")) return byVoice;
   if (byRole) {
     // An observed player's role comes from an unverified source that may hold a default (0,
     // marksman): when the voice clearly says otherwise, trust the voice.
@@ -207,6 +210,7 @@ function fromVoice(p: PlayerIdentity): PlayerTypeInfo | null {
   if (!v) return null;
   const key = v.toLowerCase().replace(/_/g, "");
   const reason = `voice ${v}`;
+  if (key.startsWith("blackdivision")) return { type: "bd", label: "BD", reason };
   if (key.startsWith("boss")) return { type: "boss", label: BOSS_VOICES[key] ?? v.replace(/^boss_?/i, ""), reason };
   if (key.startsWith("follower")) return { type: "follower", label: "Guard", reason };
   // Zryachiy and his guards speak like cultist priests too; they have a role when it can be read.
@@ -226,7 +230,10 @@ function fromVoice(p: PlayerIdentity): PlayerTypeInfo | null {
 }
 
 /** Types worth calling out on the map and in the list. */
-export const SPECIAL_TYPES: ReadonlySet<PlayerType> = new Set(["boss", "follower", "raider", "rogue", "cultist"]);
+export const SPECIAL_TYPES: ReadonlySet<PlayerType> = new Set(["boss", "follower", "raider", "rogue", "cultist", "bd"]);
+
+/** Types that are many and rarely matter: drawn smaller and fainter, dimmed in the list. */
+export const MINOR_TYPES: ReadonlySet<PlayerType> = new Set(["ai-scav", "zombie"]);
 
 /** The raw inputs, one line, for tooltips: "AI · observed · side savage · role 5 (followerBully) · voice Scav_3 · …". */
 export function identityText(p: PlayerIdentity): string {

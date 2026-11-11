@@ -25,6 +25,14 @@ export function totalValue(nodes: { tpl: string; count?: number; items?: unknown
   return sum;
 }
 
+/** Equipment slots that don't count towards what a player carries (cosmetic, bound or junk). */
+const UNVALUED_SLOTS = /^(Scabbard|SecuredContainer|Dogtag|ArmBand|SpecialSlot\d*)$/;
+
+/** Value of a player's equipment: totalValue without the slots in UNVALUED_SLOTS. */
+export function equipmentValue(slots: { slot?: string; tpl: string; count?: number; items?: unknown[] }[], catalog: ItemCatalog): number {
+  return totalValue(slots.filter((n) => !n.slot || !UNVALUED_SLOTS.test(n.slot)), catalog);
+}
+
 /** "1.2M", "45k", "800" (roubles). */
 export function formatPrice(roubles: number): string {
   if (roubles >= 1_000_000) return `${(roubles / 1_000_000).toFixed(roubles >= 10_000_000 ? 0 : 1)}M`;

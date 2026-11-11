@@ -2,10 +2,10 @@
 // tabs. Pure functions, so they can be tested without React.
 
 import type { RadarState } from "../connection";
-import { type ItemCatalog, containerName, exfilStatus, totalValue } from "../items";
+import { type ItemCatalog, containerName, equipmentValue, exfilStatus, totalValue } from "../items";
 import { type Selection, midpoint, selectionKey } from "../pick";
 import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, WorldPos } from "../protocol";
-import { type PlayerType, SPECIAL_TYPES, bossGroups, identityText, playerType } from "../roles";
+import { type PlayerType, MINOR_TYPES, SPECIAL_TYPES, bossGroups, identityText, playerType } from "../roles";
 
 export type TabId = "players" | "items" | "containers" | "exfils" | "explosives";
 
@@ -118,8 +118,8 @@ export function playerRows(players: Player[], equipment: Map<number, PlayerEquip
     const t = playerType(p, groups);
     const st = p.dead ? "dead" : p.absent ? "left" : "alive";
     const slots = equipment.get(p.id)?.slots;
-    const value = slots?.length ? totalValue(slots, catalog) || undefined : undefined;
-    const scav = t.type === "ai-scav";
+    const value = slots?.length ? equipmentValue(slots, catalog) || undefined : undefined;
+    const scav = MINOR_TYPES.has(t.type);
     const raw = identityText(p);
     return {
       ...base({ kind: "player", id: p.id }, p.pos, text(name, `#${p.id}`, t.type, t.label, p.ai ? "ai bot" : "human", raw, st)),

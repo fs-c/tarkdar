@@ -46,6 +46,8 @@ describe("playerType", () => {
     expect(type(ai({ voice: "SectantWarrior" }))).toBe("cultist");
     expect(type(ai({ voice: "Zombie_Fast" }))).toBe("zombie");
     expect(type(ai({ voice: "Scav_4" }))).toBe("ai-scav");
+    expect(type(ai({ voice: "Black_Division_1" }))).toBe("bd");
+    expect(type(ai({ role: 1, voice: "Black_Division_2" }))).toBe("bd");
     expect(type(ai())).toBe("ai-scav");
     expect(type(ai({ voice: "Usec_2" }))).toBe("rogue");
     expect(type(ai({ voice: "Bear_3" }))).toBe("raider");

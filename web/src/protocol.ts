@@ -42,6 +42,8 @@ export interface Player {
   groupId?: string;
   dead: boolean;
   absent: boolean;
+  /** Frontend-derived (timeline): absent, not dead, and last seen near an exfil. */
+  extracted?: boolean;
   pos: WorldPos | null;
   /** Degrees, as stored by the game. Assumed: 0 = +z (north), 90 = +x (east). */
   yaw: number;

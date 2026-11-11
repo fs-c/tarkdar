@@ -57,7 +57,7 @@
 .tick {
   position: absolute; top: 50%; width: 2px; height: 12px; margin: -6px 0 0 -1px; border-radius: 1px; pointer-events: none;
   &[data-kind="died"] { background: var(--danger); }
-  &[data-kind="left"] { background: var(--faint); }
+  &[data-kind="left"], &[data-kind="extracted"] { background: var(--faint); }
   &[data-selected="true"] { width: 3px; height: 16px; margin: -8px 0 0 -1.5px; background: var(--link); }
 }
 .thumb {

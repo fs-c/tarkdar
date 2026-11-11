@@ -33,7 +33,7 @@ export interface PlayerRow extends RowBase {
   typeLabel: string;
   /** Tooltip: which rule decided the type, and the raw inputs (side, role, voice, ...). */
   typeDetail: string;
-  state: "alive" | "dead" | "left";
+  state: "alive" | "dead" | "left" | "extracted";
   /** Equipment value; undefined when not read (yet) or unpriced. */
   value?: number;
 }
@@ -116,7 +116,7 @@ export function playerRows(players: Player[], equipment: Map<number, PlayerEquip
   return players.map((p): PlayerRow => {
     const name = p.local ? "You" : `#${p.id}`;
     const t = playerType(p, groups);
-    const st = p.dead ? "dead" : p.absent ? "left" : "alive";
+    const st = p.dead ? "dead" : p.absent ? (p.extracted ? "extracted" : "left") : "alive";
     const slots = equipment.get(p.id)?.slots;
     const value = slots?.length ? equipmentValue(slots, catalog) || undefined : undefined;
     const scav = MINOR_TYPES.has(t.type);

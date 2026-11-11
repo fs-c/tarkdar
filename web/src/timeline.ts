@@ -5,6 +5,7 @@
 // messages with a revision already seen are dropped, so a recording and the live stream that
 // overlaps it can be fed in one after the other.
 
+import { isSentinelPos } from "./connection";
 import type {
   Exfil,
   ExplosivesData,
@@ -33,6 +34,7 @@ export type TimelineEvent =
   | { t: number; kind: "playerSeen"; player: number }
   | { t: number; kind: "died"; player: number; pos: WorldPos | null }
   | { t: number; kind: "left"; player: number; pos: WorldPos | null }
+  | { t: number; kind: "extracted"; player: number; pos: WorldPos | null }
   | { t: number; kind: "lootAdded"; loot: LootEntry }
   | { t: number; kind: "lootRemoved"; loot: LootEntry }
   | { t: number; kind: "lootChanged"; loot: LootEntry; before: LootEntry }
@@ -50,7 +52,7 @@ export class Track {
   yaw = new Float32Array(64);
   pitch = new Float32Array(64);
   /** dead/absent changes, in time order; the first entry is when the player was first seen. */
-  readonly flags: { t: number; dead: boolean; absent: boolean }[] = [];
+  readonly flags: { t: number; dead: boolean; absent: boolean; extracted: boolean }[] = [];
 
   /** Sample indices for drawing trails: thinned to one per TRAIL_STEP_M of movement (built lazily). */
   private readonly kept: number[] = [];
@@ -101,6 +103,11 @@ export class Track {
     this.pitch[j] = p.pitch;
   }
 
+  /** The last recorded position, if any. */
+  lastPos(): WorldPos | null {
+    return this.n ? this.posOf(this.n - 1) : null;
+  }
+
   /** Time of sample i. */
   timeOf(i: number): number {
     return this.t[i]!;
@@ -124,7 +131,7 @@ export class Track {
     return found;
   }
 
-  flagsAt(t: number): { dead: boolean; absent: boolean } | null {
+  flagsAt(t: number): { dead: boolean; absent: boolean; extracted: boolean } | null {
     let found: (typeof this.flags)[number] | null = null;
     for (const f of this.flags) {
       if (f.t > t) break;
@@ -164,6 +171,14 @@ export class Track {
     this.yaw = f32(this.yaw);
     this.pitch = f32(this.pitch);
   }
+}
+
+/** A player that left this close (m, horizontally) to an exfil counts as extracted. */
+const EXTRACT_RADIUS_M = 50;
+
+function nearExfil(pos: WorldPos | null, exfils: Exfil[]): boolean {
+  if (!pos) return false;
+  return exfils.some((e) => e.pos && !isSentinelPos(e.pos) && Math.hypot(e.pos[0] - pos[0], e.pos[2] - pos[2]) <= EXTRACT_RADIUS_M);
 }
 
 /** Trails keep a point per this much movement (m). */
@@ -265,6 +280,7 @@ export class Timeline {
 
   private ingestPlayers(t: number, players: Player[]): void {
     let added = false;
+    const exits = this.exfils.at(-1)?.value ?? [];
     for (const p of players) {
       let track = this.tracks.get(p.id);
       if (!track) {
@@ -274,13 +290,19 @@ export class Timeline {
         this.events.push({ t, kind: "playerSeen", player: p.id });
       }
       track.meta = p;
+      // Parked at about -9999 (despawned): gone, whatever the list says; keep the last real position.
+      const parked = isSentinelPos(p.pos);
+      const absent = p.absent || parked;
       const last = track.flags.at(-1);
-      if (!last || last.dead !== p.dead || last.absent !== p.absent) {
-        track.flags.push({ t, dead: p.dead, absent: p.absent });
+      if (!last || last.dead !== p.dead || last.absent !== absent) {
+        const lastPos = parked || !p.pos ? track.lastPos() : p.pos;
+        // Left (not dead) close to an exit: extracted. Anything else that left is just "left".
+        const extracted = absent && !p.dead && nearExfil(lastPos, exits);
+        track.flags.push({ t, dead: p.dead, absent, extracted });
         if (last && p.dead && !last.dead) this.events.push({ t, kind: "died", player: p.id, pos: p.pos });
-        else if (last && p.absent && !last.absent && !p.dead) this.events.push({ t, kind: "left", player: p.id, pos: p.pos });
+        else if (last && absent && !last.absent && !p.dead) this.events.push({ t, kind: extracted ? "extracted" : "left", player: p.id, pos: lastPos });
       }
-      track.push(t, p);
+      if (!parked) track.push(t, p);
     }
     if (added) this.playerIds = [...this.tracks.keys()].sort((a, b) => a - b);
   }
@@ -340,8 +362,8 @@ export class Timeline {
     return null;
   }
 
-  /** The raid as it was at time t. Unchanged parts keep their identity between calls. */
-  stateAt(t: number): TimelineState {
+  /** The players as they were at time t. */
+  playersAtTime(t: number): { players: Player[]; playersAt: number } {
     const players: Player[] = [];
     let playersAt = 0;
     for (const id of this.playerIds) {
@@ -350,8 +372,14 @@ export class Timeline {
       if (!flags) continue; // not seen yet
       const pose = track.poseAt(t);
       if (pose) playersAt = Math.max(playersAt, Math.min(t, track.timeOf(track.n - 1)));
-      players.push({ ...track.meta, dead: flags.dead, absent: flags.absent, pos: pose?.pos ?? null, yaw: pose?.yaw ?? 0, pitch: pose?.pitch ?? 0 });
+      players.push({ ...track.meta, dead: flags.dead, absent: flags.absent, extracted: flags.extracted, pos: pose?.pos ?? null, yaw: pose?.yaw ?? 0, pitch: pose?.pitch ?? 0 });
     }
+    return { players, playersAt };
+  }
+
+  /** The raid as it was at time t. Unchanged parts keep their identity between calls. */
+  stateAt(t: number): TimelineState {
+    const { players, playersAt } = this.playersAtTime(t);
     const status = latest(this.statuses, t);
     return {
       status,

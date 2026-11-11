@@ -79,7 +79,7 @@ function Details({ selection: sel, state, catalog }: Props) {
         {p.nickname && <Line label="nickname" value={p.nickname} />}
         {p.groupId && <Line label="group" value={p.groupId} />}
         {p.kind && <Line label="kind" value={p.kind} />}
-        <Line label="state" value={p.dead ? "dead" : p.absent ? "left the raid" : "alive"} />
+        <Line label="state" value={p.dead ? "dead" : p.absent ? (p.extracted ? "extracted" : "left the raid") : "alive"} />
         <Line label="position" value={formatPos(p.pos)} />
         <ItemSection heading="equipment" nodes={eq?.slots} empty="not read (yet)" catalog={catalog} />
       </>

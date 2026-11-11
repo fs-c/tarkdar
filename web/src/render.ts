@@ -5,7 +5,7 @@ import { LabelPlacer, candidatesAround } from "./labels";
 import { type LoadedMap, selectLayer } from "./maps";
 import { type ItemCatalog, type ValueTier, containerName, exfilStatus, formatPrice, valueTier } from "./items";
 import type { Exfil, ExplosivesData, LootEntry, Player } from "./protocol";
-import { type PlayerType, type PlayerTypeInfo, SPECIAL_TYPES, bossGroups, playerType } from "./roles";
+import { type PlayerType, type PlayerTypeInfo, MINOR_TYPES, SPECIAL_TYPES, bossGroups, playerType } from "./roles";
 import { ui } from "./theme";
 import type { Timeline } from "./timeline";
 import type { View } from "./view";
@@ -46,6 +46,7 @@ export const TYPE_COLORS: Record<PlayerType, string> = {
   raider: "#4de1ff",
   rogue: "#38e8c0",
   cultist: "#b26bff",
+  bd: "#ff7a1a",
   zombie: "#9bd14b",
   other: "#c0c0c0",
 };
@@ -120,7 +121,7 @@ export function render(ctx: CanvasRenderingContext2D, view: View, scene: Scene):
   const typed = scene.players.map((p) => ({ p, info: playerType(p, groups) }));
   // Drawn bottom to top: plain scavs, the dead, everyone else, special bots, us.
   const rank = ({ p, info }: { p: Player; info: PlayerTypeInfo }) =>
-    p.local ? 4 : p.dead ? 1 : info.type === "ai-scav" ? 0 : SPECIAL_TYPES.has(info.type) ? 3 : 2;
+    p.local ? 4 : p.dead ? 1 : MINOR_TYPES.has(info.type) ? 0 : SPECIAL_TYPES.has(info.type) ? 3 : 2;
   typed.sort((a, b) => rank(a) - rank(b));
   for (const { p, info } of typed) drawPlayer(ctx, view, transform, p, info, local?.pos?.[1] ?? null);
 
@@ -210,7 +211,7 @@ function drawTrails(ctx: CanvasRenderingContext2D, view: View, t: Affine, scene:
     const type = playerType(track.meta, groups).type;
     ctx.strokeStyle = TYPE_COLORS[type];
     ctx.lineWidth = isSelected ? 2.5 : 1.5;
-    const maxAlpha = isSelected ? 0.95 : type === "ai-scav" ? 0.35 : 0.6;
+    const maxAlpha = isSelected ? 0.95 : MINOR_TYPES.has(type) ? 0.35 : 0.6;
     paths.forEach((path, i) => {
       const bucket = i % TRAIL_BUCKETS;
       const age = 0.25 + (0.75 * (bucket + 1)) / TRAIL_BUCKETS;
@@ -257,7 +258,7 @@ function drawPlayer(ctx: CanvasRenderingContext2D, view: View, t: Affine, p: Pla
 
   // Plain AI scavs are many and rarely what matters: smaller and fainter, so PMCs and player scavs
   // stand out. Bosses, guards, raiders, rogues and cultists get a halo and their name.
-  const scav = info.type === "ai-scav";
+  const scav = MINOR_TYPES.has(info.type);
   const special = SPECIAL_TYPES.has(info.type);
   const boss = info.type === "boss";
   const color = p.dead ? COLORS.dead : TYPE_COLORS[info.type];

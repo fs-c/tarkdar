@@ -2,7 +2,7 @@
 
 import type { RadarState } from "../connection";
 import { describeEvent, eventConcerns } from "../events";
-import { type ItemCatalog, containerName, exfilStatus, formatPrice, totalValue } from "../items";
+import { type ItemCatalog, containerName, exfilStatus, equipmentValue, formatPrice, totalValue } from "../items";
 import type { Selection } from "../pick";
 import type { ItemNode, WorldPos } from "../protocol";
 import { WILD_SPAWN_TYPES, bossGroups, playerType } from "../roles";
@@ -162,7 +162,7 @@ function ItemSection(props: { heading: string; nodes: ItemNode[] | undefined; em
         <div className="muted">{empty}</div>
       </>
     );
-  const v = totalValue(nodes, catalog);
+  const v = (heading === "equipment" ? equipmentValue : totalValue)(nodes, catalog);
   return (
     <>
       <h4 className={s.heading}>{`${heading} · ${v > 0 ? `${formatPrice(v)} ₽` : "no price data"}`}</h4>

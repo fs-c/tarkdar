@@ -13,6 +13,9 @@ import {
   parseMessage,
 } from "./protocol";
 
+/** The game sometimes parks some despawned/uninitialised entities at about -9999 on some axis; the backend sends it as is. */
+export const isSentinelPos = (pos: readonly number[] | null | undefined): boolean => !!pos && pos.some((c) => c <= -9000);
+
 export interface RadarState {
   connected: boolean;
   protocolMismatch: boolean;
@@ -122,13 +125,13 @@ export class Connection {
         }
         return this.update({ status: msg.data });
       case "players":
-        return this.update({ raid: msg.raid, players: msg.data.players, playersAt: msg.t });
+        return this.update({ raid: msg.raid, players: msg.data.players.filter((p) => !isSentinelPos(p.pos)), playersAt: msg.t });
       case "exfils":
         return this.update({ exfils: msg.data.exfils });
       case "explosives":
         return this.update({ explosives: msg.data });
       case "loot":
-        return this.update({ loot: msg.data.loot });
+        return this.update({ loot: msg.data.loot.filter((l) => !isSentinelPos(l.pos)) });
       case "equipment":
         return this.update({ equipment: new Map(msg.data.players.map((p) => [p.id, p])) });
     }

@@ -11,7 +11,8 @@ import {
   tableFeatures,
 } from "@tanstack/react-table";
 import { formatPrice } from "../items";
-import { COLORS, ROLE_COLORS } from "../render";
+import { COLORS, TYPE_COLORS } from "../render";
+import { PLAYER_TYPES } from "../roles";
 import { Price } from "../ui";
 import s from "./columns.module.css";
 import type { ContainerRow, ExfilRow, ExplosiveRow, ItemRow, PlayerRow, RowBase, TabId } from "./rows";
@@ -59,34 +60,35 @@ export function heightText(dh: number | undefined): string {
   return dh > 0 ? `▲${Math.round(dh)}` : `▼${Math.round(-dh)}`;
 }
 
-const roleColor = (r: PlayerRow) => (r.roleCategory ? ROLE_COLORS[r.roleCategory] : undefined);
-const sideColor = (r: PlayerRow) => (r.state === "dead" ? COLORS.dead : r.local ? COLORS.local : (roleColor(r) ?? COLORS[r.side]));
+const dotColor = (r: PlayerRow) => (r.state === "dead" ? COLORS.dead : TYPE_COLORS[r.type]);
+/** Sorts by type (PLAYER_TYPES order), then label. */
+const typeSortKey = (r: PlayerRow) => `${String(PLAYER_TYPES.indexOf(r.type)).padStart(2, "0")} ${r.typeLabel}`;
 
 const p = createColumnHelper<Features, PlayerRow>();
 const players: TabDef<PlayerRow> = {
   id: "players",
   label: "Players",
-  template: "minmax(70px, 1fr) 70px minmax(60px, 1fr) 50px 56px 52px 40px",
+  template: "minmax(70px, 1fr) minmax(80px, 1.3fr) 50px 56px 52px 40px",
   columns: [
     p.accessor((r) => (r.local ? -1 : r.sel.id), {
       id: "name",
       header: "player",
       cell: (c) => (
         <span className={c.row.original.state === "alive" ? undefined : "muted"}>
-          <span className={s.dot} style={{ background: sideColor(c.row.original) }} />
+          <span className={s.dot} style={{ background: dotColor(c.row.original) }} />
           {c.row.original.name}
         </span>
       ),
     }),
-    p.accessor("side", { header: "side", sortFn: "text" }),
-    p.accessor("role", {
-      header: "role",
+    p.accessor(typeSortKey, {
+      id: "type",
+      header: "type",
       sortFn: "text",
       cell: (c) => {
-        const color = roleColor(c.row.original);
+        const r = c.row.original;
         return (
-          <span title={c.getValue()} className={c.row.original.roleCategory === "boss" ? s.boss : undefined} style={color ? { color } : undefined}>
-            {c.getValue()}
+          <span title={r.typeDetail} className={r.type === "boss" ? s.boss : undefined} style={{ color: TYPE_COLORS[r.type] }}>
+            {r.typeLabel}
           </span>
         );
       },

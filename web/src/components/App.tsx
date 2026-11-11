@@ -1,4 +1,4 @@
-import { Locate, LocateFixed, X } from "lucide-react";
+import { Locate, LocateFixed } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type ControlPoint, formatCalibration, worldToPixel } from "../calibration";
 import type { RadarState } from "../connection";
@@ -13,7 +13,6 @@ import type { RecordingInfo } from "../protocol";
 import { loadRecording } from "../recordings";
 import type { Timeline, TimelineEvent } from "../timeline";
 import { NO_MAP_TRANSFORM, type Scene } from "../render";
-import { cx } from "../ui";
 import { View } from "../view";
 import { DetailsPanel } from "./DetailsPanel";
 import { ListPanel } from "./ListPanel";
@@ -21,10 +20,11 @@ import { MapPanel } from "./MapPanel";
 import { RaidsPanel } from "./RaidsPanel";
 import { RadarCanvas } from "./RadarCanvas";
 import { SettingsPanel } from "./SettingsPanel";
+import { PlaybackBar } from "./PlaybackBar";
 import { ActivityBar, SidePanel, type ViewId } from "./Sidebar";
 import s from "./App.module.css";
 import { StatusBar, StatusButton } from "./StatusBar";
-import { TimelineIndicator, TimelinePanel } from "./TimelinePanel";
+import { TimelinePanel } from "./TimelinePanel";
 
 const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
 
@@ -65,9 +65,11 @@ export function App() {
       },
     );
   };
+  /** Out of a replay: the Raids view back to its list. */
   const backToLive = () => {
     setReview(null);
     playback.seek(null);
+    setUi((u) => ({ ...u, raidsLevel: "list" }));
   };
   /** The live raid, in the Raids view's timeline. */
   const openCurrent = () => {
@@ -105,9 +107,6 @@ export function App() {
     : (["list", "map", "raids", "settings"] as string[]).includes(storedUi.section)
       ? storedUi
       : { ...storedUi, section: "list" as const };
-  const timelineOpen = ui.open && ui.section === "raids" && ui.raidsLevel === "timeline";
-  const toggleTimeline = () =>
-    setUi((u) => (timelineOpen ? { ...u, open: false } : { ...u, open: true, section: "raids", raidsLevel: "timeline" }));
   const view: ViewId = ui.section === "list" ? listPrefs.tab : ui.section;
   const listShown = ui.open && ui.section === "list";
   const togglePanel = () => setUi((u) => ({ ...u, open: !u.open }));
@@ -292,7 +291,6 @@ export function App() {
             catalog={catalog}
             selection={selection}
             onPick={pickEvent}
-            onExitReplay={backToLive}
           />
         ) : (
           <RaidsPanel
@@ -348,21 +346,24 @@ export function App() {
         )}
         <main className={s.main}>
           <RadarCanvas view={camera} scene={scene} follow={follow} onPan={() => setFollow(false)} onTap={onTap} />
-          <div className={s.mapControls}>
-            {review && (
-              <button className={cx(s.control, s.exitReplay)} title="Stop replaying, back to the live raid" onClick={backToLive}>
-                <X size={18} /> Exit replay
-              </button>
-            )}
-            <button
-              className={s.control}
-              aria-pressed={follow}
-              title={follow ? "Following you (F)" : "Follow the local player (F)"}
-              onClick={() => setFollow((f) => !f)}
-            >
-              {follow ? <LocateFixed size={20} /> : <Locate size={20} />}
-            </button>
-          </div>
+          {timeline && range && (
+            <PlaybackBar
+              range={range}
+              playback={playback}
+              replay={!!review}
+              events={timeline.events}
+              selection={selection}
+              onExitReplay={backToLive}
+            />
+          )}
+          <button
+            className={s.follow}
+            aria-pressed={follow}
+            title={follow ? "Following you (F)" : "Follow the local player (F)"}
+            onClick={() => setFollow((f) => !f)}
+          >
+            {follow ? <LocateFixed size={20} /> : <Locate size={20} />}
+          </button>
           {selection && (
             <DetailsPanel
               selection={selection}
@@ -379,19 +380,7 @@ export function App() {
         layer={layer}
         manualLayer={manualLayer}
         catalog={catalogStatus}
-        replay={!!review}
-        timeline={
-          timeline &&
-          range && (
-            <TimelineIndicator
-              range={range}
-              playback={playback}
-              replay={review ? `${mapName(review.info.locationId)}${review.info.start ? ` · ${formatStart(review.info.start)}` : ""}` : null}
-              open={timelineOpen}
-              onClick={toggleTimeline}
-            />
-          )
-        }
+        replay={review ? `${mapName(review.info.locationId)}${review.info.start ? ` · ${formatStart(review.info.start)}` : ""}` : null}
       >
         {!conn.live && !review && (
           <StatusButton tone="link" title="Open a recorded raid" onClick={() => setUi((u) => ({ ...u, open: true, section: "raids", raidsLevel: "list" }))}>

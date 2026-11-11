@@ -4,8 +4,6 @@
   background: var(--chrome); border-top: 1px solid var(--border); color: var(--muted); font-size: var(--fs-sm);
   /* lost the backend */
   &[data-mode="warn"] { background: var(--warn-bar); color: var(--warn-bar-text); }
-  /* replaying a recording: tinted (with an exit next to the map's follow button, see App), so it can't be taken for live */
-  &[data-mode="replay"] { background: var(--replay-bar); border-top-color: var(--link); color: var(--replay-bar-text); }
 }
 .spacer { flex: 1; }
 
@@ -15,7 +13,6 @@
 @layer ui {
   .item { padding: 0 8px; }
   .item + .text { border-left: 1px solid var(--border); }
-  .bar[data-mode="replay"] .item + .text { border-left-color: var(--replay-bar-line); }
   .alert { color: var(--warn); }
   .button {
     height: 100%;

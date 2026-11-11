@@ -4,8 +4,8 @@
 import type { RadarState } from "../connection";
 import { type ItemCatalog, containerName, exfilStatus, totalValue } from "../items";
 import { type Selection, midpoint, selectionKey } from "../pick";
-import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, Side, WorldPos } from "../protocol";
-import { type RoleCategory, SPECIAL_CATEGORIES, isPlainScav, roleInfo } from "../roles";
+import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, WorldPos } from "../protocol";
+import { type PlayerType, SPECIAL_TYPES, bossGroups, identityText, playerType } from "../roles";
 
 export type TabId = "players" | "items" | "containers" | "exfils" | "explosives";
 
@@ -27,13 +27,12 @@ export interface RowBase {
 export interface PlayerRow extends RowBase {
   name: string;
   local: boolean;
-  side: Side;
   ai: boolean;
-  /** Plain AI scav: shown de-emphasized. */
-  scav: boolean;
-  /** Role display name (or the voice, or "human"); category when known. */
-  role: string;
-  roleCategory?: RoleCategory;
+  type: PlayerType;
+  /** Display name for the type: "Killa", "Reshala guard", "USEC bot", ... */
+  typeLabel: string;
+  /** Tooltip: which rule decided the type, and the raw inputs (side, role, voice, ...). */
+  typeDetail: string;
   state: "alive" | "dead" | "left";
   /** Equipment value; undefined when not read (yet) or unpriced. */
   value?: number;
@@ -113,17 +112,19 @@ export function buildRows(state: Pick<RadarState, "players" | "loot" | "exfils" 
 }
 
 export function playerRows(players: Player[], equipment: Map<number, PlayerEquipment>, catalog: ItemCatalog): PlayerRow[] {
+  const groups = bossGroups(players);
   return players.map((p): PlayerRow => {
     const name = p.local ? "You" : `#${p.id}`;
-    const info = roleInfo(p);
-    const role = info?.label ?? p.voice ?? (p.ai ? "" : "human");
+    const t = playerType(p, groups);
     const st = p.dead ? "dead" : p.absent ? "left" : "alive";
     const slots = equipment.get(p.id)?.slots;
     const value = slots?.length ? totalValue(slots, catalog) || undefined : undefined;
-    const scav = isPlainScav(p);
+    const scav = t.type === "ai-scav";
+    const raw = identityText(p);
     return {
-      ...base({ kind: "player", id: p.id }, p.pos, text(name, `#${p.id}`, p.side, p.ai ? "ai bot" : "human", scav && "scav", info?.category, role, p.voice, p.kind, st)),
-      name, local: p.local, side: p.side, ai: p.ai, scav, role, roleCategory: info?.category, state: st, value, dim: scav,
+      ...base({ kind: "player", id: p.id }, p.pos, text(name, `#${p.id}`, t.type, t.label, p.ai ? "ai bot" : "human", raw, st)),
+      name, local: p.local, ai: p.ai, type: t.type, typeLabel: t.label, typeDetail: `${t.type}: ${t.reason}\n${raw}`,
+      state: st, value, dim: scav,
     };
   });
 }
@@ -230,7 +231,7 @@ export function filterRows<T extends TabId>(tab: T, rows: TabRows[T], f: ListFil
     switch (tab) {
       case "players": {
         const p = r as PlayerRow;
-        const special = p.roleCategory !== undefined && SPECIAL_CATEGORIES.has(p.roleCategory);
+        const special = SPECIAL_TYPES.has(p.type);
         // humans + special: either kind (the two together mean "the ones that matter").
         const kind = !f.humansOnly && !f.specialOnly ? true : (f.humansOnly && !p.ai) || (f.specialOnly && special);
         return (!f.aliveOnly || p.state === "alive") && kind;

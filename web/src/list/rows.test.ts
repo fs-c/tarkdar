@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ItemCatalog, ItemInfo } from "../items";
 import type { LootEntry, Player } from "../protocol";
-import { isPlainScav, roleInfo, specialRole } from "../roles";
 import { DEFAULT_FILTERS, buildRows, filterRows, isFiltered, rowKeys, tabOf, withDistances } from "./rows";
 
 const info: Record<string, ItemInfo> = {
@@ -17,7 +16,7 @@ const loot = (id: number, kind: LootEntry["kind"], tpl: string, extra: Partial<L
   ({ id, kind, tpl, obj: "", pos: [10, 0, 0], ...extra });
 
 const state = {
-  players: [player(1, { local: true, ai: false, side: "usec", pos: [0, 5, 0] }), player(2, { voice: "Reshala", dead: true }), player(3, { ai: false, side: "bear", pos: [30, 9, 40] })],
+  players: [player(1, { local: true, ai: false, side: "usec", pos: [0, 5, 0] }), player(2, { voice: "BossBully", dead: true }), player(3, { ai: false, side: "bear", pos: [30, 9, 40] })],
   loot: [
     loot(10, "item", "ledx"),
     loot(11, "item", "bolts"),
@@ -49,7 +48,7 @@ describe("buildRows", () => {
     expect(rows.items[0]).toMatchObject({ shortName: "LEDX", price: 900_000 });
     expect(rows.items[2]).toMatchObject({ name: "quest item", kind: "quest", price: undefined });
     expect(rows.players.map((p) => p.name)).toEqual(["You", "#2", "#3"]);
-    expect(rows.players[1]).toMatchObject({ role: "Reshala", state: "dead" });
+    expect(rows.players[1]).toMatchObject({ type: "boss", typeLabel: "Reshala", state: "dead" });
   });
 
   it("puts tripwires at their midpoint, with their length", () => {
@@ -99,18 +98,6 @@ describe("tabOf", () => {
   });
 });
 
-describe("isPlainScav", () => {
-  it("is savage-side AI with a scav voice or none", () => {
-    expect(isPlainScav(player(1))).toBe(true);
-    expect(isPlainScav(player(1, { voice: "Scav_3" }))).toBe(true);
-  });
-  it("excludes bosses/raiders, player scavs and PMCs", () => {
-    expect(isPlainScav(player(1, { voice: "BossKilla" }))).toBe(false);
-    expect(isPlainScav(player(1, { ai: false }))).toBe(false);
-    expect(isPlainScav(player(1, { side: "usec" }))).toBe(false);
-  });
-});
-
 describe("map filtering helpers", () => {
   it("counts blank text as unfiltered", () => {
     expect(isFiltered(DEFAULT_FILTERS)).toBe(false);
@@ -124,31 +111,6 @@ describe("map filtering helpers", () => {
     expect(keys.has("loot:11")).toBe(false);
     expect(keys.has("player:3")).toBe(true);
     expect(keys.has("grenade:1")).toBe(true);
-  });
-});
-
-describe("roles", () => {
-  it("maps the game's role, including past the enum's gaps", () => {
-    expect(roleInfo(player(1, { role: 6 }))).toEqual({ category: "boss", label: "Killa", source: "role" });
-    expect(roleInfo(player(1, { role: 32 }))?.label).toBe("Kaban");
-    expect(roleInfo(player(1, { role: 57 }))?.label).toBe("Harbinger");
-    expect(roleInfo(player(1, { role: 999 }))).toEqual({ category: "other", label: "role 999", source: "role" });
-  });
-  it("falls back to the voice without a role", () => {
-    expect(roleInfo(player(1, { voice: "BossBully" }))).toMatchObject({ category: "boss", label: "Reshala", source: "voice" });
-    expect(roleInfo(player(1, { voice: "Usec_2" }))?.category).toBe("raider");
-    expect(roleInfo(player(1, { voice: "Usec_2", side: "usec" }))).toBeNull();
-  });
-  it("has no role for us or humans", () => {
-    expect(roleInfo(player(1, { local: true, role: 1 }))).toBeNull();
-    expect(roleInfo(player(1, { ai: false, voice: "BossKilla" }))).toBeNull();
-  });
-  it("uses the role for plain-scav detection when there is one", () => {
-    expect(isPlainScav(player(1, { role: 1 }))).toBe(true);
-    expect(isPlainScav(player(1, { role: 0 }))).toBe(true);
-    expect(isPlainScav(player(1, { role: 22 }))).toBe(false);
-    expect(specialRole(player(1, { role: 22 }))?.label).toBe("Tagilla");
-    expect(specialRole(player(1, { role: 1 }))).toBeNull();
   });
 });
 

@@ -41,13 +41,9 @@ export const ui = {
   quest: "#ffd84d",
   secret: "#e45cff",
 
-  // status bar modes
+  // status bar: lost the backend
   warnBar: "#3a1f12",
   warnBarText: "#ffd2b0",
-  replayBar: "#0f2740",
-  replayBarLine: "#24476a",
-  replayBarText: "#b9d7f5",
-  replayBarStrong: "#e3f0fc",
 } as const;
 
 export type UiColor = keyof typeof ui;

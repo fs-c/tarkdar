@@ -40,7 +40,9 @@ export function App() {
   const playback = usePlayback(range, !review, review ? `rec:${review.info.name}` : `live:${timeline?.raid ?? "-"}`);
   const state: RadarState = useMemo(() => {
     // Live and at "now": the stream's state as is.
-    if (!timeline || !range || (!review && playback.cursor === null)) return conn;
+    if (!timeline || !range) return conn;
+    // Live and at "now": the stream's state as is, but players come from the timeline (it knows who extracted).
+    if (!review && playback.cursor === null) return { ...conn, ...timeline.playersAtTime(range[1]) };
     const at = timeline.stateAt(playback.cursor ?? range[1]);
     return review ? { ...conn, connected: true, protocolMismatch: false, ...at } : { ...conn, ...at };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the timeline changes in place (liveVersion)

@@ -10,7 +10,7 @@ import type { EventKind, Timeline, TimelineEvent } from "./timeline";
 export const EVENT_GROUPS = {
   spawns: { label: "Spawns", kinds: ["playerSeen"] },
   deaths: { label: "Deaths", kinds: ["died"] },
-  left: { label: "Left", kinds: ["left"] },
+  left: { label: "Left", kinds: ["left", "extracted"] },
   taken: { label: "Loot gone", kinds: ["lootRemoved"] },
   changed: { label: "Contents", kinds: ["lootChanged"] },
   appeared: { label: "Loot new", kinds: ["lootAdded"] },
@@ -87,6 +87,8 @@ export function describeEvent(e: TimelineEvent, timeline: Timeline, catalog: Ite
         pos: timeline.tracks.get(e.player)?.poseAt(e.t + 1000)?.pos ?? null, showAt: e.t };
     case "died":
       return { text: `${player(e.player)} died`, tone: "death", sel: { kind: "player", id: e.player }, pos: e.pos, showAt: e.t };
+    case "extracted":
+      return { text: `${player(e.player)} extracted`, tone: "left", sel: { kind: "player", id: e.player }, pos: e.pos, showAt: e.t };
     case "left":
       return { text: `${player(e.player)} left the raid`, tone: "left", sel: { kind: "player", id: e.player }, pos: e.pos, showAt: e.t };
     case "lootAdded":
@@ -113,6 +115,7 @@ export function eventConcerns(e: TimelineEvent, sel: Selection): boolean {
     case "playerSeen":
     case "died":
     case "left":
+    case "extracted":
       return sel.kind === "player" && sel.id === e.player;
     case "lootAdded":
     case "lootRemoved":

@@ -163,7 +163,7 @@ function Track({ range, at, live, events, selection, onSeek }: TrackProps) {
     onSeek(live && t >= to - span * 0.005 ? null : t);
   };
   const ticks = events.filter(
-    (e) => e.kind === "died" || e.kind === "left" || (selection !== null && eventConcerns(e, selection)),
+    (e) => e.kind === "died" || e.kind === "left" || e.kind === "extracted" || (selection !== null && eventConcerns(e, selection)),
   );
 
   return (

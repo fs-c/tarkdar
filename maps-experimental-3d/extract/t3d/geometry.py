@@ -30,7 +30,7 @@ def world_aabb(lo, hi, m):
 
 def compute_normals(positions: np.ndarray, indices: np.ndarray) -> np.ndarray:
     """Area-weighted smooth vertex normals for a triangle mesh."""
-    tri = indices.reshape(-1, 3)
+    tri = indices[: len(indices) // 3 * 3].reshape(-1, 3)   # ignore a trailing partial triangle
     if len(tri) == 0:
         return np.zeros_like(positions, dtype=np.float32)
     p0, p1, p2 = positions[tri[:, 0]], positions[tri[:, 1]], positions[tri[:, 2]]
@@ -44,9 +44,31 @@ def compute_normals(positions: np.ndarray, indices: np.ndarray) -> np.ndarray:
     return (normals / lens).astype(np.float32)
 
 
-def mesh_to_three(mesh: Mesh):
-    """Cached Unity mesh -> (positions, normals, indices) in three.js space.
+def _parts(mesh: Mesh, index_count: int) -> np.ndarray:
+    """Submesh ranges as (P, 2) [first index, index count], or one part for all.
 
+    Parts are only kept when they are triangle lists that tile the whole index
+    buffer in order; anything else (lines, gaps, overlaps) becomes one part.
+    """
+    whole = np.array([[0, index_count]], dtype=np.uint32)
+    subs = mesh.submeshes or []
+    if len(subs) < 2:
+        return whole
+    cursor = 0
+    for first, count, topology in subs:
+        if topology != 0 or first != cursor or count % 3:
+            return whole
+        cursor += count
+    if cursor != index_count:
+        return whole
+    parts = np.array([[first, count] for first, count, _ in subs if count], dtype=np.uint32)
+    return parts if len(parts) else whole
+
+
+def mesh_to_three(mesh: Mesh):
+    """Cached Unity mesh -> (positions, normals, indices, parts) in three.js space.
+
+    `parts` are the submesh index ranges (one per material slot), see _parts.
     Returns None for meshes with no usable triangles.
     """
     vcount = mesh.vertex_count
@@ -65,11 +87,13 @@ def mesh_to_three(mesh: Mesh):
     indices = np.asarray(mesh.indices, dtype=np.uint32)
     if indices.size == 0:
         return None
+    filtered = False
     if int(indices.max()) >= vcount:
         bad = indices >= vcount
         if bad.all():
             return None
         indices = indices[~bad]
+        filtered = True
 
     # Unity's front faces are clockwise; three.js expects counter-clockwise.
     # Combined with the Z reflection, every imported mesh needs its triangles
@@ -81,18 +105,20 @@ def mesh_to_three(mesh: Mesh):
         indices = np.concatenate([flipped, indices[n3:]])
     if normals is None:
         normals = compute_normals(positions, indices)
-    return positions, normals, indices
+    parts = np.array([[0, len(indices)]], dtype=np.uint32) if filtered else _parts(mesh, len(indices))
+    return positions, normals, indices, parts
 
 
 def decimate(positions, normals, indices, ratio: float):
-    """Reduce a mesh with meshoptimizer (fast-simplification)."""
+    """Reduce a mesh with fast-simplification. Submesh parts do not survive:
+    the result is a single part."""
     import fast_simplification as fs
 
     faces = indices.reshape(-1, 3).astype(np.int32)
     p, f = fs.simplify(positions.astype(np.float64), faces, target_reduction=float(ratio))
     p = p.astype(np.float32)
     f = f.astype(np.uint32).reshape(-1)
-    return p, compute_normals(p, f), f
+    return p, compute_normals(p, f), f, np.array([[0, len(f)]], dtype=np.uint32)
 
 
 def terrain_mesh(heights: np.ndarray, scale, step: int):
@@ -135,4 +161,4 @@ def terrain_mesh(heights: np.ndarray, scale, step: int):
     v01 = v00 + cols
     v11 = v01 + 1
     indices = np.stack([v00, v10, v01, v10, v11, v01], axis=-1).reshape(-1).astype(np.uint32)
-    return positions, normals, indices
+    return positions, normals, indices, np.array([[0, len(indices)]], dtype=np.uint32)

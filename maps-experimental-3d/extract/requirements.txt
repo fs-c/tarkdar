@@ -1,4 +1,6 @@
 numpy==2.5.4
 fast-simplification==0.2.0
+# hlod profile (error-bounded simplification). Source-only package: needs a C++ compiler.
+meshoptimizer==0.2.30a0
 # Only needed for extract_cache.py (reading the game files); build.py works without it.
 UnityPy==1.25.4

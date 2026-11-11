@@ -1,0 +1,197 @@
+// Draws a set of slots as InstancedMeshes. Vertex buffers are shared per mesh
+// and each draw is an index sub-range: a run of adjacent parts of one instance
+// that share a category (usually the whole mesh, so one draw per mesh).
+
+import * as THREE from "three";
+import { MESH_FLAT, type MapData } from "./dataset";
+import type { Stage } from "./scene";
+
+interface MeshBuffers {
+  position: THREE.BufferAttribute;
+  /** null for flat-shaded meshes: the shader derives face normals. */
+  normal: THREE.BufferAttribute | null;
+  color: THREE.BufferAttribute | null;
+  box: THREE.Box3;
+  sphere: THREE.Sphere;
+}
+
+export interface InstancedUserData {
+  /** First slot of the drawn run, per instance id. */
+  slots: Uint32Array;
+  mesh: number;
+}
+
+/** sRGB bytes -> linear bytes (alpha unchanged). */
+export function srgbBytesToLinear(srgb: Uint8Array): Uint8Array {
+  const lut = new Uint8Array(256);
+  for (let v = 0; v < 256; v++) {
+    const c = v / 255;
+    lut[v] = Math.round(255 * (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  }
+  const out = new Uint8Array(srgb.length);
+  for (let i = 0; i < srgb.length; i += 4) {
+    out[i] = lut[srgb[i]];
+    out[i + 1] = lut[srgb[i + 1]];
+    out[i + 2] = lut[srgb[i + 2]];
+    out[i + 3] = srgb[i + 3];
+  }
+  return out;
+}
+
+/** A run of slots drawn together: parts first..last of one instance. */
+export interface Run {
+  firstPart: number;
+  lastPart: number;
+  category: number;
+  /** First slot of the run, one entry per instance. */
+  slots: number[];
+}
+
+/**
+ * Group visible slots into draws. Adjacent parts of an instance with the same
+ * category are merged into one index range; with `split` every part is drawn
+ * on its own (needed when each slot has its own colour).
+ */
+export function groupRuns(data: MapData, slots: Uint32Array, split: boolean): Run[] {
+  const partTotal = data.partMesh.length;
+  const categoryCount = data.index.categories.length;
+  const runs = new Map<number, Run>();
+  let i = 0;
+  while (i < slots.length) {
+    const first = slots[i];
+    const category = data.slotCategory[first];
+    const instance = data.slotInstance[first];
+    let j = i + 1;
+    if (!split) {
+      while (
+        j < slots.length &&
+        slots[j] === slots[j - 1] + 1 &&
+        data.slotInstance[slots[j]] === instance &&
+        data.slotCategory[slots[j]] === category
+      ) {
+        j++;
+      }
+    }
+    const firstPart = data.slotPart[first];
+    const lastPart = data.slotPart[slots[j - 1]];
+    const key = (firstPart * partTotal + lastPart) * categoryCount + category;
+    let run = runs.get(key);
+    if (!run) runs.set(key, (run = { firstPart, lastPart, category, slots: [] }));
+    run.slots.push(first);
+    i = j;
+  }
+  return [...runs.values()];
+}
+
+export class InstanceRenderer {
+  readonly meshes: THREE.InstancedMesh[] = [];
+  private readonly buffers = new Map<number, MeshBuffers>();
+  private readonly geometries = new Map<number, THREE.BufferGeometry>();
+  /** Baked vertex colours converted to linear (what three.js expects), if any. */
+  private readonly linearColors: Uint8Array | null;
+
+  constructor(
+    private readonly stage: Stage,
+    private readonly data: MapData,
+  ) {
+    this.linearColors = data.colors ? srgbBytesToLinear(data.colors) : null;
+    stage.setVertexColors(this.linearColors !== null);
+  }
+
+  private meshBuffers(mesh: number): MeshBuffers {
+    let b = this.buffers.get(mesh);
+    if (!b) {
+      const d = this.data;
+      const v0 = d.meshVertexStart[mesh] * 3;
+      const v1 = v0 + d.meshVertexCount[mesh] * 3;
+      const o = mesh * 6;
+      const box = new THREE.Box3(
+        new THREE.Vector3(d.meshBounds[o], d.meshBounds[o + 1], d.meshBounds[o + 2]),
+        new THREE.Vector3(d.meshBounds[o + 3], d.meshBounds[o + 4], d.meshBounds[o + 5]),
+      );
+      b = {
+        position: new THREE.BufferAttribute(d.positions.subarray(v0, v1), 3),
+        normal: d.meshFlags[mesh] & MESH_FLAT ? null : new THREE.BufferAttribute(d.normals.subarray(v0, v1), 3, true),
+        color: this.linearColors
+          ? new THREE.BufferAttribute(this.linearColors.subarray((v0 / 3) * 4, (v1 / 3) * 4), 4, true)
+          : null,
+        box,
+        sphere: box.getBoundingSphere(new THREE.Sphere()),
+      };
+      this.buffers.set(mesh, b);
+    }
+    return b;
+  }
+
+  private rangeGeometry(firstPart: number, lastPart: number): THREE.BufferGeometry {
+    const d = this.data;
+    const key = firstPart * d.partMesh.length + lastPart;
+    let geometry = this.geometries.get(key);
+    if (!geometry) {
+      const mesh = d.partMesh[firstPart];
+      const b = this.meshBuffers(mesh);
+      // Parts tile the mesh's index buffer in order, so a run is one range.
+      const first = d.meshIndexStart[mesh] + d.partRange[firstPart * 2];
+      const end = d.meshIndexStart[mesh] + d.partRange[lastPart * 2] + d.partRange[lastPart * 2 + 1];
+      const indices = (d.meshIndexWide[mesh] ? d.indices32 : d.indices16).subarray(first, end);
+      geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", b.position);
+      if (b.normal) geometry.setAttribute("normal", b.normal);
+      if (b.color) geometry.setAttribute("color", b.color);
+      geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+      // Bounds of the whole mesh: conservative for a part, and free.
+      geometry.boundingBox = b.box;
+      geometry.boundingSphere = b.sphere;
+      this.geometries.set(key, geometry);
+    }
+    return geometry;
+  }
+
+  clear(): void {
+    for (const mesh of this.meshes) {
+      mesh.parent?.remove(mesh);
+      mesh.dispose();
+    }
+    this.meshes.length = 0;
+  }
+
+  /**
+   * Replace everything drawn with the given slots. `colored` shows material
+   * colours instead of category colours: baked vertex colours when the dataset
+   * has them, otherwise one colour per slot.
+   */
+  rebuild(slots: Uint32Array, colored: boolean): void {
+    this.clear();
+    const d = this.data;
+    const perSlot = colored && !this.linearColors;
+    const matrix = new THREE.Matrix4();
+    const color = new THREE.Color();
+    for (const run of groupRuns(d, slots, perSlot)) {
+      const { category, slots: list } = run;
+      const mesh = d.partMesh[run.firstPart];
+      const geometry = this.rangeGeometry(run.firstPart, run.lastPart);
+      const flat = (d.meshFlags[mesh] & MESH_FLAT) !== 0;
+      const inst = new THREE.InstancedMesh(geometry, this.stage.material(category, colored, flat), list.length);
+      for (let i = 0; i < list.length; i++) {
+        const s = list[i];
+        d.matrix16(d.slotInstance[s], matrix.elements);
+        inst.setMatrixAt(i, matrix);
+        if (perSlot) {
+          const c = s * 4;
+          if (d.slotColor[c + 3]) {
+            color.setRGB(d.slotColor[c] / 255, d.slotColor[c + 1] / 255, d.slotColor[c + 2] / 255, THREE.SRGBColorSpace);
+          } else {
+            color.setHex(this.stage.categoryColor(category));
+          }
+          inst.setColorAt(i, color);
+        }
+      }
+      inst.instanceMatrix.needsUpdate = true;
+      inst.computeBoundingSphere();
+      inst.name = d.meshNames[mesh] ?? "";
+      inst.userData = { slots: Uint32Array.from(list), mesh } satisfies InstancedUserData;
+      this.stage.groups[category].add(inst);
+      this.meshes.push(inst);
+    }
+  }
+}

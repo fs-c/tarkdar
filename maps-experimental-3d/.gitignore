@@ -5,5 +5,7 @@ __pycache__/
 viewer/node_modules/
 viewer/dist/
 viewer/public/data/
+harness/node_modules/
+harness/runs/
 # extraction cache: stored in B2 via ../assets.json (scripts/assets.py)
 cache/

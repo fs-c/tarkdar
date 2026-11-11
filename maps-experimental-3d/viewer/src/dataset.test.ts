@@ -1,0 +1,236 @@
+import { decodePack } from "./container";
+import { bytesOf, encodePack } from "./container.test";
+import { MapData, sceneGroupName, worldBox, type ChunkMeta, type DatasetIndex } from "./dataset";
+import { categoryCounts, defaultFilter, filterReport, groupCounts, summarize, visibleSlots } from "./filter";
+import { groupRuns, srgbBytesToLinear } from "./instances";
+import { describeSlot, selectionReport } from "./picker";
+
+const CATEGORIES = ["structure", "terrain", "foliage", "water", "glass", "shadow", "decal", "background"];
+
+// Two meshes: "wall" (2 parts: structure + decal) and "pine01" (1 part).
+// Instances: wall @ x=10 (scene 0), wall scaled x2 @ x=100 (scene 1), pine @ z=-50 (scene 1).
+function fixture(): MapData {
+  const u32 = (v: number[], shape = [v.length]) => ({ dtype: "<u4", shape, bytes: bytesOf(new Uint32Array(v)) });
+  const identityAt = (x: number, y: number, z: number, s = 1) => [s, 0, 0, 0, s, 0, 0, 0, s, x, y, z];
+  const buffer = encodePack(
+    { kind: "instanced", level: 0, error: 0, cell: null, meshNames: ["wall", "pine01"] } satisfies ChunkMeta,
+    {
+      mesh_vertex_start: u32([0, 4]),
+      mesh_vertex_count: u32([4, 3]),
+      mesh_index_start: u32([0, 6]),
+      mesh_index_count: u32([6, 3]),
+      mesh_index_wide: { dtype: "|u1", shape: [2], bytes: new Uint8Array([0, 0]) },
+      mesh_part_start: u32([0, 2]),
+      mesh_part_count: u32([2, 1]),
+      mesh_bounds: { dtype: "<f4", shape: [2, 6], bytes: bytesOf(new Float32Array([0, 0, 0, 2, 3, 0, -1, 0, -1, 1, 8, 1])) },
+      part_range: u32([0, 3, 3, 3, 0, 3], [3, 2]),
+      positions: { dtype: "<f4", shape: [7, 3], bytes: bytesOf(new Float32Array(21)) },
+      normals: { dtype: "|i1", shape: [7, 3], bytes: bytesOf(new Int8Array(21)) },
+      indices16: { dtype: "<u2", shape: [9], bytes: bytesOf(new Uint16Array([0, 2, 1, 0, 3, 2, 0, 1, 2])) },
+      indices32: { dtype: "<u4", shape: [0], bytes: new Uint8Array(0) },
+      inst_mesh: u32([0, 0, 1]),
+      inst_scene: { dtype: "<u2", shape: [3], bytes: bytesOf(new Uint16Array([0, 1, 1])) },
+      inst_path: { dtype: "<i4", shape: [3], bytes: bytesOf(new Int32Array([0, 1, -1])) },
+      inst_slot_start: u32([0, 2, 4]),
+      inst_matrix: {
+        dtype: "<f4",
+        shape: [3, 12],
+        bytes: bytesOf(new Float32Array([...identityAt(10, 0, 0), ...identityAt(100, 0, 0, 2), ...identityAt(0, 0, -50)])),
+      },
+      slot_category: { dtype: "|u1", shape: [5], bytes: new Uint8Array([0, 6, 0, 6, 2]) },
+      slot_flags: { dtype: "|u1", shape: [5], bytes: new Uint8Array([0, 0, 0, 0, 1]) },
+      slot_color: { dtype: "|u1", shape: [5, 4], bytes: new Uint8Array(20) },
+      slot_material: { dtype: "<i4", shape: [5], bytes: bytesOf(new Int32Array([0, 1, 0, 1, -1])) },
+    },
+  );
+  const index = {
+    format: 2,
+    map: "test",
+    categories: CATEGORIES,
+    scenes: [
+      { level: "level1", path: "Assets/Content/Locations/Custom/custom_Garage.unity" },
+      { level: "level2", path: "Assets/Content/Locations/City/City_Areas/NE_01/NE_01_A.unity" },
+    ],
+    materials: [
+      { name: "brick", shader: "p0/Reflective/Bumped Specular", queue: -1 },
+      { name: "stain", shader: "Decal/Ultra Deferred Decal Of God 3000", queue: 2005 },
+    ],
+  } as unknown as DatasetIndex;
+  return new MapData(index, decodePack<ChunkMeta>(buffer));
+}
+
+describe("helpers", () => {
+  it("names scene groups", () => {
+    expect(sceneGroupName("Assets/Content/Locations/Custom/custom_Garage.unity")).toBe("custom_Garage");
+    expect(sceneGroupName("Assets/Content/Locations/City/City_Areas/NE_01/NE_01_A.unity")).toBe("NE_01");
+  });
+
+  it("transforms a box by a column-major 3x4 matrix", () => {
+    const out = new Float32Array(6);
+    // rotate 90 degrees about Y (x -> -z, z -> x), then translate by (10, 0, 0)
+    worldBox([0, 0, 0, 2, 3, 1], 0, [0, 0, -1, 0, 1, 0, 1, 0, 0, 10, 0, 0], 0, out, 0);
+    expect([...out]).toEqual([10, 0, -2, 11, 3, 0]);
+  });
+});
+
+describe("MapData", () => {
+  const data = fixture();
+
+  it("derives slots, boxes, sizes and scene groups", () => {
+    expect(data.instanceCount).toBe(3);
+    expect(data.slotCount).toBe(5);
+    expect([...data.slotInstance]).toEqual([0, 0, 1, 1, 2]);
+    expect([...data.slotPart]).toEqual([0, 1, 0, 1, 2]);
+    expect([...data.partMesh]).toEqual([0, 0, 1]);
+    expect([...data.instBox.subarray(0, 6)]).toEqual([10, 0, 0, 12, 3, 0]);
+    expect([...data.instBox.subarray(6, 12)]).toEqual([100, 0, 0, 104, 6, 0]);
+    expect([...data.instSize]).toEqual([3, 6, 8]);
+    expect(data.sceneGroups).toEqual(["custom_Garage", "NE_01"]);
+    expect([...data.instGroup]).toEqual([0, 1, 1]);
+    expect(data.slotTriangles(4)).toBe(1);
+    const m = new Array<number>(16);
+    data.matrix16(1, m);
+    expect(m).toEqual([2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 100, 0, 0, 1]);
+  });
+
+  it("rejects other chunk kinds", () => {
+    expect(() => new MapData(data.index, { meta: { kind: "merged" } as ChunkMeta, arrays: {} })).toThrow(/unsupported chunk/);
+  });
+});
+
+describe("filter", () => {
+  const data = fixture();
+  const all = () => defaultFilter(data, "explore");
+
+  it("explore shows everything, other modes hide noise categories", () => {
+    expect([...visibleSlots(data, all())]).toEqual([0, 1, 2, 3, 4]);
+    expect([...visibleSlots(data, defaultFilter(data, "overview"))]).toEqual([0, 2, 4]);
+    expect([...visibleSlots(data, defaultFilter(data, "inspect"))]).toEqual([0, 2, 4]);
+    // ?cats= replaces the default; unknown names are ignored
+    expect([...visibleSlots(data, defaultFilter(data, "explore", ["decal", "foliage", "nope"]))]).toEqual([1, 3, 4]);
+    expect([...visibleSlots(data, defaultFilter(data, "overview", ["decal"]))]).toEqual([1, 3]);
+  });
+
+  it("filters by category, scene group, size, mesh name and hide/solo", () => {
+    const run = (edit: (f: ReturnType<typeof all>) => void) => {
+      const f = all();
+      edit(f);
+      return [...visibleSlots(data, f)];
+    };
+    expect(run((f) => f.categories.delete(2))).toEqual([0, 1, 2, 3]);
+    expect(run((f) => f.hiddenGroups.add(1))).toEqual([0, 1]);
+    expect(run((f) => (f.minSize = 5))).toEqual([2, 3, 4]);
+    expect(run((f) => (f.maxSize = 5))).toEqual([0, 1]);
+    expect(run((f) => (f.meshText = " PINE "))).toEqual([0, 1, 2, 3]);
+    expect(run((f) => ((f.meshText = "pine"), (f.meshMode = "only")))).toEqual([4]);
+    expect(run((f) => f.hiddenMeshes.add(0))).toEqual([4]);
+    expect(run((f) => (f.soloMeshes = new Set([0])))).toEqual([0, 1, 2, 3]);
+  });
+
+  it("summarizes and counts", () => {
+    expect(summarize(data, visibleSlots(data, all()))).toEqual({ instances: 3, triangles: 5, meshes: 2 });
+    expect(summarize(data, new Uint32Array([1, 3]))).toEqual({ instances: 2, triangles: 2, meshes: 1 });
+    expect(categoryCounts(data)).toEqual([
+      { id: 0, name: "structure", slots: 2, triangles: 2 },
+      { id: 2, name: "foliage", slots: 1, triangles: 1 },
+      { id: 6, name: "decal", slots: 2, triangles: 2 },
+    ]);
+    expect(groupCounts(data)).toEqual([
+      { id: 0, name: "custom_Garage", instances: 1 },
+      { id: 1, name: "NE_01", instances: 2 },
+    ]);
+  });
+
+  it("reports the filter by name", () => {
+    const f = all();
+    f.hiddenGroups.add(0);
+    f.hiddenMeshes.add(1);
+    const report = JSON.parse(filterReport(data, f, { instances: 1, triangles: 2, meshes: 1 }, "test"));
+    expect(report.scenes).toEqual(["NE_01"]);
+    expect(report.hiddenMeshes).toEqual(["pine01"]);
+    expect(report.categories).toEqual(["structure", "foliage", "decal"]);
+    expect(report.soloMeshes).toEqual([]);
+  });
+});
+
+describe("picker report", () => {
+  const data = fixture();
+
+  it("describes a slot", () => {
+    const s = describeSlot(data, 3, ["root/a", "root/b"]);
+    expect(s).toMatchObject({
+      instance: 1,
+      meshIndex: 0,
+      mesh: "wall",
+      category: "decal",
+      material: "stain",
+      shader: "Decal/Ultra Deferred Decal Of God 3000",
+      scene: "level2",
+      sceneIndex: 1,
+      path: "root/b",
+      position: [100, 0, 0],
+      size: [4, 6, 0],
+      scale: [2, 2, 2],
+      tris: 2,
+      partTris: 1,
+    });
+    const report = JSON.parse(selectionReport([s], "test", "explore"));
+    expect(report.selection[0]).toMatchObject({ mesh: "wall", category: "decal", path: "root/b", triangles: 2 });
+  });
+
+  it("copes with missing material and path", () => {
+    const s = describeSlot(data, 4, null);
+    expect(s).toMatchObject({ mesh: "pine01", category: "foliage", material: null, shader: null, path: null });
+    expect(describeSlot(data, 4, ["x"]).path).toBeNull();
+  });
+});
+
+describe("groupRuns", () => {
+  const data = fixture();
+  const all = new Uint32Array([0, 1, 2, 3, 4]);
+  const shape = (slots: Uint32Array, split = false) =>
+    groupRuns(data, slots, split).map((r) => [r.firstPart, r.lastPart, data.index.categories[r.category], r.slots]);
+
+  it("draws each (part, category) once, instanced", () => {
+    expect(shape(all)).toEqual([
+      [0, 0, "structure", [0, 2]],
+      [1, 1, "decal", [1, 3]],
+      [2, 2, "foliage", [4]],
+    ]);
+  });
+
+  it("merges adjacent parts of an instance that share a category", () => {
+    data.slotCategory[1] = 0; // first wall: both parts structure
+    try {
+      expect(shape(all)).toEqual([
+        [0, 1, "structure", [0]],
+        [0, 0, "structure", [2]],
+        [1, 1, "decal", [3]],
+        [2, 2, "foliage", [4]],
+      ]);
+      // per-slot colours need every part drawn on its own
+      expect(shape(all, true)).toEqual([
+        [0, 0, "structure", [0, 2]],
+        [1, 1, "structure", [1]],
+        [1, 1, "decal", [3]],
+        [2, 2, "foliage", [4]],
+      ]);
+      // a hidden part in between breaks the run
+      data.slotCategory[3] = 0;
+      expect(shape(new Uint32Array([0, 1, 2, 4]))).toEqual([
+        [0, 1, "structure", [0]],
+        [0, 0, "structure", [2]],
+        [2, 2, "foliage", [4]],
+      ]);
+    } finally {
+      data.slotCategory[1] = 6;
+      data.slotCategory[3] = 6;
+    }
+  });
+});
+
+describe("srgbBytesToLinear", () => {
+  it("converts colour channels and keeps alpha", () => {
+    expect([...srgbBytesToLinear(new Uint8Array([0, 255, 128, 77, 188, 10, 64, 255]))]).toEqual([0, 255, 55, 77, 128, 1, 13, 255]);
+  });
+});

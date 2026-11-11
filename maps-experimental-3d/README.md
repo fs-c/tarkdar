@@ -4,13 +4,16 @@ Extract real geometry from **Escape from Tarkov** and view it as a small 3D map.
 This spike covers **Customs / `bigmap`** and **Streets / TarkovStreets** and
 ships three modes:
 
-- **overview** (default): LOD1 + decimation, built for 60 fps on an integrated
-  GPU, with every mesh type kept.
+- **overview** (default): the map as merged 128 m cells: simplified to a
+  10 cm error bound, hidden surfaces removed, ~110 draw calls per map.
 - **explore**: the full, unfiltered dataset with a live **strip-down UI**. This
   is the mode to use when something looks missing or wrong.
 - **inspect** (Customs): full LOD0 geometry with a click-to-identify picker.
 
-No textures or materials are exported.
+No textures are shown; the datasets carry a category and a flat colour per
+material slot (the overview: per vertex). `HANDOFF.md` has the current state,
+the measurements and the roadmap; `harness/README.md` describes how quality
+is measured.
 
 ## What was extracted
 
@@ -49,63 +52,45 @@ vertex data). Unity version is **2022.3.43f2**.
 (247 City scene entries, ~298k MeshRenderers). The `streets` preset is derived
 from `BuildSettings` at extraction time:
 
-- **full** (`streets`): 223 scenes, including all indoor scenes
-- **exterior** (`streets-exterior`): 161 scenes, indoor scenes excluded
-  (indoor scenes are ~52% of the renderers)
-
-The shipped `streets` dataset is the full version; `--include-indoor` is the
-switch that enables indoor scenes when regenerating.
+- **all** City scenes: 223, including the indoor scenes (~52% of the
+  renderers). Used by `streets-explore`.
+- **exterior**: 161 scenes, indoor scenes excluded. Used by the `streets`
+  overview; `--include-indoor` adds the indoor scenes.
 
 ## Current output
 
 ### overview (default)
 
-Built for an integrated GPU at 1080p:
-
-| metric | value |
-|---|---:|
-| LOD0 source instances | 93,000 |
-| after LOD1 + 1 m prop filter | **49,597 instances** |
-| mesh types | **3,126** |
-| visible draw calls | ~3,123 |
-| unique triangles | 1,014,692 |
-| instanced triangles | **8,882,652** |
-| binary + JSON | **22.6 MB + 8.0 MB** |
-| measured | **~55–60 fps · 3,123 calls · 8.88M tris** |
-
-Measured on the available integrated AMD GPU at 1500×950. The same profile
-should have useful headroom on a discrete GPU.
-
-How it is produced:
-
-- choose **LOD1** where available (fall back to LOD0 if an asset has no LOD1)
-- do **not** skip meshes by their `_LOD1/_LOD2` name (the LOD selector already
-  filters LOD groups; the old name filter was deleting whole walls/roofs)
-- drop instances below **1 m** max world dimension (configurable)
-- decimate remaining meshes by **80%** with meshoptimizer (configurable)
-- drop shadows, decals, skybox/background and unused geometry
-
-Rare/small-mesh pruning is available via `--prune-min-instances`, but it is
-**off by default**: testing showed it removed entire unique walls/roofs, even
-though those are visually large. Decimation alone is enough to reach ~60 fps.
-
-### Streets
-
-| metric | full (`streets`) | exterior (`streets-exterior`) |
+| metric | Customs (`customs`) | Streets (`streets`, exteriors) |
 |---|---:|---:|
-| scenes | 223 | 161 |
-| instances | **64,200** | 37,778 |
-| mesh types | 7,374 | 5,257 |
-| unique triangles | 1,646,844 | 1,226,030 |
-| instanced triangles | **14,045,252** | 8,997,128 |
-| binary + JSON | **43.4 MB + 10.8 MB** | 32.5 MB + 6.6 MB |
-| draw calls | ~7,314 | ~5,000 |
-| measured | **~45–60 fps · 14.0M tris** | **60 fps · 9.0M tris** |
+| source triangles (LOD1, structure + glass) | 40.4M | 39.2M |
+| after simplification (10 cm) | 8.7M | 9.5M |
+| after hidden-surface removal | **5.0M** | **7.9M** |
+| triangles incl. terrain/water | 5.3M | 7.9M |
+| cell meshes / draw calls | 108 / ~114 | 101 / ~108 |
+| geometry file | 136.8 MB | 207.7 MB |
+| mean / min SSIM vs the reference | 0.924 / 0.874 | 0.944 / 0.910 |
 
-Streets is the stress benchmark: the full version includes all 223 City scenes
-(including indoor geometry) and ~6.8k draw calls. The focused top view is
-around 51 fps; the default perspective view is ~52–60 fps. The exterior variant
-is a comfortable 60 fps.
+How it is produced (`extract/t3d/hlod.py`, `visibility.py`):
+
+- choose **LOD1** where available; a renderer listed in several LOD levels is
+  shown at each of them
+- drop the shadow, decal, background and foliage **categories** (classified
+  from shader and mesh names, see "Output format")
+- merge structure and glass per **128 m cell** into world space
+- simplify each cell with meshoptimizer to an **absolute error of 10 cm**
+  (`--error`); detached props smaller than the error vanish, so there is no
+  size cutoff
+- remove triangles that are **never visible** from 45 directions around and
+  above the map (terrain hides buried parts); `--no-hsr` turns it off
+- flat shading, vertices shared by position + baked material colour
+
+Terrain and water stay as they are. SSIM is measured by the harness against
+the explore dataset restricted to structure + terrain + water + glass; the
+first overview (`--profile legacy`, `make legacy`, `?map=customs-legacy`)
+scores 0.834 / 0.733 with 2,656 / 5,314 draw calls.
+
+Frame rates have not been re-measured (the development container has no GPU).
 
 ### explore (live strip-down)
 
@@ -117,10 +102,10 @@ sizes and mesh types live.
 |---|---:|---:|
 | geometry | LOD0 | LOD1 |
 | scenes | 23 | 223 (incl. indoor) |
-| instances | **134,749** | **161,178** |
-| mesh types | 7,229 | 16,484 |
-| instanced triangles | **89.6M** | **97.5M** |
-| binary + JSON | 209.5 MB + 21.4 MB | 262.6 MB + 26.8 MB |
+| instances | **141,088** | **164,702** |
+| mesh types | 7,930 | 17,106 |
+| instanced triangles | **92.0M** | **98.1M** |
+| chunk + index | 214.8 MB + 0.1 MB | 278.5 MB + 0.4 MB |
 | includes | shadows, decals, background, small props | same |
 | initial (everything on) | ~13 fps (filtered ~18) | ~12 fps (filtered ~24) |
 
@@ -138,7 +123,9 @@ are water.
 
 The left panel starts with every category visible. You can:
 
-- toggle **structure / terrain / foliage / water / shadow / decal / background**
+- toggle **structure / terrain / foliage / water / glass / shadow / decal /
+  background** (a category is per material slot, so a decal or glass submesh
+  inside a wall mesh is switched separately from the wall)
 - filter by **world size** (min/max, plus **Huge >100 m** and **Tiny <0.5 m**
   presets)
 - toggle **scene groups** (`custom_*`, `City_NE_01`, `City_Roads`, …)
@@ -156,8 +143,8 @@ Recommended workflow:
 2. Toggle **No noise** (shadow/decal/background) or individual categories.
 3. Use **Huge >100 m** / **Tiny <0.5 m** to look for scale outliers.
 4. Switch scene groups on/off, or hide/solo a mesh name.
-5. Click an object with **Pick**; the panel reports mesh, scene, world position,
-   world size, local scale and triangles.
+5. Click an object with **Pick**; the panel reports mesh, category, shader,
+   scene, hierarchy path, world position, world size, local scale and triangles.
 6. **Copy report** for individual objects, or **Copy filter** to send me the
    exact filter state.
 
@@ -167,11 +154,11 @@ Used by the picker. Full LOD0 geometry, no decimation or pruning:
 
 | metric | value |
 |---|---:|
-| mesh types | 4,031 |
-| instances | 93,000 |
-| unique triangles | 7,547,991 |
-| instanced triangles | 74,430,732 |
-| binary + JSON | 173.5 MB + 14.4 MB |
+| mesh types | 4,176 |
+| instances | 94,194 |
+| unique triangles | 7,591,681 |
+| instanced triangles | 74,715,405 |
+| chunk + index | 169.7 MB + 0.1 MB |
 
 Load it with `?mode=inspect`. It is intentionally heavy; it exists to identify
 objects, not for navigation.
@@ -184,7 +171,8 @@ two stages:
 1. **`extract_cache.py`**: game files → `cache/`. This is the only step that
    needs `EscapeFromTarkov_Data`. It is incremental: unchanged scenes are skipped.
 2. **`build.py`**: `cache/` → `viewer/public/data/<name>/`. Needs only the cache,
-   numpy and fast-simplification. It takes seconds per dataset.
+   numpy and meshoptimizer (a source-only package: `pip` needs a C++
+   compiler). Seconds per dataset; the overview takes one to three minutes.
 
 `cache/` is stored in **Backblaze B2**, not git: the repo-root `assets.json`
 lists every cache file by content hash, and `scripts/assets.py` fetches them
@@ -197,18 +185,19 @@ lists every cache file by content hash, and `scripts/assets.py` fetches them
 cd maps-experimental-3d
 make cache-pull                  # == ../scripts/assets.py pull cache
 make install
-make datasets                    # all six datasets (~35 s)
+make datasets                    # the five datasets (~4 min on 6 cores)
+make test                        # unit tests (extract + viewer)
 ```
 
 Or individually:
 
 ```bash
-.venv/bin/python extract/build.py --map customs                        # overview
+.venv/bin/python extract/build.py --map customs                        # overview (merged cells)
+.venv/bin/python extract/build.py --map streets                        # overview, exterior scenes
 .venv/bin/python extract/build.py --map customs --profile inspect      # LOD0 picker data
 .venv/bin/python extract/build.py --map customs --profile explore      # full, unfiltered
-.venv/bin/python extract/build.py --map streets --include-indoor       # Streets full
-.venv/bin/python extract/build.py --map streets --name streets-exterior
 .venv/bin/python extract/build.py --map streets --profile explore --include-indoor --lod 1
+.venv/bin/python extract/build.py --map customs --profile legacy       # first, decimated overview
 ```
 
 ### Re-extracting (only with the game installed)
@@ -272,8 +261,9 @@ npm install
 npm run dev
 ```
 
-Open the printed URL (usually `http://localhost:5173` or `5174`). The map
-selector in the top bar switches between Customs, Streets and Streets exterior.
+Open http://localhost:5174/ (`make dev` from the project root does the same). The map
+selector in the top bar switches between Customs and Streets; any dataset
+directory also works as `?map=<name>`.
 
 Controls:
 
@@ -281,8 +271,14 @@ Controls:
 - right drag: pan
 - wheel: zoom
 - `R` reset · `T` top view · `F` wireframe · `V` vegetation · `G` grid
+- `C` / **Colour**: flat material colours (albedo mean × tint) instead of the
+  per-category colours
 - **Inspect** button / `?mode=inspect`: load LOD0 + picker
-- `P`: toggle pick mode · `Esc`: clear selection
+- `P` / **Pick**: toggle pick mode (any mode; on by default in inspect and
+  explore) · `Esc`: clear selection
+
+Inspect hides the shadow, decal and background categories by default (the
+overview does not contain them); explore starts with everything visible.
 
 ## Inspect mode / picker
 
@@ -290,7 +286,8 @@ In `?mode=inspect`:
 
 1. Click an object. A yellow box highlights it.
 2. Shift-click to add more objects.
-3. The panel shows mesh name, scene, world position, world size and triangles.
+3. The panel shows mesh name, category, shader, scene, hierarchy path, world
+   position, world size and triangles.
 4. **Copy report** copies a JSON report to the clipboard. Paste it into chat
    and I can derive a filter rule.
 5. **Hide mesh** / **Solo mesh** let you preview a rule immediately.
@@ -307,12 +304,17 @@ Report shape:
       "mesh": "RoadSplineGenerator Generate",
       "meshIndex": 2250,
       "category": "structure",
+      "material": "road_asphalt",
+      "shader": "p0/Reflective/Bumped Specular SMap",
       "scene": "level14",
       "sceneIndex": 9,
+      "path": "Roads/RoadSplineGenerator Generate",
       "instance": 44483,
       "position": [204.77, 18.67, 53.22],
       "size": [59.08, 0.81, 43.48],
-      "triangles": 1840
+      "scale": [1, 1, 1],
+      "triangles": 1840,
+      "partTriangles": 1840
     }
   ]
 }
@@ -324,42 +326,63 @@ Once a few objects are identified, the pattern becomes a filter such as
 ## Tuning knobs
 
 ```bash
-build.py --map customs --decimate-ratio 0.5                      # more detail
-build.py --map customs --decimate-ratio 0.85 --min-prop-size 1.5 # less detail
-build.py --map customs --prune-min-instances 40                  # may remove unique walls/roofs
+build.py --map customs --error 0.05            # finer overview (about 7M triangles)
+build.py --map customs --error 0.25            # coarser (about 4M)
+build.py --map streets --include-indoor        # overview with the indoor scenes
 ```
 
-| flag | default (overview) | meaning |
+| flag | default | meaning |
 |---|---:|---|
 | `--map` | required | `customs` or `streets` |
-| `--profile` | `overview` | `overview`, `inspect` or `explore` presets |
+| `--profile` | `overview` | `overview`, `inspect`, `explore` or `legacy` |
 | `--include-indoor` | off | include Streets `*indoor*` scenes (Customs always includes its indoor scenes) |
-| `--lod` | `1` | preferred LOD level (0, 1, 2, …) |
-| `--min-prop-size` | `1.0` | drop instances smaller than this in world space (m) |
-| `--decimate-ratio` | `0.8` | meshoptimizer reduction per mesh (0–0.95) |
-| `--decimate-min-tris` | `200` | only decimate meshes above this triangle count |
+| `--lod` | `1` (overview) | preferred LOD level (0, 1, 2, …) |
+| `--error` | `0.10` | overview: simplification error bound in metres |
+| `--cell-size` | `128` | overview: cell size in metres |
+| `--no-hsr` | off | overview: keep triangles that are never visible |
+| `--workers` | CPUs | overview: worker processes |
 | `--terrain-step` | `4` | heightmap downsample step |
-| `--no-skip` | off | keep shadow/decal/background meshes |
-| `--prune-min-instances` | `0` (off) | drop mesh types used fewer than N times, unless large |
-| `--prune-min-size` | `25` | size (m) that protects a rare mesh type when pruning |
-| `--out` / `--name` | per map/profile | output directory / file prefix |
-
-The old `--merge-cell` bake was dropped: it duplicated shared geometry into a
-421 MB binary.
+| `--min-prop-size`, `--decimate-ratio`, `--decimate-min-tris`, `--no-skip` | | legacy/inspect filters (size cutoff, per-mesh decimation, noise names) |
+| `--prune-min-instances`, `--prune-min-size` | off | drop rare mesh types; removes unique walls/roofs |
+| `--out` / `--name` | per map/profile | output directory / dataset name |
 
 ## Output format
 
-`customs.bin` contains per mesh:
+Dataset **format 2** (`extract/t3d/dataset.py` writes it, `viewer/src/dataset.ts`
+reads it). One directory per dataset under `viewer/public/data/<name>/`:
 
-- positions: `Float32` × 3 per vertex
-- normals: `Int8` × 3 per vertex, normalized (saves 4× vs float32)
-- indices: `Uint16` or `Uint32` per mesh
-- optional vertex colors: `Uint8` × 3 (used by baked chunks)
+| file | content |
+|---|---|
+| `index.json` | small header: map, bounds, `categories`, `scenes`, `materials` (name, shader, render queue), `stats` (incl. per-category triangles) and the list of `chunks` |
+| `chunk-0.t3d` | geometry chunk: the `t3d/pack.py` container (magic, JSON header, 16-byte-aligned arrays), uncompressed so the browser can use the arrays in place |
+| `sources.json` | hierarchy paths (`goPath`) per instance; the picker fetches it on the first click |
 
-`customs.json` describes the offset/count of each array, the mesh list, and the
-instance matrices (column-major, ready for `THREE.Matrix4.fromArray`). Meshes
-are deduplicated by a hash of positions+indices, so repeated fences, trees and
-barrels are instanced rather than copied.
+A chunk is self-describing (`kind`, `level`, `error`, `cell` in its header),
+so Phase 2/3 can add one chunk per spatial cell and LOD level. Today there is
+one chunk of kind `instanced`:
+
+- `mesh_*`: per unique mesh: vertex/index ranges, parts, local bounds. Meshes
+  are deduplicated by a hash of positions + indices + parts, so repeated
+  fences, trees and barrels are instanced rather than copied.
+- `part_range`: the submesh index ranges of a mesh (one per material slot).
+- `positions` `Float32`×3, `normals` `Int8`×3 (normalized), `indices16` /
+  `indices32` (a mesh uses 32-bit indices above 65,536 vertices).
+- `inst_*`: per placed renderer: mesh, scene, hierarchy path and the world
+  matrix as column-major 3×4 `Float32`.
+- `slot_*`: per (instance, part): **category** id, flags (cutout,
+  transparent), flat **colour** (albedo thumbnail mean × `_Color`, sRGB bytes,
+  alpha 0 = unknown) and material id.
+- `mesh_flags` (1 = flat shaded, normals unused) and `colors` (per-vertex
+  sRGB, parallel to `positions`): written by the overview, whose "meshes" are
+  the merged cells, each placed once with an identity matrix.
+
+Categories are computed once, in `extract/t3d/classify.py`: the shader name
+decides where it is unambiguous (`shadow*` → shadow, `Decal/*` → decal,
+SpeedTree → foliage, water and glass shaders), mesh-name token rules cover the
+rest. The viewer has no classifier of its own.
+
+`extract/compare_datasets.py <dirA> <dirB>` reports whether two datasets are
+identical, and otherwise which header keys or arrays differ.
 
 ## Coordinate conversion
 
@@ -420,28 +443,9 @@ Terrain is downsampled with `--terrain-step` (default 4 for overview).
 
 ## Known limitations / next steps
 
-- **No textures or materials.** Everything is untextured shaded geometry.
-- **Optional pruning is lossy.** `--prune-min-instances` can remove unique
-  walls/roofs; it is off by default. Use the inspect profile to see everything.
-- **LOD1 is still an approximation.** Some facade/roof detail is simplified
-  compared with LOD0; use `--lod 0` if you need maximum detail at a
-  performance cost.
-- **Decimation is lossy.** Small props and some details are simplified. Reduce
-  `--decimate-ratio` if it goes too far.
-- **Background scene skipped.** A few out-of-bounds props/cranes still show at
-  the edges.
-- **Terrain seam.** The two heightmap slices have slightly different edge
-  normals, visible in some views.
-- **No collision/navmesh.** Physics and AI scenes were not exported.
-- **Two maps.** Customs and Streets are wired in. Other locations need their
-  scene list taken from `globalgamemanagers` / the location preset.
-- **Streets indoor scenes dominate.** Indoor geometry is ~52% of the renderers.
-  The full benchmark includes it; `--map streets` without `--include-indoor`
-  produces the lighter exterior variant.
-- **Explore is intentionally heavy.** The full Customs explore dataset is LOD0
-  (94M tris) and Streets explore is LOD1 (102M tris). Use the category/scene/
-  size filters to bring it down; start with **No noise** or **Huge >100m**.
-- **Streets explore uses LOD1**, not LOD0, to keep the browser dataset
-  manageable. Customs explore is LOD0.
-- **Orientation.** Axes follow Unity world coordinates; aligning the view to
-  the in-game pocket map (north-up/compass) is a follow-up.
+See `HANDOFF.md` ("Known issues / limitations", "Roadmap"). In short: the
+overview is not compressed yet (137 / 208 MB), has a single level of detail
+(faceted close up, no thin details), no foliage, exteriors only on Streets,
+and picking there returns a cell rather than an object. Explore and inspect
+are intentionally heavy (92–98M triangles); they exist to examine the source
+geometry, not to navigate. Axes follow Unity world coordinates.

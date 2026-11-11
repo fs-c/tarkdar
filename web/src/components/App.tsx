@@ -2,7 +2,7 @@ import { Locate, LocateFixed } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type ControlPoint, formatCalibration, worldToPixel } from "../calibration";
 import type { RadarState } from "../connection";
-import { isTyping, useAutoLayer, useCatalog, useConnection, useLayers, useMapIndex, usePersistentState, useRaidMap, useTrailPrefs } from "../hooks";
+import { isTyping, useAutoLayer, useCatalog, useConnection, useLayers, useLootPrefs, useMapIndex, usePersistentState, useRaidMap, useTrailPrefs } from "../hooks";
 import { describeEvent } from "../events";
 import { type LoadedMap, findMap, selectLayer } from "../maps";
 import { isFiltered, rowKeys } from "../list/rows";
@@ -48,6 +48,7 @@ export function App() {
   /** The shown moment (the newest when live). */
   const at = playback.cursor ?? range?.[1] ?? null;
   const [trailPrefs, setTrailPrefs] = useTrailPrefs();
+  const [lootPrefs, setLootPrefs] = useLootPrefs();
 
   const openRecording = (info: RecordingInfo) => {
     if (review?.info.name === info.name) return setUi((u) => ({ ...u, raidsLevel: "timeline" }));
@@ -239,6 +240,7 @@ export function App() {
     explosives: shown.explosives,
     loot: shown.loot,
     layers,
+    minLabelPrice: lootPrefs.minLabelPrice,
     selected: selectedPosition(selection, state),
     hovered: listShown ? selectedPosition(hovered, state) : null,
     calibrationPixels: calibPoints.map((p) => p.pixel),
@@ -269,6 +271,8 @@ export function App() {
           <MapPanel
             trails={trailPrefs}
             onTrails={setTrailPrefs}
+            loot={lootPrefs}
+            onLoot={setLootPrefs}
             floors={map?.config.layers.length ?? 0}
             layer={layer}
             manualLayer={manualLayer}

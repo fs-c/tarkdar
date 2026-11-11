@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.py[cod]
+
+viewer/node_modules/
+viewer/dist/
+viewer/public/data/
+# extraction cache: stored in B2 via ../assets.json (scripts/assets.py)
+cache/

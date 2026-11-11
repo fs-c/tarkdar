@@ -4,7 +4,9 @@ Each map is a folder under `maps/` (`--maps-root`) holding a `map.json` and its 
 backend lists the folders at `/maps/index.json`; the frontend picks the folder whose `ids` contain
 the raid's location id.
 
-Map images aren't committed (except `maps/demo`). Bring your own, then calibrate them.
+Map images aren't committed (except `maps/demo`). The ones in use, with their `map.json`, are in
+B2: `scripts/assets.py pull maps/` (see the README, "Data files"). For a new map, bring your own
+image, calibrate it, then `scripts/assets.py push maps/` and commit `assets.json`.
 
 ## `map.json`
 

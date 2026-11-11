@@ -26,4 +26,9 @@ if(RADAR_BUILD_TESTS)
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     set_tests_properties(update-offsets PROPERTIES
         ENVIRONMENT "UPDATE_OFFSETS=${CMAKE_CURRENT_SOURCE_DIR}/update-offsets.py;OFFSETS_JSON=${RADAR_OFFSETS_JSON}")
+
+    # scripts/assets.py (B2 data files) against a local mock of the B2 API.
+    add_test(NAME assets-tool
+        COMMAND ${Python3_EXECUTABLE} -m unittest -v test_assets
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/scripts)
 endif()

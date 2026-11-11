@@ -30,6 +30,35 @@ machine's architecture); pass `--build-dir` for a different build directory.
 configures. They're skipped if already applied, so re-running is safe. The patched submodule is
 marked `ignore = dirty`, so it doesn't show as modified.
 
+## Data files (Backblaze B2)
+
+Large or copyrighted files are not in git. They live in a private B2 bucket and
+are listed in `assets.json` by path and SHA-256: the il2cpp dump, the map
+images and their `map.json` calibrations (except `maps/demo`), a couple of
+sample recordings and the 3D map extraction cache. `scripts/assets.py` (stdlib
+Python, no install) manages them:
+
+```sh
+scripts/assets.py status               # missing / modified / new files
+scripts/assets.py pull                 # download everything missing (or: pull maps/ dumps/)
+scripts/assets.py push                 # upload changed tracked files, update assets.json
+scripts/assets.py add recordings/X.gz  # start tracking a file (or directory)
+```
+
+`push` and `add` change `assets.json`; commit it like code. Blobs are stored
+under their hash and never overwritten, so older commits stay pullable.
+`assets.json` → `track` lists globs whose new files `push` picks up
+automatically.
+
+Credentials: an application key with access to the bucket, as
+`B2_APPLICATION_KEY_ID` / `B2_APPLICATION_KEY` in the environment or in a
+gitignored `.assets.env` at the repo root:
+
+```sh
+B2_APPLICATION_KEY_ID=...
+B2_APPLICATION_KEY=...
+```
+
 ## Running/Development
 
 ```sh

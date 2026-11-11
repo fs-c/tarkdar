@@ -167,7 +167,7 @@ TEST_CASE("Players builds observed players through their own layout") {
     CHECK(b->ai);
     CHECK(b->side == eft::Side::Savage);
     CHECK(b->voice == "BossKilla");
-    CHECK_FALSE(b->role);  // observed players don't carry a role
+    CHECK_FALSE(b->role);  // no AI data set up
     CHECK(b->yaw == doctest::Approx(45.0f));
     CHECK(p->kind == eft::PlayerKind::Observed);
     CHECK_FALSE(p->ai);  // a human player on another machine
@@ -222,4 +222,45 @@ TEST_CASE("Players backs off on build failures and reports why") {
         CHECK(world.players.get()->players.size() == 2);
     }
     CHECK(world.players.get()->players.empty());  // cleared at raid end
+}
+
+TEST_CASE("Players reads observed players' role, nickname and group, also once the AI data appears later") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 0);
+    const Address boss = w.newObservedPlayer(4, true, u"BossBully", Vec3{1, 0, 1});
+    const Address guard = w.newObservedPlayer(4, true, u"Scav_3", Vec3{2, 0, 2});
+    const Address odd = w.newObservedPlayer(4, true, u"Scav_1", Vec3{3, 0, 3});
+    w.setObservedIdentity(boss, u"Reshala", u"group-1");
+    w.setObservedIdentity(guard, u"Torpeda", u"group-1");
+    w.setObservedRole(boss, 3);
+    w.setObservedRole(odd, 1, "SomethingElse");  // unexpected AI data class: ignored
+    w.setRosterList({w.localPlayer, boss, guard, odd});
+
+    eft::WorldState world;
+    eft::Players players(makeSession(w), world);
+    const auto t = Clock::now();
+    players.rosterTick(t);
+    players.positionsTick(t);
+    auto snap = world.players.get();
+    const auto* b = byPosition(*snap, {1, 0, 1});
+    const auto* g = byPosition(*snap, {2, 0, 2});
+    const auto* o = byPosition(*snap, {3, 0, 3});
+    REQUIRE(b);
+    REQUIRE(g);
+    REQUIRE(o);
+    CHECK(b->role == 3);
+    CHECK(b->nickname == "Reshala");
+    CHECK(b->groupId == "group-1");
+    CHECK(g->groupId == "group-1");
+    CHECK_FALSE(g->role);
+    CHECK_FALSE(o->role);
+    const auto guardId = g->id;
+
+    // The guard's AI data shows up later: picked up on a later roster tick.
+    w.setObservedRole(guard, 5, "AIData");
+    players.rosterTick(t + eft::Players::kRoleRetry);
+    players.rosterTick(t + 2 * eft::Players::kRoleRetry);
+    snap = world.players.get();
+    for (const auto& q : snap->players)
+        if (q.id == guardId) CHECK(q.role == 5);
 }

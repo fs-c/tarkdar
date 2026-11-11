@@ -74,9 +74,15 @@ changes, at most about 30 times per second.
 - **`ai`:** always true for `client`; observed players carry the game's own flag.
 - **`voice`:** observed players only (omitted otherwise): the voice preset, which names bot roles and
   bosses.
-- **`role`:** full players only (`local`, `client`; omitted for `observed`, which don't carry it):
-  `Profile.Info.Settings.Role`, the raw `EFT.WildSpawnType` value (e.g. 1 = assault, 6 = bossKilla).
-  Mapping values to names is the frontend's job.
+- **`role`:** the raw `EFT.WildSpawnType` value (e.g. 1 = assault, 6 = bossKilla); omitted if unread.
+  Mapping values to names is the frontend's job (`web/src/roles.ts`). Full players (`local`,
+  `client`): `Profile.Info.Settings.Role`. Observed players: `ObservedPlayerView.AIData` →
+  `BotHostilityData._role`, which is **unverified** (check with `--diagnose` in a raid) and may only
+  appear a few seconds after the player does. Only meaningful for AI: humans carry a default (our own
+  PMC reads 1, assault).
+- **`nickname`:** the player's nickname (bosses carry their name); omitted if empty.
+- **`groupId`:** players spawned together share it (a boss and its guards, a PMC squad); omitted if
+  empty.
 - **`side`:** `usec`, `bear`, `savage` (scavs, bosses and other non-PMC bots) or `unknown`.
 - **`dead`:** permanent once set; the player keeps its last position.
 - **`absent`:** left the game's player list without dying (extracted or despawned).

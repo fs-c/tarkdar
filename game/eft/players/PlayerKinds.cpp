@@ -19,6 +19,11 @@ constexpr auto kFresh = Freshness::Fresh;
 
 using Result = std::expected<PlayerLayout, std::string>;
 
+// A short managed string field (voice, nickname, group id); empty if null or unreadable.
+std::string readString(const Game& game, Address field) {
+    return game.managed.readStringField(field, 64, il2cpp::Managed::Overflow::Truncate, kFresh).value_or("");
+}
+
 // Full EFT.Player: Profile → Info → Side (and Settings → Role), _playerBody, MovementContext.
 Result buildClient(const Game& game, Address instance, PlayerLayout layout) {
     const Address profile = readPointer(game, instance + off::Player::Profile, kFresh);
@@ -32,11 +37,14 @@ Result buildClient(const Game& game, Address instance, PlayerLayout layout) {
     if (!game.mem.tryRead(info + off::PlayerInfo::Side, side, kFresh)) return std::unexpected("PlayerInfo.Side unreadable");
 
     layout.side = static_cast<Side>(side);
-    // Role is identity, not needed to track the player: a missing one doesn't fail the build.
+    // Role, nickname and group are identity, not needed to track the player: missing ones don't fail
+    // the build.
     if (const Address settings = readPointer(game, info + off::PlayerInfo::Settings, kFresh)) {
         std::int32_t role = 0;
         if (game.mem.tryRead(settings + off::ProfileSettings::Role, role, kFresh)) layout.role = role;
     }
+    layout.nickname = readString(game, info + off::PlayerInfo::Nickname);
+    layout.groupId = readString(game, info + off::PlayerInfo::GroupId);
     layout.ai = layout.kind != PlayerKind::Local;  // a full Player that isn't ours is a local bot
     layout.rotationField = movement + off::MovementContext::_rotation;
     layout.corpseField = instance + off::Player::Corpse;
@@ -64,9 +72,10 @@ Result buildObserved(const Game& game, Address instance, PlayerLayout layout) {
 
     layout.ai = isAi != 0;
     layout.side = static_cast<Side>(side);
-    layout.voice = game.managed.readStringField(instance + off::ObservedPlayerView::Voice, 64,
-                                                il2cpp::Managed::Overflow::Truncate, kFresh)
-                       .value_or("");
+    layout.voice = readString(game, instance + off::ObservedPlayerView::Voice);
+    layout.nickname = readString(game, instance + off::ObservedPlayerView::NickName);
+    layout.groupId = readString(game, instance + off::ObservedPlayerView::GroupId);
+    layout.role = readObservedRole(game, instance);
     layout.rotationField = state + off::ObservedPlayerStateContext::Rotation;
     layout.corpseField = health + off::ObservedHealthController::PlayerCorpse;
     layout.bodyField = instance + off::ObservedPlayerView::PlayerBody;
@@ -80,6 +89,21 @@ bool isClientClass(const Game& game, Address instance, std::string_view name) {
 }
 
 }  // namespace
+
+std::optional<std::int32_t> readObservedRole(const Game& game, Address instance) {
+    const Address aiData = readPointer(game, instance + off::ObservedPlayerView::AIData, kFresh);
+    if (!aiData) return std::nullopt;
+    const std::string cls = game.managed.classNameOf(aiData);
+    std::uint32_t hostilityField = 0;
+    if (cls == "StubAIData") hostilityField = off::StubAIData::BotHostilityData;
+    else if (cls == "AIData") hostilityField = off::AIData::BotHostilityData;
+    else return std::nullopt;
+    const Address hostility = readPointer(game, aiData + hostilityField, kFresh);
+    if (!hostility) return std::nullopt;
+    std::int32_t role = 0;
+    if (!game.mem.tryRead(hostility + off::BotHostilityData::Role, role, kFresh)) return std::nullopt;
+    return role;
+}
 
 Result buildPlayerLayout(const Game& game, Address instance, bool isLocal) {
     PlayerLayout layout;

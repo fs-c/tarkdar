@@ -35,6 +35,10 @@ public:
     static constexpr auto kRosterInterval = std::chrono::milliseconds(20);
     static constexpr auto kPositionInterval = std::chrono::milliseconds(10);
     static constexpr int kMaxBuildsPerTick = 4;
+    // An observed player's role (its AI data) may be set up after it's registered: re-read it this
+    // often, this many times (~10 s), before giving up.
+    static constexpr auto kRoleRetry = std::chrono::milliseconds(500);
+    static constexpr int kMaxRoleAttempts = 20;
     // A player that fails to build is retried freely kMaxFreeBuildAttempts times, then every kBuildRetry.
     static constexpr int kMaxFreeBuildAttempts = 5;
     static constexpr auto kBuildRetry = std::chrono::seconds(2);
@@ -73,6 +77,9 @@ private:
         Address instance = 0;
         bool local = false;
         PlayerLayout layout;  // kind, identity and field addresses, resolved at build time
+        // Observed players: re-reads of a role missing at build time.
+        int roleAttempts = 0;
+        sched::Clock::time_point nextRoleRead{};
         // Dynamic state.
         float yaw = 0, pitch = 0;
         bool dead = false;

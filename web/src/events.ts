@@ -2,8 +2,8 @@
 
 import { type ItemCatalog, containerName, exfilStatus } from "./items";
 import type { Selection } from "./pick";
-import type { ItemNode, LootEntry, Player, WorldPos } from "./protocol";
-import { isPlainScav, roleInfo } from "./roles";
+import type { ItemNode, LootEntry, WorldPos } from "./protocol";
+import { type PlayerIdentity, playerType } from "./roles";
 import type { EventKind, Timeline, TimelineEvent } from "./timeline";
 
 /** Filter groups of the log, in display order. */
@@ -29,15 +29,11 @@ export function eventGroup(kind: EventKind): EventGroup {
   return "spawns";
 }
 
-export function playerName(p: Pick<Player, "id" | "local" | "side" | "ai" | "voice" | "role"> | undefined, id: number): string {
+export function playerName(p: PlayerIdentity | undefined, id: number): string {
   if (!p) return `#${id}`;
   if (p.local) return "You";
-  const role = roleInfo(p);
-  if (isPlainScav(p)) return `Scav #${id}`;
-  if (role && role.category !== "pmc") return `${role.label} #${id}`;
-  if (p.side === "savage") return `${p.ai ? "Scav" : "Player scav"} #${id}`;
-  if (p.side === "unknown") return `#${id}`;
-  return `${p.side.toUpperCase()}${p.ai ? " bot" : ""} #${id}`;
+  const t = playerType(p);
+  return t.label === "?" ? `#${id}` : `${t.label} #${id}`;
 }
 
 export function lootName(l: LootEntry, catalog: ItemCatalog): string {

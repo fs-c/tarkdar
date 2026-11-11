@@ -10,6 +10,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <limits>
+#include <map>
 
 using namespace radar;
 using mem::Address;
@@ -275,6 +277,7 @@ TEST_CASE("Il2CppDumper reads classes, parents and fields") {
     CHECK(dump.unity[0].rva == 0x180000);
     CHECK(dump.unity[0].lastActiveNode == 0x20u);
     CHECK_FALSE(dump.unity[1].validated);  // no camera signature in the fake
+    CHECK_FALSE(dump.metadata);  // type-definition handles here aren't one array
 
     // For checking the JSON end to end with tools/update-offsets.py (set RADAR_DUMP_JSON_OUT).
     if (const char* outPath = std::getenv("RADAR_DUMP_JSON_OUT")) {
@@ -291,5 +294,156 @@ TEST_CASE("Il2CppDumper reads classes, parents and fields") {
         CHECK(json.find("\"fullName\": \"EFT.Profile\"") == std::string::npos);
         CHECK(json.find("\"typeInfoTable\": { \"rva\": \"0x100000\"") != std::string::npos);
         CHECK(json.find("\"gameObjectManager\": { \"rva\": \"0x180000\", \"validated\": true") != std::string::npos);
+    }
+}
+
+TEST_CASE("decodeConstant") {
+    using tools::LiteralValue;
+    auto decode = [](std::vector<std::uint8_t> b, std::uint8_t kind, std::int32_t version = 29) {
+        return tools::decodeConstant(b, 0, kind, version);
+    };
+    // Compressed int32 (v29+): zigzag-style sign bit, 1/2/4/5-byte forms.
+    CHECK(decode({0x00}, 0x08) == LiteralValue{std::int64_t{0}});
+    CHECK(decode({0x40}, 0x08) == LiteralValue{std::int64_t{32}});
+    CHECK(decode({0x09}, 0x08) == LiteralValue{std::int64_t{-5}});
+    CHECK(decode({0x87, 0xD0}, 0x08) == LiteralValue{std::int64_t{1000}});
+    CHECK(decode({0xC0, 0x01, 0x00, 0x00}, 0x08) == LiteralValue{std::int64_t{0x8000}});
+    CHECK(decode({0xF0, 0x00, 0x00, 0x00, 0x80}, 0x09) == LiteralValue{std::uint64_t{0x80000000u}});
+    CHECK(decode({0xFF}, 0x08) == LiteralValue{std::int64_t{std::numeric_limits<std::int32_t>::min()}});
+    CHECK_FALSE(decode({0x87}, 0x08));  // truncated
+    // Before v29: plain little-endian.
+    CHECK(decode({0x20, 0x00, 0x00, 0x00}, 0x08, 24) == LiteralValue{std::int64_t{32}});
+    // Fixed-size kinds.
+    CHECK(decode({0x01}, 0x02) == LiteralValue{true});
+    CHECK(decode({0xFE}, 0x04) == LiteralValue{std::int64_t{-2}});
+    CHECK(decode({0x00, 0x00, 0xC0, 0x3F}, 0x0C) == LiteralValue{1.5});
+    // Strings: compressed length, then UTF-8; -1 is null.
+    CHECK(decode({0x08, 'B', 'o', 's', 's'}, 0x0E) == LiteralValue{std::string("Boss")});
+    CHECK_FALSE(decode({0x01}, 0x0E));
+    CHECK_FALSE(decode({0x10, 'x'}, 0x0E));  // longer than the blob
+    CHECK_FALSE(decode({0x00}, 0x12));       // not a constant kind
+}
+
+namespace {
+// A fake global metadata for FakeGame: every class in the type-info table gets its type definition at
+// first + typeIndex * kStride (fieldStart at +kFieldStart), the header points back at that array, and
+// `values` are the (class, field position, encoded bytes) default values.
+constexpr std::uint32_t kStride = 0x58, kFieldStart = 0x20;
+constexpr Address kMetadata = 0x4'0000'0000, kTypeDefs = kMetadata + 0x10000;
+struct DefaultValue {
+    Address klass;
+    std::int32_t position;
+    std::vector<std::uint8_t> bytes;
+};
+void writeMetadata(FakeGame& g, std::int32_t typeCount, const std::vector<DefaultValue>& values) {
+    std::vector<std::uint8_t> defs(static_cast<std::size_t>(typeCount) * kStride, 0);
+    std::map<Address, std::int32_t> fieldStartOf;
+    std::int32_t running = 0;
+    for (std::int32_t i = 0; i < typeCount; ++i) {
+        const Address k = g.view.read<Address>(g.table + static_cast<Address>(i) * 8);
+        std::uint16_t count = 0;
+        if (k) {
+            count = g.view.read<std::uint16_t>(k + off::managed::Il2CppClass::FieldCount);
+            fieldStartOf[k] = running;
+        }
+        std::memcpy(defs.data() + static_cast<std::size_t>(i) * kStride + kFieldStart, &running, 4);
+        const std::int32_t methodStart = i * 3;  // another "start" column that must not be mistaken for fieldStart
+        std::memcpy(defs.data() + static_cast<std::size_t>(i) * kStride + kFieldStart + 4, &methodStart, 4);
+        running += count;
+    }
+    g.heap.putBytes(kTypeDefs, defs.data(), defs.size());
+
+    std::vector<std::uint8_t> table, data;
+    for (const auto& v : values) {
+        const std::int32_t entry[3] = {fieldStartOf.at(v.klass) + v.position, 0, static_cast<std::int32_t>(data.size())};
+        const auto* p = reinterpret_cast<const std::uint8_t*>(entry);
+        table.insert(table.end(), p, p + sizeof(entry));
+        data.insert(data.end(), v.bytes.begin(), v.bytes.end());
+    }
+    constexpr std::uint32_t tableOffset = 0x1000, dataOffset = 0x2000;
+    g.heap.putBytes(kMetadata + tableOffset, table.data(), table.size());
+    g.heap.putBytes(kMetadata + dataOffset, data.data(), data.size());
+    std::vector<std::uint32_t> header(0x100 / 4, 0);
+    header[0] = 0xFAB11BAF;
+    header[1] = 29;
+    header[0x40 / 4] = tableOffset;
+    header[0x44 / 4] = static_cast<std::uint32_t>(table.size());
+    header[0x48 / 4] = dataOffset;
+    header[0x4C / 4] = static_cast<std::uint32_t>(data.size());
+    header[0xA0 / 4] = static_cast<std::uint32_t>(kTypeDefs - kMetadata);
+    g.heap.putBytes(kMetadata, header.data(), header.size() * 4);
+}
+}  // namespace
+
+TEST_CASE("Il2CppDumper reads literal values from the loaded metadata") {
+    FakeGame g;
+    constexpr std::uint16_t kConst = 0x10 | 0x40;  // static | literal
+    const Address enumBase = g.klass("Enum", "System");
+    const Address wild = g.klass("WildSpawnType", "EFT", enumBase);
+    const Address consts = g.klass("WildSpawnTypeExtension", "");
+    g.heap.put<Address>(g.table + 16 * 8, enumBase);
+    g.heap.put<Address>(g.table + 106 * 8, wild);
+    g.heap.put<Address>(g.table + 107 * 8, consts);
+    // Type definitions as one array, indexed by type index.
+    for (std::int32_t i = 0; i < 5008; ++i)
+        if (const Address k = g.view.read<Address>(g.table + static_cast<Address>(i) * 8))
+            g.heap.put<Address>(k + off::managed::Il2CppClass::ByvalArg + off::managed::Il2CppType::Data,
+                                kTypeDefs + static_cast<Address>(i) * kStride);
+    const Address wildHandle = kTypeDefs + 106 * kStride;
+    g.fields(wild, {{"value__", 0x08, 0, 0x0, 0x10},
+                    {"marksman", 0x11, wildHandle, kConst, 0},
+                    {"assault", 0x11, wildHandle, kConst, 0},
+                    {"bossBoar", 0x11, wildHandle, kConst, 0}});
+    g.fields(consts, {{"SCAV_ROLE_BOSS", 0x0E, 0, kConst, 0},
+                      {"Rate", 0x0C, 0, kConst, 0},
+                      {"Offset", 0x08, 0, kConst, 0},
+                      {"Missing", 0x08, 0, kConst, 0}});  // no default value recorded
+    writeMetadata(g, 5008, {{wild, 1, {0x00}},
+                            {wild, 2, {0x02}},
+                            {wild, 3, {0x40}},
+                            {consts, 0, {0x08, 'B', 'o', 's', 's'}},
+                            {consts, 1, {0x00, 0x00, 0xC0, 0x3F}},
+                            {consts, 2, {0x09}},
+                            {g.player, 3, {0x83, 0x70}}});  // MaxHealth = 440
+
+    const auto dump = g.dumper().run();
+    REQUIRE(dump.metadata);
+    CHECK(dump.metadata->base == kMetadata);
+    CHECK(dump.metadata->version == 29);
+    CHECK(dump.metadata->typeDefinitionSize == kStride);
+    CHECK(dump.metadata->fieldStartOffset == kFieldStart);
+    CHECK(dump.metadata->literalFields == 8);
+    CHECK(dump.metadata->literalValues == 7);
+
+    using tools::LiteralValue;
+    const auto* e = find(dump, "EFT.WildSpawnType");
+    REQUIRE(e);
+    REQUIRE(e->fields.size() == 4);
+    CHECK_FALSE(e->fields[0].value);  // value__ is the instance field
+    CHECK(e->fields[1].value == LiteralValue{std::int64_t{0}});
+    CHECK(e->fields[2].value == LiteralValue{std::int64_t{1}});
+    CHECK(e->fields[3].value == LiteralValue{std::int64_t{32}});
+    const auto* c = find(dump, "WildSpawnTypeExtension");
+    REQUIRE(c);
+    CHECK(c->fields[0].value == LiteralValue{std::string("Boss")});
+    CHECK(c->fields[1].value == LiteralValue{1.5});
+    CHECK(c->fields[2].value == LiteralValue{std::int64_t{-5}});
+    CHECK_FALSE(c->fields[3].value);
+    CHECK(find(dump, "EFT.Player")->fields[3].value == LiteralValue{std::int64_t{440}});
+
+    const auto json = tools::toJson(dump, {});
+    CHECK(json.find(R"("name": "bossBoar", "type": "EFT.WildSpawnType")") != std::string::npos);
+    CHECK(json.find(R"("declaringClass": "EFT.WildSpawnType", "value": 32 })") != std::string::npos);
+    CHECK(json.find(R"("value": "Boss" })") != std::string::npos);
+    CHECK(json.find(R"("metadata": { "base": "0x400000000", "version": 29)") != std::string::npos);
+
+    SUBCASE("without a header nothing is resolved, and the notes say why") {
+        g.heap.put<std::uint32_t>(kMetadata, 0);
+        tools::DumpOptions o;
+        o.metadataScanLimit = 0x100000;
+        const auto d = g.dumper(o).run();
+        CHECK_FALSE(d.metadata);
+        CHECK_FALSE(find(d, "EFT.WildSpawnType")->fields[3].value);
+        CHECK(std::ranges::any_of(d.notes, [](const auto& n) { return n.starts_with("literal values: no metadata header"); }));
     }
 }

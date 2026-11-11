@@ -1,60 +1,20 @@
-// A raid's timeline (the Raids view's second level): the playback controls, a vertical scrubber
-// rail and the events, oldest at the top, with a marker at the shown moment (later events dimmed).
-// Clicking an event jumps there and shows it on the map. The status bar carries an indicator that
-// opens it; while replaying a recording, it names the recording (the exit is next to the map's follow button).
+// A raid's event log (the Raids view's second level): the events, oldest at the top, with a marker at
+// the shown moment (later events dimmed). Clicking an event jumps there and shows it on the map.
+// The playback controls float over the map (PlaybackBar).
 
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronLeft, History, Pause, Play, Radio, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft } from "lucide-react";
+import { useEffect, useMemo, useRef } from "react";
 import { DEFAULT_EVENT_GROUPS, EVENT_GROUPS, type EventGroup, describeEvent, eventConcerns, eventGroup } from "../events";
 import { usePersistentState } from "../hooks";
 import type { ItemCatalog } from "../items";
 import { type Selection, selectionKey } from "../pick";
-import { type Playback, SPEEDS, formatDuration } from "../playback";
+import { type Playback, formatDuration } from "../playback";
 import type { Timeline, TimelineEvent } from "../timeline";
-import { Button, Chip, cx, Note, Segmented, selectableRow } from "../ui";
-import { StatusButton } from "./StatusBar";
+import { Button, Chip, cx, Note, selectableRow } from "../ui";
 import s from "./TimelinePanel.module.css";
 
 const ROW_HEIGHT = 22;
-
-/** The shown moment as text: raid time when live, how far behind live, or position / length. */
-function timeLabel(range: [number, number], cursor: number | null, live: boolean): string {
-  const [from, to] = range;
-  if (!live) return `${formatDuration((cursor ?? from) - from)} / ${formatDuration(to - from)}`;
-  return cursor === null ? formatDuration(to - from) : `−${formatDuration(to - cursor)}`;
-}
-
-// ---- status bar indicator --------------------------------------------------------------------------
-
-interface IndicatorProps {
-  range: [number, number];
-  playback: Playback;
-  /** Replaying a recording: its name ("Customs · 10 Nov 19:03"); null for the live raid. */
-  replay: string | null;
-  open: boolean;
-  onClick: () => void;
-}
-
-export function TimelineIndicator({ range, playback, replay, open, onClick }: IndicatorProps) {
-  const live = replay === null;
-  const atLive = live && playback.cursor === null;
-  const Icon = live ? Radio : History;
-  return (
-    <StatusButton
-      className={s.indicator}
-      data-mode={live ? (atLive ? "live" : "behind") : "replay"}
-      data-open={open}
-      title={live ? (atLive ? "Live, recording: open the timeline" : "Behind live: open the timeline") : "Replaying a recording: open its timeline"}
-      onClick={onClick}
-    >
-      <Icon size={13} />
-      {!live && <span className={s.name}>{replay}</span>}
-      <span className={s.clock}>{timeLabel(range, playback.cursor, live)}</span>
-      {playback.playing && <span className={s.speed}>▶ {playback.speed}×</span>}
-    </StatusButton>
-  );
-}
 
 // ---- panel -------------------------------------------------------------------------------------------
 
@@ -74,8 +34,6 @@ interface Props {
   catalog: ItemCatalog;
   selection: Selection | null;
   onPick: (e: TimelineEvent) => void;
-  /** Recordings: stop replaying (back to live). */
-  onExitReplay: () => void;
 }
 
 interface Prefs {
@@ -86,7 +44,7 @@ interface Prefs {
 type Row = { kind: "event"; e: TimelineEvent } | { kind: "now" };
 
 export function TimelinePanel(props: Props) {
-  const { timeline, range, live, title, subtitle, onBack, loading, playback, catalog, selection, onPick, onExitReplay } = props;
+  const { timeline, range, live, title, subtitle, onBack, loading, playback, catalog, selection, onPick } = props;
   const [prefs, setPrefs] = usePersistentState<Prefs>("radar.log", { groups: DEFAULT_EVENT_GROUPS, selectedOnly: false });
   const groups = { ...DEFAULT_EVENT_GROUPS, ...prefs.groups };
   const at = playback.cursor ?? range?.[1] ?? null;
@@ -122,9 +80,13 @@ export function TimelinePanel(props: Props) {
     overscan: 12,
   });
 
-  // Keep the marker in view while it's in view: scrolling away stops that, until the next seek.
+  // Keep the marker in view while it's in view: scrolling away stops that, until the next seek
+  // (from the map's playback controls, or an event here). That effect goes first: it's read below.
   const follow = useRef(true);
   const programmatic = useRef(false);
+  useEffect(() => {
+    follow.current = true;
+  }, [playback.seeks]);
   useEffect(() => {
     if (!follow.current) return;
     programmatic.current = true;
@@ -137,10 +99,6 @@ export function TimelinePanel(props: Props) {
     }
     const items = virtualizer.getVirtualItems();
     follow.current = items.some((v) => v.index === nowIndex);
-  };
-  const seek = (t: number | null) => {
-    follow.current = true;
-    playback.seek(t);
   };
 
   const back = (
@@ -171,42 +129,7 @@ export function TimelinePanel(props: Props) {
   return (
     <div className={s.timeline}>
       {back}
-      <div className={s.head}>
-        <Button
-          className={s.play}
-          disabled={atLive}
-          title={playback.playing ? "Pause (space)" : atLive ? "Live: go back in time to replay" : "Play (space)"}
-          onClick={playback.toggle}
-        >
-          {playback.playing ? <Pause size={16} /> : <Play size={16} />}
-        </Button>
-        <div className={s.now}>
-          <span className={s.nowTime}>{timeLabel(range, playback.cursor, live)}</span>
-          <small className="muted ellipsis">
-            {live ? (atLive ? "live" : "behind live") : "replay"}
-            {loading && " · loading the raid so far…"}
-          </small>
-        </div>
-        {live ? (
-          <Button className={s.toLive} disabled={atLive} title="Back to live" onClick={() => seek(null)}>
-            <Radio size={14} /> Live
-          </Button>
-        ) : (
-          <Button className={s.exit} title="Stop replaying, back to the live raid" onClick={onExitReplay}>
-            <X size={14} /> Exit replay
-          </Button>
-        )}
-      </div>
-      <div className={s.controls}>
-        <Segmented
-          className={s.speeds}
-          label="Playback speed"
-          options={SPEEDS.map((v) => ({ value: v, label: `${v}×` }))}
-          value={playback.speed}
-          onChange={playback.setSpeed}
-        />
-        <span className={cx("muted", s.hint)}>space play · [ ] ±10 s</span>
-      </div>
+      {loading && <Note>Loading the raid so far…</Note>}
       <div className={s.filters}>
         {(Object.keys(EVENT_GROUPS) as EventGroup[]).map((g) => (
           <Chip key={g} on={groups[g]} onClick={() => toggleGroup(g)}>
@@ -222,7 +145,6 @@ export function TimelinePanel(props: Props) {
         </Chip>
       </div>
       <div className={s.body}>
-        <Rail range={range} at={at ?? range[1]} live={live} events={timeline.events} selection={selection} onSeek={seek} />
         <div ref={scrollRef} className={s.scroll} onScroll={onScroll}>
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((v) => {
@@ -262,77 +184,6 @@ export function TimelinePanel(props: Props) {
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ---- vertical scrubber -----------------------------------------------------------------------------
-
-interface RailProps {
-  range: [number, number];
-  at: number;
-  live: boolean;
-  events: TimelineEvent[];
-  selection: Selection | null;
-  onSeek: (t: number | null) => void;
-}
-
-/** The whole raid top to bottom: drag to move in time. Ticks: deaths, players leaving, and the selected thing's events. */
-function Rail({ range, at, live, events, selection, onSeek }: RailProps) {
-  const [from, to] = range;
-  const span = Math.max(1, to - from);
-  const frac = (t: number) => Math.min(1, Math.max(0, (t - from) / span));
-  const ref = useRef<HTMLDivElement>(null);
-  const dragging = useRef(false);
-  const [hover, setHover] = useState<number | null>(null);
-
-  const timeAt = (clientY: number) => {
-    const r = ref.current!.getBoundingClientRect();
-    return from + Math.min(1, Math.max(0, (clientY - r.top) / r.height)) * span;
-  };
-  const seekTo = (clientY: number) => {
-    const t = timeAt(clientY);
-    onSeek(live && t >= to - span * 0.005 ? null : t);
-  };
-  const ticks = events.filter(
-    (e) => e.kind === "died" || e.kind === "left" || (selection !== null && eventConcerns(e, selection)),
-  );
-
-  return (
-    <div
-      ref={ref}
-      className={s.rail}
-      onPointerDown={(e) => {
-        dragging.current = true;
-        e.currentTarget.setPointerCapture(e.pointerId);
-        seekTo(e.clientY);
-      }}
-      onPointerMove={(e) => {
-        setHover(timeAt(e.clientY));
-        if (dragging.current) seekTo(e.clientY);
-      }}
-      onPointerUp={() => (dragging.current = false)}
-      onPointerCancel={() => (dragging.current = false)}
-      onPointerLeave={() => setHover(null)}
-    >
-      <div className={s.track}>
-        <div className={s.fill} style={{ height: `${frac(at) * 100}%` }} />
-      </div>
-      {ticks.map((e, i) => (
-        <span
-          key={i}
-          className={s.tick}
-          data-kind={e.kind}
-          data-selected={selection !== null && eventConcerns(e, selection)}
-          style={{ top: `${frac(e.t) * 100}%` }}
-        />
-      ))}
-      <span className={s.thumb} style={{ top: `${frac(at) * 100}%` }} />
-      {hover !== null && (
-        <span className={s.hover} style={{ top: `${frac(hover) * 100}%` }}>
-          {live ? (hover >= to - span * 0.005 ? "live" : `−${formatDuration(to - hover)}`) : formatDuration(hover - from)}
-        </span>
-      )}
     </div>
   );
 }

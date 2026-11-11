@@ -5,7 +5,7 @@ import { describeEvent, eventConcerns } from "../events";
 import { type ItemCatalog, containerName, exfilStatus, formatPrice, totalValue } from "../items";
 import type { Selection } from "../pick";
 import type { ItemNode, WorldPos } from "../protocol";
-import { WILD_SPAWN_TYPES, roleInfo } from "../roles";
+import { WILD_SPAWN_TYPES, bossGroups, playerType } from "../roles";
 import type { Timeline, TimelineEvent } from "../timeline";
 import { formatDuration } from "../playback";
 import { Price } from "../ui";
@@ -66,18 +66,18 @@ function Details({ selection: sel, state, catalog }: Props) {
     const p = state.players.find((x) => x.id === sel.id);
     if (!p) return <div>player gone</div>;
     const eq = state.equipment.get(p.id);
-    const role = roleInfo(p);
-    // The raw value too, so new or mis-mapped roles can be spotted.
-    const roleText =
-      p.role !== undefined
-        ? `${role ? `${role.label} · ` : ""}${WILD_SPAWN_TYPES[p.role]?.[0] ?? "unmapped"} = ${p.role}`
-        : role && `${role.label} (from voice)`;
+    const t = playerType(p, bossGroups(state.players));
     return (
       <>
         <h3 className={s.title}>{p.local ? `You (#${p.id})` : `Player #${p.id}`}</h3>
+        <Line label="type" value={t.label === t.type ? t.type : `${t.label} (${t.type})`} />
+        <Line label="from" value={t.reason} />
+        {/* The raw inputs, so a misclassified player can be traced to the rule that should catch it. */}
         <Line label="side" value={p.side + (p.ai ? " (AI)" : "")} />
-        {roleText && <Line label="role" value={roleText} />}
+        {p.role !== undefined && <Line label="role" value={`${WILD_SPAWN_TYPES[p.role]?.[0] ?? "unmapped"} = ${p.role}`} />}
         {p.voice && <Line label="voice" value={p.voice} />}
+        {p.nickname && <Line label="nickname" value={p.nickname} />}
+        {p.groupId && <Line label="group" value={p.groupId} />}
         {p.kind && <Line label="kind" value={p.kind} />}
         <Line label="state" value={p.dead ? "dead" : p.absent ? "left the raid" : "alive"} />
         <Line label="position" value={formatPos(p.pos)} />

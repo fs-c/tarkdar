@@ -1,5 +1,6 @@
 // Raids view of the side panel, list level: the current (live) raid, pinned, and the backend's past
-// raid recordings. Picking one shows it on the map and opens its timeline (TimelinePanel).
+// raid recordings. Picking one shows it on the map (playback controls float over it, PlaybackBar) and
+// opens its event log (TimelinePanel).
 
 import { useEffect, useState } from "react";
 import { formatDuration } from "../playback";

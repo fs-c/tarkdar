@@ -1,0 +1,80 @@
+/* A pill floating over the bottom of the map, in the follow button's style (see App). */
+.pill {
+  /* the map's full width, up to the follow button (and the same gap) */
+  position: absolute; bottom: 14px; left: 14px; right: 68px; z-index: 1;
+  box-sizing: border-box; height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 4px;
+  border: 1px solid var(--border-strong); border-radius: 20px; background: var(--overlay); color: var(--muted);
+  box-shadow: 0 2px 10px var(--shadow); white-space: nowrap;
+  &[data-mode="replay"] { border-color: var(--link-line); }
+}
+
+/* live at "now": just a chip */
+.chip {
+  /* centred */
+  left: 68px; width: fit-content; margin: 0 auto; gap: 7px; padding: 0 14px 0 12px; font-size: var(--fs-sm);
+  &:hover { color: var(--text); border-color: var(--border-hover); }
+}
+.liveIcon { color: var(--accent); }
+.liveTag { color: var(--accent-text); font-weight: 600; font-size: var(--fs-xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+
+.time { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 0 4px; color: var(--text); font: var(--fs-xs) var(--mono); }
+.pill[data-mode="behind"] .time { color: var(--link-text); }
+
+.round, .speed, .exit, .toLive {
+  flex: none; height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  border-radius: 15px; color: var(--muted);
+  &:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+  &:disabled { opacity: 0.4; cursor: default; }
+}
+.round { width: 30px; color: var(--text); }
+.speed {
+  min-width: 34px; padding: 0 6px; font: var(--fs-xs) var(--mono);
+  &[aria-expanded="true"] { background: var(--hover); color: var(--text); }
+}
+.speedBox { position: relative; flex: none; }
+.menu {
+  position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; padding: 4px; min-width: 52px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--overlay-surface);
+  box-shadow: 0 4px 18px var(--shadow);
+}
+.option {
+  padding: 4px 10px; border-radius: var(--radius-sm); color: var(--muted); font: var(--fs-xs) var(--mono); text-align: center;
+  &:hover { background: var(--hover); color: var(--text); }
+  &[aria-checked="true"] { color: var(--accent-text); }
+}
+.exit, .toLive { padding: 0 12px 0 9px; font-size: var(--fs-sm); font-weight: 600; }
+.exit { background: var(--link-soft); color: var(--link-text); &:hover:not(:disabled) { background: var(--link-line); color: var(--text); } }
+.toLive { color: var(--warn); .pill[data-mode="live"] & { color: var(--accent-text); } }
+
+/* ---- scrubber ---- */
+.track { position: relative; flex: 1; min-width: 40px; height: 100%; margin: 0 4px; cursor: pointer; touch-action: none; }
+.groove {
+  position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; overflow: hidden;
+  border-radius: 2px; background: var(--border-strong);
+}
+.fill { height: 100%; background: var(--accent); opacity: 0.55; .pill[data-mode="replay"] & { background: var(--link); } }
+.tick {
+  position: absolute; top: 50%; width: 2px; height: 12px; margin: -6px 0 0 -1px; border-radius: 1px; pointer-events: none;
+  &[data-kind="died"] { background: var(--danger); }
+  &[data-kind="left"] { background: var(--faint); }
+  &[data-selected="true"] { width: 3px; height: 16px; margin: -8px 0 0 -1.5px; background: var(--link); }
+}
+.thumb {
+  position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; pointer-events: none;
+  background: var(--text); box-shadow: 0 0 0 2px var(--chrome);
+}
+.hover {
+  position: absolute; bottom: calc(100% + 2px); transform: translateX(-50%); padding: 1px 6px; pointer-events: none;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--raised); color: var(--text);
+  font: var(--fs-xs) var(--mono);
+}
+
+/* narrow map: drop the labels, keep the controls */
+@container map (max-width: 560px) {
+  .label, .total { display: none; }
+  .exit, .toLive { width: 30px; padding: 0; }
+}
+@container map (max-width: 400px) {
+  .speedBox { display: none; }
+}

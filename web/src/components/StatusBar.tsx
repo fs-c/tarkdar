@@ -17,17 +17,16 @@ export function statusParts(
   layer: number,
   manualLayer: number | null,
   catalog: CatalogStatus,
-  replay = false,
+  /** Replaying a recording: its name ("Customs · 10 Nov 19:03"). */
+  replay: string | null = null,
 ): string[] {
   if (!s.connected) return ["⚠ disconnected from backend"];
   if (s.protocolMismatch) return ["⚠ protocol version mismatch: rebuild the frontend"];
   if (!s.status) return [s.live ? "connected" : "offline: no game, recorded raids only"];
   const parts: string[] = [];
   const { state } = s.status;
-  // A replay says what it is in the timeline indicator.
-  if (replay) {
-    // nothing: the map and players follow
-  } else if (state === "waitingForRaid") parts.push(s.status.raidPending ? "raid loading…" : "waiting for a raid");
+  if (replay) parts.push(`replay: ${replay}`);
+  else if (state === "waitingForRaid") parts.push(s.status.raidPending ? "raid loading…" : "waiting for a raid");
   else if (state === "inRaid") parts.push(`in raid: ${s.status.locationId ?? "?"}`);
   else parts.push(STATE_LABELS[state] ?? state);
   if (state === "inRaid") {
@@ -51,25 +50,22 @@ interface Props {
   layer: number;
   manualLayer: number | null;
   catalog: CatalogStatus;
-  /** Timeline indicator (last, at the right edge). */
-  timeline?: React.ReactNode;
-  /** Replaying a recording: the bar is tinted so it can't be mistaken for live. */
-  replay?: boolean;
+  /** Replaying a recording: its name. */
+  replay?: string | null;
   /** Extra items on the right. */
   children?: React.ReactNode;
 }
 
-export function StatusBar({ state, map, layer, manualLayer, catalog, timeline, replay = false, children }: Props) {
+export function StatusBar({ state, map, layer, manualLayer, catalog, replay = null, children }: Props) {
   const parts = statusParts(state, map, layer, manualLayer, catalog, replay);
   const warn = !state.connected || state.protocolMismatch;
   return (
-    <footer className={s.bar} data-mode={warn ? "warn" : replay ? "replay" : undefined}>
+    <footer className={s.bar} data-mode={warn ? "warn" : undefined}>
       {parts.map((p, i) => (
         <StatusText key={i} alert={p.startsWith("⚠")}>{p}</StatusText>
       ))}
       <span className={s.spacer} />
       {children}
-      {timeline}
     </footer>
   );
 }

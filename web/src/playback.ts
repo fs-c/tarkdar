@@ -17,6 +17,8 @@ export interface Playback {
   cursor: number | null;
   playing: boolean;
   speed: number;
+  /** Counts seeks (not playing): views that track the cursor use it to catch up after a jump. */
+  seeks: number;
   /** Moves the cursor (clamped to the range); null, or the end when following live: back to live. */
   seek: (t: number | null) => void;
   toggle: () => void;
@@ -35,6 +37,7 @@ export function usePlayback(range: [number, number] | null, followsLive: boolean
     playing: false,
   });
   const [speed, setSpeed] = useState(1);
+  const [seeks, setSeeks] = useState(0);
   const rangeRef = useRef(range);
   rangeRef.current = range;
 
@@ -77,7 +80,11 @@ export function usePlayback(range: [number, number] | null, followsLive: boolean
     cursor: current.cursor,
     playing: current.playing,
     speed,
-    seek: (t) => setState((s) => ({ ...s, cursor: t === null ? (followsLive ? null : (rangeRef.current?.[1] ?? null)) : clamp(t) })),
+    seeks,
+    seek: (t) => {
+      setSeeks((n) => n + 1);
+      setState((s) => ({ ...s, cursor: t === null ? (followsLive ? null : (rangeRef.current?.[1] ?? null)) : clamp(t) }));
+    },
     toggle: () =>
       setState((s) => {
         if (s.playing) return { ...s, playing: false };

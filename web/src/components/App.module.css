@@ -4,21 +4,14 @@
   position: fixed; top: 0; left: 0; right: 0; bottom: var(--status-h);
   display: flex;
 }
-.main { position: relative; flex: 1; min-width: 0; overflow: hidden; }
+.main { position: relative; flex: 1; min-width: 0; overflow: hidden; container: map / inline-size; }
 
-/* Buttons floating over the map's bottom right corner: exit replay (when replaying), follow-me. */
-.mapControls {
+/* Follow-me toggle, floating over the map's bottom right corner (the playback pill is at the bottom centre). */
+.follow {
   position: absolute; right: 14px; bottom: 14px; z-index: 1;
-  display: flex; align-items: center; gap: 8px;
-}
-.control {
-  min-width: 40px; height: 40px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  border: 1px solid var(--border-strong); border-radius: 20px; background: var(--overlay); color: var(--muted);
+  width: 40px; height: 40px; display: grid; place-items: center;
+  border: 1px solid var(--border-strong); border-radius: 50%; background: var(--overlay); color: var(--muted);
   box-shadow: 0 2px 10px var(--shadow);
   &:hover { color: var(--text); }
   &[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
-}
-.exitReplay {
-  padding: 0 14px 0 11px; border-color: var(--link-line); color: var(--link-text); font-weight: 600;
-  &:hover { border-color: var(--link); color: var(--link-hover); }
 }

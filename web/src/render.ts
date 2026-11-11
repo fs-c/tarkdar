@@ -4,7 +4,7 @@ import { type Affine, directionToPixel, pixelsPerMetre, worldToPixel } from "./c
 import { type LoadedMap, selectLayer } from "./maps";
 import { type ItemCatalog, containerName, exfilStatus, formatPrice } from "./items";
 import type { Exfil, ExplosivesData, LootEntry, Player } from "./protocol";
-import { type RoleCategory, isPlainScav, specialRole } from "./roles";
+import { type PlayerType, type PlayerTypeInfo, SPECIAL_TYPES, bossGroups, playerType } from "./roles";
 import { ui } from "./theme";
 import type { Timeline } from "./timeline";
 import type { View } from "./view";
@@ -17,10 +17,6 @@ export const COLORS = {
   grid: "#1f2a33",
   gridLabel: "#4d5d6b",
   local: ui.accent,
-  usec: ui.link,
-  bear: ui.danger,
-  savage: ui.gold,
-  unknown: "#c0c0c0",
   dead: "#6b6b6b",
   label: "#e8eef2",
   calibration: "#ff4fd8",
@@ -37,13 +33,20 @@ export const COLORS = {
   danger: "#ff3b30",
 };
 
-/** Highlight colours for special bot roles (see roles.ts SPECIAL_CATEGORIES). */
-export const ROLE_COLORS: Partial<Record<RoleCategory, string>> = {
+/** Player colours by type (roles.ts). */
+export const TYPE_COLORS: Record<PlayerType, string> = {
+  self: ui.accent,
+  usec: ui.link,
+  bear: ui.danger,
+  "p-scav": ui.gold,
+  "ai-scav": ui.gold,
   boss: "#ff4fd8",
-  guard: ui.warn,
+  follower: ui.warn,
   raider: "#4de1ff",
-  rogue: "#4de1ff",
+  rogue: "#38e8c0",
   cultist: "#b26bff",
+  zombie: "#9bd14b",
+  other: "#c0c0c0",
 };
 
 export interface Layers {
@@ -100,10 +103,13 @@ export function render(ctx: CanvasRenderingContext2D, view: View, scene: Scene):
   if (scene.trails) drawTrails(ctx, view, transform, scene);
 
   const local = scene.players.find((p) => p.local && p.pos);
+  const groups = bossGroups(scene.players);
+  const typed = scene.players.map((p) => ({ p, info: playerType(p, groups) }));
   // Drawn bottom to top: plain scavs, the dead, everyone else, special bots, us.
-  const rank = (p: Player) => (p.local ? 4 : p.dead ? 1 : isPlainScav(p) ? 0 : specialRole(p) ? 3 : 2);
-  const ordered = [...scene.players].sort((a, b) => rank(a) - rank(b));
-  for (const p of ordered) drawPlayer(ctx, view, transform, p, local?.pos?.[1] ?? null);
+  const rank = ({ p, info }: { p: Player; info: PlayerTypeInfo }) =>
+    p.local ? 4 : p.dead ? 1 : info.type === "ai-scav" ? 0 : SPECIAL_TYPES.has(info.type) ? 3 : 2;
+  typed.sort((a, b) => rank(a) - rank(b));
+  for (const { p, info } of typed) drawPlayer(ctx, view, transform, p, info, local?.pos?.[1] ?? null);
 
   if (scene.hovered) {
     const [x, y] = view.toScreen(...worldToPixel(transform, scene.hovered[0], scene.hovered[2]));
@@ -145,6 +151,7 @@ const TRAIL_BUCKETS = 6;
 /** Trails fade with age (in TRAIL_BUCKETS steps); parts on other floors than the shown one are dimmed. */
 function drawTrails(ctx: CanvasRenderingContext2D, view: View, t: Affine, scene: Scene): void {
   const { timeline, at, since, selected } = scene.trails!;
+  const groups = bossGroups(scene.players);
   const floors = scene.map && scene.map.config.layers.length > 1 ? scene.map.config.layers : null;
   const otherFloor = (y: number) => floors !== null && selectLayer(floors, y, null, 0) !== scene.layer;
   ctx.lineJoin = "round";
@@ -187,10 +194,10 @@ function drawTrails(ctx: CanvasRenderingContext2D, view: View, t: Affine, scene:
       path.moveTo(a.x, a.y);
       path.lineTo(b.x, b.y);
     }
-    const meta = track.meta;
-    ctx.strokeStyle = playerColor({ ...meta, dead: false }, specialRole(meta)?.category);
+    const type = playerType(track.meta, groups).type;
+    ctx.strokeStyle = TYPE_COLORS[type];
     ctx.lineWidth = isSelected ? 2.5 : 1.5;
-    const maxAlpha = isSelected ? 0.95 : isPlainScav(meta) ? 0.35 : 0.6;
+    const maxAlpha = isSelected ? 0.95 : type === "ai-scav" ? 0.35 : 0.6;
     paths.forEach((path, i) => {
       const bucket = i % TRAIL_BUCKETS;
       const age = 0.25 + (0.75 * (bucket + 1)) / TRAIL_BUCKETS;
@@ -229,24 +236,18 @@ function drawGrid(ctx: CanvasRenderingContext2D, view: View, t: Affine): void {
   }
 }
 
-function playerColor(p: Player, special: RoleCategory | undefined): string {
-  if (p.dead) return COLORS.dead;
-  if (p.local) return COLORS.local;
-  return (special && ROLE_COLORS[special]) ?? COLORS[p.side];
-}
-
-function drawPlayer(ctx: CanvasRenderingContext2D, view: View, t: Affine, p: Player, localY: number | null): void {
+function drawPlayer(ctx: CanvasRenderingContext2D, view: View, t: Affine, p: Player, info: PlayerTypeInfo, localY: number | null): void {
   if (!p.pos) return;
   const [u, v] = worldToPixel(t, p.pos[0], p.pos[2]);
   const [x, y] = view.toScreen(u, v);
   if (x < -50 || y < -50 || x > view.width + 50 || y > view.height + 50) return;
 
   // Plain AI scavs are many and rarely what matters: smaller and fainter, so PMCs and player scavs
-  // stand out. Bosses, guards, raiders, rogues and cultists get their role's colour and name.
-  const scav = isPlainScav(p);
-  const special = specialRole(p);
-  const boss = special?.category === "boss";
-  const color = playerColor(p, special?.category);
+  // stand out. Bosses, guards, raiders, rogues and cultists get a halo and their name.
+  const scav = info.type === "ai-scav";
+  const special = SPECIAL_TYPES.has(info.type);
+  const boss = info.type === "boss";
+  const color = p.dead ? COLORS.dead : TYPE_COLORS[info.type];
   ctx.globalAlpha = (p.absent ? 0.35 : 1) * (scav ? 0.55 : 1);
   const r = p.local || boss ? 7 : scav ? 4 : 5.5;
 
@@ -291,7 +292,7 @@ function drawPlayer(ctx: CanvasRenderingContext2D, view: View, t: Affine, p: Pla
   }
 
   if (!p.local) {
-    let label = special ? `${special.label} ${p.id}` : `${p.id}`;
+    let label = special ? `${info.label} ${p.id}` : `${p.id}`;
     if (localY !== null) {
       const dy = p.pos[1] - localY;
       if (Math.abs(dy) >= 2) label += dy > 0 ? ` ▲${Math.round(dy)}` : ` ▼${Math.round(-dy)}`;

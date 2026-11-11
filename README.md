@@ -38,15 +38,12 @@ sudo ./build/bin/radar-backend --device "qemu://hugepage-pid=$(pgrep -f 'guest='
 
 # Offline, against a raw physical memory dump:
 ./build/bin/radar-backend --device /path/to/dump.raw
+
+# Offline, just serving saved replays:
+./build/bin/radar-backend --offline
 ```
 
 ```sh
 cd web/
 npm run dev
-```
-
-### Without a game
-
-```sh
-./build/bin/radar-backend --offline
 ```

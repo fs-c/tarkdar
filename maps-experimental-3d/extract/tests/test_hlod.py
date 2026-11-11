@@ -220,11 +220,11 @@ class BakeTest(unittest.TestCase):
         out = self.bake(hsr=False)
         names = [g.name for g in out.geoms]
         self.assertEqual(names, ["cell_0_0_glass", "cell_0_0_structure", "cell_2_0_glass", "cell_2_0_structure",
-                                 "Terrain_a"])
+                                 "Terrain_a", "tree_marker"])
         self.assertEqual([[s.category for s in i.slots] for i in out.instances],
-                         [["glass"], ["structure"], ["glass"], ["structure"], ["terrain"]])
-        self.assertEqual([s["level"] for s in out.scenes], ["cell 0,0", "cell 2,0", "l2"])
-        self.assertEqual([i.scene for i in out.instances], [0, 0, 1, 1, 2])
+                         [["glass"], ["structure"], ["glass"], ["structure"], ["terrain"], ["foliage"]])
+        self.assertEqual([s["level"] for s in out.scenes], ["cell 0,0", "cell 2,0", "l2", "trees"])
+        self.assertEqual([i.scene for i in out.instances], [0, 0, 1, 1, 2, 3])
         cells = out.geoms[:4]
         self.assertTrue(all(g.flat and g.colors is not None for g in cells))
         self.assertFalse(out.geoms[4].flat)
@@ -242,6 +242,28 @@ class BakeTest(unittest.TestCase):
         self.assertEqual([len(g.indices) // 3 for g in cells], [2, 10, 2, 10])
         self.assertEqual(out.paths, ["a", "b", "c", "d", "e"])
         self.assertEqual(out.instances[4].path, 4)
+
+    def test_tree_markers(self):
+        out = self.bake(hsr=False)
+        self.assertEqual([g.name for g in out.geoms][-1], "tree_marker")
+        (tree,) = [i for i in out.instances if i.slots[0].category == "foliage"]
+        # the 1 x 6 x 1 m tree stood at (30, 0, 30): marker at its base centre, as tall as the tree
+        np.testing.assert_allclose(tree.matrix[:3, 3], [30.5, 0, 30.5])
+        self.assertEqual(tree.matrix[1, 1], 6.0)
+        self.assertEqual(out.scenes[tree.scene]["level"], "trees")
+        marker = out.geoms[-1]
+        normals = visibility.face_normals(marker.positions, marker.indices)
+        outward = marker.positions[marker.indices.reshape(-1, 3)].mean(axis=1) - [0, 0.5, 0]
+        self.assertTrue((np.einsum("ij,ij->i", normals, outward) > 0).all())
+        self.assertFalse(any(g.name == "tree_marker" for g in self.bake(hsr=False, tree_markers=False).geoms))
+
+    def test_tree_positions(self):
+        b = lambda x, z, w, h: (np.array([x, 1.0, z]), np.array([x + w, 1.0 + h, z + w]))  # noqa: E731
+        trees = hlod.tree_positions([b(0, 0, 1, 8), b(0.2, 0.2, 1, 5),    # trunk + crown of one tree
+                                     b(10, 0, 1, 2),                      # a bush
+                                     b(50, 50, 300, 20),                  # a batch of many trees
+                                     b(20, 0, 2, 4)])
+        self.assertEqual(trees, [(0.5, 1.0, 0.5, 8.0), (21.0, 1.0, 1.0, 4.0)])
 
     def test_hidden_surfaces_are_removed(self):
         out = self.bake()
@@ -267,7 +289,7 @@ class BakeTest(unittest.TestCase):
             _, chunks, _ = dataset.read(tmp)
             _, a = chunks[0]
             self.assertEqual(a["colors"].shape, (len(a["positions"]), 4))
-            np.testing.assert_array_equal(a["mesh_flags"], [1, 1, 1, 1, 0])
+            np.testing.assert_array_equal(a["mesh_flags"], [1, 1, 1, 1, 0, 1])
             self.assertEqual(index["stats"]["categories"]["structure"]["triangles"], 20)
 
 

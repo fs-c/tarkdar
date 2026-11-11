@@ -3,6 +3,7 @@
 // that share a category (usually the whole mesh, so one draw per mesh).
 
 import * as THREE from "three";
+import { liftColor, srgbBytesToLinear } from "./color";
 import { MESH_FLAT, type MapData } from "./dataset";
 import type { Stage } from "./scene";
 
@@ -19,23 +20,6 @@ export interface InstancedUserData {
   /** First slot of the drawn run, per instance id. */
   slots: Uint32Array;
   mesh: number;
-}
-
-/** sRGB bytes -> linear bytes (alpha unchanged). */
-export function srgbBytesToLinear(srgb: Uint8Array): Uint8Array {
-  const lut = new Uint8Array(256);
-  for (let v = 0; v < 256; v++) {
-    const c = v / 255;
-    lut[v] = Math.round(255 * (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
-  }
-  const out = new Uint8Array(srgb.length);
-  for (let i = 0; i < srgb.length; i += 4) {
-    out[i] = lut[srgb[i]];
-    out[i + 1] = lut[srgb[i + 1]];
-    out[i + 2] = lut[srgb[i + 2]];
-    out[i + 3] = srgb[i + 3];
-  }
-  return out;
 }
 
 /** A run of slots drawn together: parts first..last of one instance. */
@@ -90,11 +74,16 @@ export class InstanceRenderer {
   /** Baked vertex colours converted to linear (what three.js expects), if any. */
   private readonly linearColors: Uint8Array | null;
 
+  /** Geometries with texture coordinates, for meshes with a draped image. */
+  private readonly draped = new Map<number, THREE.BufferGeometry>();
+
   constructor(
     private readonly stage: Stage,
     private readonly data: MapData,
+    /** Dataset URL, for the draped images. */
+    private readonly base: string,
   ) {
-    this.linearColors = data.colors ? srgbBytesToLinear(data.colors) : null;
+    this.linearColors = data.colors ? srgbBytesToLinear(data.colors, true) : null;
     stage.setVertexColors(this.linearColors !== null);
   }
 
@@ -147,6 +136,25 @@ export class InstanceRenderer {
     return geometry;
   }
 
+  /** The run's geometry plus texture coordinates computed from the local XZ position. */
+  private drapedGeometry(key: number, geometry: THREE.BufferGeometry, rect: number[]): THREE.BufferGeometry {
+    let draped = this.draped.get(key);
+    if (!draped) {
+      const position = geometry.getAttribute("position");
+      const uv = new Float32Array(position.count * 2);
+      for (let i = 0; i < position.count; i++) {
+        uv[i * 2] = (position.getX(i) - rect[0]) / rect[2];
+        uv[i * 2 + 1] = (position.getZ(i) - rect[1]) / rect[3];
+      }
+      draped = geometry.clone();
+      draped.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+      draped.boundingBox = geometry.boundingBox;
+      draped.boundingSphere = geometry.boundingSphere;
+      this.draped.set(key, draped);
+    }
+    return draped;
+  }
+
   clear(): void {
     for (const mesh of this.meshes) {
       mesh.parent?.remove(mesh);
@@ -166,20 +174,31 @@ export class InstanceRenderer {
     const perSlot = colored && !this.linearColors;
     const matrix = new THREE.Matrix4();
     const color = new THREE.Color();
+    const rgb = [0, 0, 0];
     for (const run of groupRuns(d, slots, perSlot)) {
       const { category, slots: list } = run;
       const mesh = d.partMesh[run.firstPart];
-      const geometry = this.rangeGeometry(run.firstPart, run.lastPart);
+      let geometry = this.rangeGeometry(run.firstPart, run.lastPart);
       const flat = (d.meshFlags[mesh] & MESH_FLAT) !== 0;
-      const inst = new THREE.InstancedMesh(geometry, this.stage.material(category, colored, flat), list.length);
+      let material = this.stage.material(category, colored, flat);
+      const image = colored ? d.meshTextures.get(mesh) : undefined;
+      if (image) {
+        geometry = this.drapedGeometry(run.firstPart * d.partMesh.length + run.lastPart, geometry, image.rect);
+        material = this.stage.texturedMaterial(category, `${this.base}/${image.file}`);
+      }
+      const inst = new THREE.InstancedMesh(geometry, material, list.length);
       for (let i = 0; i < list.length; i++) {
         const s = list[i];
         d.matrix16(d.slotInstance[s], matrix.elements);
         inst.setMatrixAt(i, matrix);
-        if (perSlot) {
+        if (perSlot && !image) {
           const c = s * 4;
           if (d.slotColor[c + 3]) {
-            color.setRGB(d.slotColor[c] / 255, d.slotColor[c + 1] / 255, d.slotColor[c + 2] / 255, THREE.SRGBColorSpace);
+            rgb[0] = d.slotColor[c];
+            rgb[1] = d.slotColor[c + 1];
+            rgb[2] = d.slotColor[c + 2];
+            liftColor(rgb);
+            color.setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, THREE.SRGBColorSpace);
           } else {
             color.setHex(this.stage.categoryColor(category));
           }

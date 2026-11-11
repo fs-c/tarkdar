@@ -33,6 +33,7 @@ CATEGORY_COLOR = {
     "glass": (159, 196, 216),
 }
 DEFAULT_COLOR = (185, 193, 200)
+GROUND_DESATURATION = 0.4     # keep equal to viewer/src/scene.ts
 
 
 @dataclass
@@ -47,6 +48,7 @@ class Options:
     hsr_bias: float = 0.20            # metres, depth tolerance (surfaces this close behind another stay)
     occluder_margin: float = 16.0     # metres of terrain around a cell used as occluder
     workers: int = 0                  # 0 = one per CPU
+    tree_markers: bool = True         # one simple marker per tree instead of foliage geometry
 
 
 def cell_of(center, cell_size: float) -> tuple[int, int]:
@@ -105,6 +107,48 @@ def drop_degenerate(indices: np.ndarray) -> np.ndarray:
     tri = indices.reshape(-1, 3)
     keep = (tri[:, 0] != tri[:, 1]) & (tri[:, 1] != tri[:, 2]) & (tri[:, 0] != tri[:, 2])
     return tri[keep].reshape(-1)
+
+
+TREE_MIN_HEIGHT = 3.0     # metres: smaller foliage is bushes and grass
+TREE_MAX_WIDTH = 40.0     # wider "foliage" is a batch of many plants, not one tree
+TREE_MERGE = 2.0          # trunk, crown and LOD parts of one tree fall into one grid square
+
+
+def tree_positions(boxes: list[tuple]) -> list[tuple[float, float, float, float]]:
+    """(x, base y, z, height) per tree from the world boxes of foliage renderers."""
+    best: dict[tuple, tuple] = {}
+    for lo, hi in boxes:
+        size = hi - lo
+        if size[1] < TREE_MIN_HEIGHT or max(size[0], size[2]) > TREE_MAX_WIDTH:
+            continue
+        x, z = (lo[0] + hi[0]) / 2, (lo[2] + hi[2]) / 2
+        key = (int(np.floor(x / TREE_MERGE)), int(np.floor(z / TREE_MERGE)))
+        if key not in best or size[1] > best[key][3]:
+            best[key] = (float(x), float(lo[1]), float(z), float(size[1]))
+    return [best[k] for k in sorted(best)]
+
+
+def tree_marker(sides: int = 6) -> dataset.Geom:
+    """Unit tree: a thin trunk and a cone, 1 high with radius 1 (scaled per tree)."""
+    angles = 2 * np.pi * np.arange(sides) / sides
+    ring = np.stack([np.sin(angles), np.zeros(sides), np.cos(angles)], axis=1)
+    crown = np.concatenate([ring + [0, 0.3, 0], [[0, 1.0, 0]]])
+    trunk = np.concatenate([ring * 0.18, ring * 0.18 + [0, 0.3, 0]])
+    positions = np.concatenate([crown, trunk]).astype(np.float32)
+    tris = []
+    for k in range(sides):
+        n = (k + 1) % sides
+        tris.append((k, n, sides))                                     # crown side
+        tris.append((sides + 1 + k, sides + 1 + n, 2 * sides + 1 + n))  # trunk side
+        tris.append((sides + 1 + k, 2 * sides + 1 + n, 2 * sides + 1 + k))
+    for k in range(1, sides - 1):
+        tris.append((0, k + 1, k))                                     # crown underside
+    indices = np.array(tris, dtype=np.uint32).reshape(-1)
+    colors = np.empty((len(positions), 4), dtype=np.uint8)
+    colors[: sides + 1] = (96, 134, 88, 255)
+    colors[sides + 1:] = (112, 94, 76, 255)
+    return dataset.Geom("tree_marker", "mesh", positions, np.zeros_like(positions), indices,
+                        np.array([[0, len(indices)]], dtype=np.uint32), colors, flat=True)
 
 
 def _process_cell(job):
@@ -169,6 +213,7 @@ def bake(ds: dataset.Dataset, opt: Options, log=print) -> dataset.Dataset:
     # (cell, category) -> [(instance, [(slot, (first, count)), ...]), ...]
     buckets: dict[tuple, list] = defaultdict(list)
     passthrough: list[dataset.Instance] = []
+    foliage_boxes: list[tuple] = []
     dropped = 0
     for inst in ds.instances:
         geom = ds.geoms[inst.geom]
@@ -178,6 +223,9 @@ def bake(ds: dataset.Dataset, opt: Options, log=print) -> dataset.Dataset:
         if not any(c in merge for c in by_category):
             if all(c in drop for c in by_category):
                 dropped += 1
+                if opt.tree_markers and set(by_category) == {"foliage"}:
+                    wa = geometry.world_aabb(*bounds[inst.geom], inst.matrix)
+                    foliage_boxes.append((wa.min(axis=0), wa.max(axis=0)))
             else:
                 passthrough.append(inst)     # terrain, water: kept as instances (noise parts included)
             continue
@@ -263,6 +311,17 @@ def bake(ds: dataset.Dataset, opt: Options, log=print) -> dataset.Dataset:
                                       np.array([[0, len(indices)]], dtype=np.uint32), colors, flat=True))
     cell_meshes = len(out_geoms)
 
+    # Terrain without a ground image (backdrop meshes around the map) takes the
+    # average ground colour, so it does not stand out against the real terrain.
+    grounds = [g.texture.reshape(-1, 3).mean(axis=0) for g in (ds.geoms[i.geom] for i in passthrough)
+               if g.texture is not None]
+    average_ground = None
+    if grounds:
+        mean = np.mean(grounds, axis=0)
+        # The viewer mutes ground images (scene.ts GROUND_DESATURATION); match it here.
+        mean = mean + (mean @ np.array([0.2126, 0.7152, 0.0722]) - mean) * GROUND_DESATURATION
+        average_ground = tuple(int(v) for v in np.rint(mean))
+
     # Unmerged instances keep their meshes and scenes (appended after the cells).
     geom_map: dict[int, int] = {}
     scene_map: dict[int, int] = {}
@@ -271,7 +330,15 @@ def bake(ds: dataset.Dataset, opt: Options, log=print) -> dataset.Dataset:
             geom_map[inst.geom] = len(out_geoms)
             geom = ds.geoms[inst.geom]
             colors = np.empty((len(geom.positions), 4), dtype=np.uint8)
-            colors[:] = (*CATEGORY_COLOR.get(inst.slots[0].category, DEFAULT_COLOR), 255)
+            # A draped colour image is multiplied with the vertex colour: white.
+            category = inst.slots[0].category
+            if geom.texture is not None:
+                base = (255, 255, 255)
+            elif category == "terrain" and average_ground is not None:
+                base = average_ground
+            else:
+                base = CATEGORY_COLOR.get(category, DEFAULT_COLOR)
+            colors[:] = (*base, 255)
             out_geoms.append(replace(geom, colors=colors))
         if inst.scene not in scene_map:
             scene_map[inst.scene] = len(scenes)
@@ -279,9 +346,21 @@ def bake(ds: dataset.Dataset, opt: Options, log=print) -> dataset.Dataset:
         out_instances.append(dataset.Instance(geom_map[inst.geom], inst.matrix, scene_map[inst.scene],
                                               inst.slots, inst.path))
 
+    trees = tree_positions(foliage_boxes) if opt.tree_markers else []
+    if trees:
+        marker = len(out_geoms)
+        out_geoms.append(tree_marker())
+        scenes.append({"level": "trees", "path": "markers/trees"})
+        for x, y, z, height in trees:
+            radius = float(np.clip(0.16 * height, 0.6, 2.0))
+            m = np.diag([radius, height, radius, 1.0])
+            m[:3, 3] = [x, y, z]
+            out_instances.append(dataset.Instance(marker, m, len(scenes) - 1, [dataset.Slot("foliage")], -1))
+
     log(f"  cells: {len(cells)} of {opt.cell_size:g} m, error {opt.error * 100:g} cm: {totals['in']:,} triangles "
         f"-> {totals['simplified']:,} simplified -> {totals['out']:,} visible ({vertices:,} vertices) in "
-        f"{cell_meshes:,} cell meshes; {len(passthrough):,} instances kept as they are, {dropped:,} dropped")
+        f"{cell_meshes:,} cell meshes; {len(passthrough):,} instances kept as they are, {dropped:,} dropped, "
+        f"{len(trees):,} tree markers")
     return dataset.Dataset(name=ds.name, label=ds.label, tag=ds.tag, profile=ds.profile, scenes=scenes,
                            geoms=out_geoms, instances=out_instances, materials=ds.materials, paths=ds.paths,
                            source_instances=ds.source_instances)

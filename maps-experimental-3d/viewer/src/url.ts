@@ -2,6 +2,8 @@
 // -> which dataset directory to load. Any other dataset name works as ?map=
 // too (e.g. ?map=customs-legacy).
 //   ?cats=structure,terrain   start with only these categories visible
+//   ?color=0                 start with category colours instead of material colours
+//   ?cam=x,y,z,tx,ty,tz      camera position and target (as in a pick report)
 //   ?paused                   do not start the render loop (measurement harness
 //                             renders single frames itself)
 
@@ -15,6 +17,10 @@ export interface UrlState {
   dataset: string;
   /** Category names to show initially; null = the mode's default. */
   categories: string[] | null;
+  /** Start with material colours (default) or category colours (?color=0). */
+  colored: boolean;
+  /** Camera position (3) + target (3) in viewer space, or null. */
+  camera: number[] | null;
   paused: boolean;
 }
 
@@ -43,7 +49,9 @@ export function parseUrl(search: string): UrlState {
   if (mode === "explore") map = map.replace(/-.*$/, "");   // explore exists per map, not per variant
   const cats = params.get("cats");
   const categories = cats ? cats.split(",").map((c) => c.trim()).filter(Boolean) : null;
-  return { mode, map, dataset: datasetFor(mode, map), categories, paused: params.has("paused") };
+  const cam = (params.get("cam") ?? "").split(",").map(Number);
+  const camera = cam.length === 6 && cam.every(Number.isFinite) ? cam : null;
+  return { mode, map, dataset: datasetFor(mode, map), categories, colored: params.get("color") !== "0", camera, paused: params.has("paused") };
 }
 
 export function buildUrl(pathname: string, mode: Mode, map: string): string {

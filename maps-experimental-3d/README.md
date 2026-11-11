@@ -85,7 +85,8 @@ How it is produced (`extract/t3d/hlod.py`, `visibility.py`):
   above the map (terrain hides buried parts); `--no-hsr` turns it off
 - flat shading, vertices shared by position + baked material colour
 
-Terrain and water stay as they are. SSIM is measured by the harness against
+Terrain and water stay as they are. Trees become simple translucent markers
+(one per foliage object of 3 m or more); other vegetation is dropped. SSIM is measured by the harness against
 the explore dataset restricted to structure + terrain + water + glass; the
 first overview (`--profile legacy`, `make legacy`, `?map=customs-legacy`)
 scores 0.834 / 0.733 with 2,656 / 5,314 draw calls.
@@ -271,11 +272,18 @@ Controls:
 - right drag: pan
 - wheel: zoom
 - `R` reset · `T` top view · `F` wireframe · `V` vegetation · `G` grid
-- `C` / **Colour**: flat material colours (albedo mean × tint) instead of the
-  per-category colours
+- `C` / **Colour** (on by default): material colours (albedo mean × tint,
+  lifted to a lighter, more even range) instead of the per-category colours
 - **Inspect** button / `?mode=inspect`: load LOD0 + picker
-- `P` / **Pick**: toggle pick mode (any mode; on by default in inspect and
-  explore) · `Esc`: clear selection
+- `P` / **Pick** (on by default): click a point to get its game world
+  coordinates; Shift-click adds more; **Copy report** includes the object
+  under each point and the camera · `Esc`: clear selection
+- `?cam=x,y,z,tx,ty,tz` opens a camera pose from a report; `?color=0` starts
+  with category colours
+
+Terrain shows its real ground colours (grass, dirt, gravel, roads: the
+terrain layers' mean colours blended by the game's splat maps), slope
+shading, a height tint and 2 m contour lines.
 
 Inspect hides the shadow, decal and background categories by default (the
 overview does not contain them); explore starts with everything visible.
@@ -299,8 +307,11 @@ Report shape:
 {
   "map": "customs-inspect",
   "mode": "inspect",
+  "camera": { "position": [260.0, 60.0, -10.0], "target": [204.0, 18.0, -52.0] },
   "selection": [
     {
+      "point": [204.1, 18.9, -52.7],
+      "unity": [204.1, 18.9, 52.7],
       "mesh": "RoadSplineGenerator Generate",
       "meshIndex": 2250,
       "category": "structure",
@@ -356,6 +367,7 @@ reads it). One directory per dataset under `viewer/public/data/<name>/`:
 | `index.json` | small header: map, bounds, `categories`, `scenes`, `materials` (name, shader, render queue), `stats` (incl. per-category triangles) and the list of `chunks` |
 | `chunk-0.t3d` | geometry chunk: the `t3d/pack.py` container (magic, JSON header, 16-byte-aligned arrays), uncompressed so the browser can use the arrays in place |
 | `sources.json` | hierarchy paths (`goPath`) per instance; the picker fetches it on the first click |
+| `texture-N.png` | colour image draped over mesh N (terrain ground colour, 1024², ~0.75 MB); listed in the chunk header as `meshTextures` with the local XZ rectangle it covers |
 
 A chunk is self-describing (`kind`, `level`, `error`, `cell` in its header),
 so Phase 2/3 can add one chunk per spatial cell and LOD level. Today there is
@@ -445,7 +457,8 @@ Terrain is downsampled with `--terrain-step` (default 4 for overview).
 
 See `HANDOFF.md` ("Known issues / limitations", "Roadmap"). In short: the
 overview is not compressed yet (137 / 208 MB), has a single level of detail
-(faceted close up, no thin details), no foliage, exteriors only on Streets,
-and picking there returns a cell rather than an object. Explore and inspect
+(faceted close up, no thin details), trees only as markers, exteriors only on
+Streets, and picking there returns coordinates and a cell rather than an
+object. Explore and inspect
 are intentionally heavy (92–98M triangles); they exist to examine the source
 geometry, not to navigate. Axes follow Unity world coordinates.

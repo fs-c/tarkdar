@@ -1,6 +1,6 @@
 # Hand-off — EFT 3D map spike
 
-Last updated: 2026-11-11 (Phases 0–1 done; Phase 2 first cut: merged cells are the default overview)
+Last updated: 2026-11-11 (overview accepted by the user; colour, relief, tree markers, coordinate pick added)
 
 ## TL;DR
 
@@ -16,16 +16,19 @@ Where it stands:
   Customs: 5.3M triangles, 114 draw calls. Streets (exteriors): 7.9M, 108.
 - **Quality is measured**, not eyeballed: `harness/` compares each dataset
   with the reference (explore restricted to structure + terrain + water +
-  glass) from 18 fixed cameras per map. Mean SSIM: Customs 0.924, Streets
-  0.944 (the old decimated overview: 0.834 / 0.733).
+  glass) from 18 fixed cameras per map. Mean SSIM: Customs 0.909, Streets
+  0.940 (the old decimated overview: 0.834 / 0.733).
 - Pipeline: `extract_cache.py` (needs the game, done) → `cache/` (in B2) →
   `build.py` (no game) → dataset format 2 → TypeScript viewer. **All further
   work builds from `cache/` only**; see "Working without the game".
 - **Not done yet**: download size (137 / 208 MB per map, uncompressed),
   runtime LOD levels, picking inside merged cells, foliage, interiors. See
   "Roadmap".
-- **The user has not yet looked at the merged-cell overview.** Everything in
-  Phase 2 so far is judged by the harness and by screenshots only.
+- **The user has reviewed the overview** (see "Decisions"): geometry and level
+  of detail are right, performance is fine, no further optimization unless it
+  is an easy win. The second round added lighter colours (on by default),
+  terrain relief, tree markers and the coordinate pick; the user has not seen
+  those yet.
 
 ## Working without the game
 
@@ -94,7 +97,8 @@ viewer/                TypeScript + three.js + vite (vitest for unit tests)
   src/dataset.ts       format 2 loader, MapData (instances, slots, boxes)
   src/filter.ts        visible-slot filter, counts, filter report
   src/instances.ts     slots -> InstancedMeshes (merged index ranges)
-  src/scene.ts         renderer, camera, lights, per-category materials
+  src/scene.ts         renderer, camera, lights, per-category materials, terrain relief
+  src/color.ts         colour lift, sRGB -> linear
   src/explore.ts       strip-down panel
   src/picker.ts        click-to-identify, selection report
   src/*.test.ts        vitest
@@ -117,18 +121,35 @@ README.md              fuller reference (cache contents, dataset format, flags)
 Any dataset directory name works as `?map=`. `?cats=structure,terrain` starts
 with only those categories; `?paused` does not start the render loop (harness).
 
-- **Colour** / `C`: material colours instead of category colours. On the
-  overview these are baked per vertex (albedo-thumbnail mean × `_Color`) and
-  make the map far more readable; it is off by default only because nobody has
-  decided yet.
-- **Pick** / `P` works in every mode (on by default in inspect and explore).
-  In explore/inspect a report has mesh, category, material/shader, scene,
-  hierarchy path, position, size, scale and triangles: the intended way for
-  the user to report geometry problems. On the overview a pick only
-  identifies the cell mesh (no per-object source yet).
+- **Colour** / `C` (on by default; `?color=0` starts without): material
+  colours instead of category colours. On the overview they are baked per
+  vertex (albedo-thumbnail mean × `_Color`). The viewer lifts them
+  (`viewer/src/color.ts`: luma → 0.36 + 0.58 × luma, hue kept): the raw means
+  have a median luma of 0.3 and the user found them too dark and uneven.
+- **Terrain ground colour** (colour mode): the build blends the 12 terrain
+  layers' mean colours by the splat maps into one image per terrain slice
+  (`geometry.terrain_colors`, 1024², 0.68 m/pixel, ~0.75 MB PNG each) and the
+  viewer drapes it over the terrain, lifted and muted by 40 % (the lifted
+  grass mean is lime green). Backdrop terrain meshes around the map have no
+  such data and take the average ground colour. Streets has no Unity terrain.
+- **Terrain relief** (`scene.ts` `addRelief`): slope shading, a low-to-high
+  tint and 2 m contour lines (every fifth stronger). Lines are suppressed on
+  nearly level ground and when they would be closer than a few pixels.
+- **Trees** on the overview are translucent markers (cone + trunk, one per
+  tree ≥ 3 m), toggled by Vegetation / `V`, ignored by the pick tool.
+- **Pick** / `P` (on by default in every mode): click a point, Shift-click to
+  add more. Each entry shows the **game world coordinates** of the clicked
+  point; Copy report adds the object under it and the camera pose. This is
+  the intended way for the user to say where something is wrong. A pose from a
+  report reproduces the view: `?cam=x,y,z,tx,ty,tz` (the report's
+  `camera.position` + `camera.target`). In explore/inspect the report also
+  has mesh, material/shader, scene and hierarchy path; on the overview the
+  object is only the cell mesh.
 - Explore has the strip-down panel (categories, world size, scenes, mesh
   name, Copy filter) and starts with everything visible; inspect hides the
   shadow/decal/background categories by default.
+- On the overview **glass is solid** (there are no interiors behind it), and
+  the near plane follows the zoom to keep depth precision (z-fighting).
 
 ## Datasets (current build.py output)
 
@@ -157,10 +178,15 @@ Measured against the reference (`make measure DATASET=…`, 18 views each):
 
 | Dataset | mean SSIM | min SSIM | triangles, whole map | zoomed views | draw calls |
 |---|---:|---:|---:|---:|---:|
-| `customs` | 0.924 | 0.874 | 5.3M | 0.8–4.6M | 114 |
+| `customs` | 0.909 | 0.866 | 5.3M | 0.8–4.6M | 114 |
 | `customs-legacy` | 0.834 | 0.744 | 7.5M | 4.6–7.3M | 2,656 |
-| `streets` | 0.944 | 0.910 | 7.9M | 2.7–7.8M | 108 |
+| `streets` | 0.940 | 0.904 | 7.9M | 2.7–7.8M | 108 |
 | `streets-legacy` | 0.733 | 0.626 | 8.1M | 6.4–7.8M | 5,314 |
+
+The overview rows were re-measured after glass became solid there (the
+reference keeps translucent glass); before that they were 0.924 / 0.874 and
+0.944 / 0.910, which is what the Phase 2 table below uses. The legacy rows
+are from before. Captures use `color=0` (category colours).
 
 Frame rates have not been measured: the container has no GPU. The original
 spike on an integrated AMD GPU at 1500×950 ran the legacy overview at 45–60
@@ -184,7 +210,9 @@ fps and explore at 12–24 fps.
       front-facing sample shows from any of 45 directions are dropped. Terrain
       hides what is buried; other cells are not considered, so it errs on
       keeping;
-   4. vertices are welded by position + colour (cells are flat shaded).
+   4. vertices are welded by position + colour (cells are flat shaded);
+   5. every foliage renderer ≥ 3 m tall (and < 40 m wide) becomes one
+      instance of a shared `tree_marker` mesh, merged per 2 m square.
    Cells run in parallel worker processes (one BLAS thread each).
 
 Presets: Customs = 23 scene paths in `t3d/maps.py`. Streets = the 223 City
@@ -277,21 +305,27 @@ These are easy to regress:
 - **One level of detail.** 10 cm error everywhere: curved objects (tanks,
   barrels, cars) are visibly faceted close up, thin things (wires, ladders,
   street-lamp heads) are gone. Accepted for an early version by the user.
-- **No foliage in the overview** (the reference excludes it too); the
-  Vegetation button does nothing there.
-- **Picking on the overview returns the cell**, not the object.
+- **Trees are markers only**; bushes and grass are not shown.
+- **Picking on the overview returns coordinates and the cell**, not the object.
+- **Reported by the user, not yet located**: some z-fighting on Streets and
+  windows one could look through. The near-plane change and solid glass are
+  aimed at both, unverified; ask for pick reports if they persist.
+  Remaining z-fighting would be coplanar surfaces inside a cell (the
+  visibility bias keeps surfaces within 20 cm of each other).
 - **Streets overview has exteriors only**; Customs includes its `*_indoor`
   scenes, of which hidden-surface removal keeps what is visible from outside.
-- **Glass is drawn translucent**; interiors show through windows where they
-  exist (and are missing behind them on the overview).
-- **Colours are flat means**: cutout textures give dark means (transparent
-  texels count), terrain is one colour.
+- **Glass is translucent in explore/inspect**, solid on the overview.
+- **Colours are flat means**, lifted in the viewer; cutout textures give dark
+  means (transparent texels count). The edge between real terrain (ground
+  image) and backdrop terrain (one colour) is visible.
 - **Terrain seam** between the two central Customs heightmap slices.
 - **Orientation** is Unity world space; not aligned to the in-game pocket map.
 - **Inspect dataset is Customs-only.**
 - **Other maps** need a preset/scene list and a re-extract with the game.
 
 ## Decisions (user, 2026-11-11)
+
+Before Phase 2:
 
 1. **Interiors**: not needed initially. The ideal version has simplified
    interiors: at least floors, walls and windows.
@@ -302,6 +336,19 @@ These are easy to regress:
 3. **Viewer in TypeScript**: yes (done).
 4. **Camera**: it must be possible to zoom in quite far, but an early version
    need not have fine LODs; looking a bit chunky when zoomed in is fine.
+
+After looking at the merged-cell overview:
+
+5. **Geometry is "basically perfect"**; faceted curves and missing wires etc.
+   are fine. **10 cm** stays the error bound.
+6. **Colour on by default**, but lighter on average and more consistent; and
+   terrain elevation must be easier to read. (Both addressed; not yet seen.)
+7. **Trees: yes, as visual references only** ("there's a tree there"), little
+   detail, and they should not get in the way.
+8. **No more time on optimization** unless there are easy wins: the current
+   state is liked, also performance-wise. Compression and LOD levels are
+   therefore parked, not planned.
+9. A way to point at a place was wanted ("coordinate pick tool"): done.
 
 ## Roadmap
 
@@ -380,21 +427,24 @@ So: LOD1 is the right base; hidden-surface removal is free in quality; flat
 shading is better than carrying the original normals through simplification
 (they produced dark patches) and nearly halves the vertex count.
 
-Still open in Phase 2:
+Parked (decision 8), in the order they would pay off if picked up again:
 
 1. **Compression**: per-cell int16 positions, meshopt vertex/index codecs
    (the Python bindings have `encode_vertex_buffer` / `encode_index_buffer`;
    the `meshoptimizer` npm package decodes), behind the chunk header. Expected
-   to bring a map to roughly 30–50 MB.
-2. **Error levels per cell** (e.g. 5 cm / 25 cm / 1 m) as separate chunks;
-   the chunk header already has `level`/`error`/`cell`.
-3. **Hidden-surface removal across cells** and before simplification;
-   viewpoints above walkable ground instead of directions only.
-4. **Foliage**: trees as instanced low-LOD meshes or merged per cell.
-5. **Interiors**: simplified floors/walls/windows (user's "ideal version").
-6. **Terrain**: error-bounded TIN; colour from splat maps × layer colours.
-7. **Colour**: un-premultiply cutout means; decals projected into the
+   to bring a map from 137 / 208 MB to roughly 30–50 MB. This is the one
+   working number still missed (≤ 150 MB on Streets).
+2. **Error levels per cell** as separate chunks (the chunk header already has
+   `level`/`error`/`cell`).
+3. **Hidden-surface removal across cells**; treating glass as an occluder now
+   that it is drawn solid.
+
+Open, wanted eventually:
+
+4. **Interiors**: simplified floors/walls/windows (decision 1).
+5. **Colour**: un-premultiply cutout means; decals projected into the
    surface colour.
+6. **Per-object picking on the overview** (source id per triangle).
 
 ### Phase 3 — runtime
 
@@ -412,12 +462,13 @@ Still open in Phase 2:
 
 ### Open questions for the user
 
-1. Does the merged-cell overview look right (Customs and Streets, also zoomed
-   in)? This is the first time the result is judged by a person.
-2. Should **Colour** be the default?
-3. Is 10 cm the right error bound, or spend triangles on 5 cm (Customs would
-   be about 7M)?
-4. Are trees wanted on the map?
+1. Are colours, ground colours, terrain relief and tree markers right now
+   (brightness, saturation, line strength, tree size/opacity)? All are
+   constants in `viewer/src/color.ts` and `viewer/src/scene.ts`, no rebuild
+   needed to change them (tree size: `hlod.py`).
+2. Where exactly are the remaining z-fighting spots / see-through windows on
+   Streets (pick reports)?
+3. Next larger step: integration into `web/`, interiors, or other maps?
 
 ## Validation checks
 

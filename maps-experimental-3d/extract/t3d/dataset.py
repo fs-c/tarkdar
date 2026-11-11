@@ -4,6 +4,8 @@
                          materials, stats and the list of chunks
     <out>/chunk-0.t3d    geometry chunk (t3d.pack container, not compressed)
     <out>/sources.json   hierarchy paths for the picker, fetched on first pick
+    <out>/texture-N.png  colour image draped over mesh N (terrain ground colour);
+                         listed in the chunk header as meshTextures
 
 A chunk is self-describing (its own JSON header + arrays), so later phases can
 add one chunk per spatial cell and LOD level without touching the header
@@ -48,6 +50,11 @@ class Geom:
     parts: np.ndarray         # (P, 2) uint32 [first index, index count]
     colors: np.ndarray | None = None   # (V, 4) uint8 sRGB, baked per-vertex colour
     flat: bool = False        # shade per face (normals are not used and may be zero)
+    # Colour image draped over the mesh (terrain): (H, W, 3) uint8 sRGB and the
+    # local XZ rectangle it covers, [x0, z0, size x, size z]; u = (x - x0) / size x,
+    # v = (z - z0) / size z, v = 0 at image row 0.
+    texture: np.ndarray | None = None
+    texture_rect: tuple | None = None
 
     def bounds(self):
         return self.positions.min(axis=0), self.positions.max(axis=0)
@@ -205,6 +212,22 @@ def stats(ds: Dataset) -> dict:
     }
 
 
+def png(rgb: np.ndarray) -> bytes:
+    """Encode an (H, W, 3) uint8 image as PNG (standard library only)."""
+    import struct
+    import zlib
+
+    height, width, _ = rgb.shape
+    rows = np.zeros((height, 1 + width * 3), dtype=np.uint8)     # filter byte 0 + pixels
+    rows[:, 1:] = np.ascontiguousarray(rgb, dtype=np.uint8).reshape(height, -1)
+
+    def block(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    return (b"\x89PNG\r\n\x1a\n" + block(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + block(b"IDAT", zlib.compress(rows.tobytes(), 9)) + block(b"IEND", b""))
+
+
 def write(ds: Dataset, out_dir: Path) -> dict:
     """Write the dataset; returns the index header."""
     out_dir = Path(out_dir)
@@ -214,8 +237,16 @@ def write(ds: Dataset, out_dir: Path) -> dict:
 
     (lo, hi), (focus_lo, focus_hi) = _bounds(ds)
     bounds = {"min": _round(lo), "max": _round(hi)}
+    for stale in out_dir.glob("texture-*.png"):
+        stale.unlink()
+    textures = {}
+    for i, g in enumerate(ds.geoms):
+        if g.texture is not None:
+            name = f"texture-{i}.png"
+            (out_dir / name).write_bytes(png(g.texture))
+            textures[str(i)] = {"file": name, "rect": _round(g.texture_rect)}
     chunk_meta = {"kind": "instanced", "level": 0, "error": 0, "cell": None,
-                  "meshNames": [g.name for g in ds.geoms]}
+                  "meshNames": [g.name for g in ds.geoms], "meshTextures": textures}
     data = pack.encode(chunk_meta, _chunk_arrays(ds))
     chunk_name = "chunk-0.t3d"
     (out_dir / chunk_name).write_bytes(data)

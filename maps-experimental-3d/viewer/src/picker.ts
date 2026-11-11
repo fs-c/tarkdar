@@ -26,11 +26,31 @@ export interface Selection {
   /** Triangles of the whole mesh / of the clicked part. */
   tris: number;
   partTris: number;
+  /** Clicked point in viewer space; null when described without a click. */
+  point: number[] | null;
   box: THREE.Box3;
 }
 
+export interface CameraPose {
+  position: number[];
+  target: number[];
+}
+
+/** Viewer space (x, y, -z) <-> Unity/game world space (x, y, z). */
+export function toUnity(p: number[]): number[] {
+  return [p[0], p[1], -p[2]];
+}
+
+/** Boxes larger than this are merged cells, not objects: no highlight box. */
+const MAX_HIGHLIGHT_SIZE = 60;
+
 /** Everything the report says about one slot; pure data, no rendering. */
-export function describeSlot(data: MapData, slot: number, paths: string[] | null): Omit<Selection, "box"> {
+export function describeSlot(
+  data: MapData,
+  slot: number,
+  paths: string[] | null,
+  point: number[] | null = null,
+): Omit<Selection, "box"> {
   const instance = data.slotInstance[slot];
   const meshIndex = data.instMesh[instance];
   const m = data.instMatrix;
@@ -60,16 +80,28 @@ export function describeSlot(data: MapData, slot: number, paths: string[] | null
     ],
     tris: data.meshIndexCount[meshIndex] / 3,
     partTris: data.slotTriangles(slot),
+    point,
   };
 }
 
-export function selectionReport(selected: Omit<Selection, "box">[], map: string, mode: string): string {
+export function selectionReport(
+  selected: Omit<Selection, "box">[],
+  map: string,
+  mode: string,
+  camera: CameraPose | null = null,
+): string {
+  const round = (values: number[]) => values.map((v) => Number(v.toFixed(2)));
   return JSON.stringify(
     {
       map,
       mode,
       generatedAt: new Date().toISOString(),
+      // Viewer space; the same pose reproduces the view the report was made from.
+      camera: camera && { position: round(camera.position), target: round(camera.target) },
       selection: selected.map((s) => ({
+        // Where the click hit: viewer space, and Unity/game world space (z flipped).
+        point: s.point && round(s.point),
+        unity: s.point && round(toUnity(s.point)),
         mesh: s.mesh,
         meshIndex: s.meshIndex,
         category: s.category,
@@ -132,7 +164,11 @@ export class Picker {
   }
 
   report(map: string, mode: string): string {
-    return selectionReport(this.selected, map, mode);
+    const { camera, controls } = this.stage;
+    return selectionReport(this.selected, map, mode, {
+      position: camera.position.toArray(),
+      target: controls.target.toArray(),
+    });
   }
 
   private ensurePaths(): void {
@@ -158,7 +194,8 @@ export class Picker {
       this.stage.groups.filter((g) => g.visible),
       true,
     );
-    const hit = hits[0];
+    // Tree markers are see-through reference symbols: pick what is behind them.
+    const hit = hits.find((h) => h.object.name !== "tree_marker");
     if (!hit) {
       if (!additive) this.clear();
       return;
@@ -168,7 +205,7 @@ export class Picker {
     const slot = userData.slots[hit.instanceId];
     this.ensurePaths();
 
-    const info = describeSlot(this.data, slot, this.paths);
+    const info = describeSlot(this.data, slot, this.paths, hit.point.toArray());
     const b = info.instance * 6;
     const ib = this.data.instBox;
     const box = new THREE.Box3(
@@ -176,10 +213,9 @@ export class Picker {
       new THREE.Vector3(ib[b + 3], ib[b + 4], ib[b + 5]),
     );
     if (!additive) this.selected.length = 0;
-    if (!this.selected.some((s) => s.instance === info.instance)) {
-      this.selected.push({ ...info, box });
-      if (this.selected.length > MAX_SELECTION) this.selected.shift();
-    }
+    // Every click is its own entry: several points on one object (or one cell) are fine.
+    this.selected.push({ ...info, box });
+    if (this.selected.length > MAX_SELECTION) this.selected.shift();
     this.render();
   }
 
@@ -196,6 +232,12 @@ export class Picker {
         `${s.category} · ${s.scene} · ${s.position.map((v) => v.toFixed(1)).join(", ")} · ` +
         `${s.size.map((v) => v.toFixed(1)).join("×")} m · ` +
         `scale ${s.scale.map((v) => v.toFixed(2)).join("×")} · ${nf.format(s.tris)} tris`;
+      if (s.point) {
+        const where = document.createElement("div");
+        where.className = "pick-name";
+        where.textContent = `at ${toUnity(s.point).map((v) => v.toFixed(1)).join(", ")}`;
+        li.append(where);
+      }
       li.append(name, meta);
       if (s.shader || s.path) {
         const source = document.createElement("div");
@@ -208,11 +250,24 @@ export class Picker {
     this.count.textContent = String(this.selected.length);
 
     const highlights = this.stage.highlights;
-    for (const child of [...highlights.children] as THREE.Box3Helper[]) {
+    for (const child of [...highlights.children] as (THREE.Box3Helper | THREE.Mesh)[]) {
       highlights.remove(child);
       child.geometry.dispose();
       (child.material as THREE.Material).dispose();
     }
-    for (const s of this.selected) highlights.add(new THREE.Box3Helper(s.box, 0xffcc33));
+    const distance = this.stage.camera.position.distanceTo(this.stage.controls.target);
+    for (const s of this.selected) {
+      if (Math.max(...s.size) <= MAX_HIGHLIGHT_SIZE) highlights.add(new THREE.Box3Helper(s.box, 0xffcc33));
+      if (s.point) {
+        // A marker at the clicked point, sized to stay visible at the current zoom.
+        const marker = new THREE.Mesh(
+          new THREE.SphereGeometry(Math.max(0.15, distance * 0.006), 12, 8),
+          new THREE.MeshBasicMaterial({ color: 0xff3d6e, depthTest: false, fog: false }),
+        );
+        marker.renderOrder = 10;
+        marker.position.fromArray(s.point);
+        highlights.add(marker);
+      }
+    }
   }
 }

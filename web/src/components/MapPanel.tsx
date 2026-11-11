@@ -22,7 +22,7 @@ interface Props {
 
 const LABEL_PRICES = [0, 10_000, 25_000, 50_000, 100_000];
 
-const TRAIL_LENGTHS: (number | null)[] = [1, 5, 15, null];
+const TRAIL_LENGTHS: (number | null)[] = [0.5, 1, 2, 5, 10, 15, 30, null];
 
 const LAYERS: { key: keyof Layers; label: string; hint: string }[] = [
   { key: "loot", label: "Loot", hint: "Loose items, quest items, corpses" },
@@ -74,9 +74,9 @@ export function MapPanel(p: Props) {
         />
         {p.trails.all && (
           <Segmented
-            label="Length of everyone's trails"
-            title="Length of everyone's trails"
-            options={TRAIL_LENGTHS.map((m) => ({ value: m, label: m === null ? "Whole raid" : `${m} min` }))}
+            label="Trail duration"
+            title="How far back everyone's trails reach (the selected player's always shows the whole raid)"
+            options={TRAIL_LENGTHS.map((m) => ({ value: m, label: m === null ? "Whole raid" : m < 1 ? `${m * 60} s` : `${m} min` }))}
             value={p.trails.minutes}
             onChange={(m) => p.onTrails({ ...p.trails, minutes: m })}
           />

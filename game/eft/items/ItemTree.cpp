@@ -2,6 +2,7 @@
 
 #include "game/eft/Names.hpp"
 #include "game/eft/Read.hpp"
+#include "core/log/Log.hpp"
 
 #include <eft_offsets.hpp>
 
@@ -29,7 +30,10 @@ std::optional<ItemNode> ItemTreeReader::readNode(Address item, std::string slot,
     }
     const Address tmpl = readPointer(game_, item + off::Item::Template);
     auto tpl = tmpl ? readMongoId(game_, tmpl + off::ItemTemplate::_id) : std::nullopt;
-    if (!tpl) return std::nullopt;
+    if (!tpl) {
+        log::debug("items: {:#x}: template id unreadable (Template={:#x}, depth {})", item, tmpl, depth);
+        return std::nullopt;
+    }
     ++nodes_;
     ItemNode node;
     node.tpl = std::move(*tpl);
@@ -43,19 +47,31 @@ std::optional<ItemNode> ItemTreeReader::readNode(Address item, std::string slot,
 void ItemTreeReader::readChildren(Address item, int depth, std::vector<ItemNode>& out) {
     // Only compound items have slots and grids; reading those fields on anything else would read
     // unrelated memory.
-    if (!game_.managed.isInstanceOf(item, kCompoundItemClass)) return;
+    const auto klass = game_.managed.klassOf(item);
+    if (!klass) {
+        log::debug("items: {:#x}: class unreadable; no slots/grids read", item);
+        return;
+    }
+    if (!game_.managed.classIsA(*klass, kCompoundItemClass)) return;  // plain item: nothing inside
     readSlotArray(readPointer(game_, item + off::LootItemMod::Slots), depth, out);
 
     if (!off::CompoundItem::Grids || !off::Grid::ItemCollection || !off::GridItemCollection::ItemsList) return;
-    const auto grids = game_.managed.readArray<Address>(readPointer(game_, item + *off::CompoundItem::Grids), 32);
-    if (!grids) return;
+    const Address gridsPtr = readPointer(game_, item + *off::CompoundItem::Grids);
+    const auto grids = game_.managed.readArray<Address>(gridsPtr, 32);
+    if (!grids) {
+        log::debug("items: {:#x}: Grids array at {:#x} unreadable (null, bad pointer or over cap)", item, gridsPtr);
+        return;
+    }
     for (Address grid : *grids) {
         const Address collection = readPointer(game_, grid + *off::Grid::ItemCollection);
         const auto items = collection ? game_.managed.readList<Address>(
                                             readPointer(game_, collection + *off::GridItemCollection::ItemsList),
                                             limits_.maxGridItems)
                                       : std::nullopt;
-        if (!items) continue;
+        if (!items) {
+            log::debug("items: {:#x}: grid {:#x} collection {:#x} ItemsList unreadable", item, grid, collection);
+            continue;
+        }
         for (Address child : *items)
             if (auto n = readNode(child, {}, depth)) out.push_back(std::move(*n));
     }

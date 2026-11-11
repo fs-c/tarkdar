@@ -166,6 +166,18 @@ TEST_CASE("class identity and inheritance") {
     }
 }
 
+TEST_CASE("inheritance walks past an unnamed class") {
+    SETUP;
+    const Address objectClass = heap.klass("Object", "System");
+    const Address compound = heap.klass("CompoundItem", "EFT.InventoryLogic", objectClass);
+    const Address unnamed = heap.klass("", "", compound);
+    const Address vest = heap.klass("Vest", "EFT.InventoryLogic", unnamed);
+    const Address obj = heap.object(vest);
+    CHECK(managed.isInstanceOf(obj, "Vest"));
+    CHECK(managed.isInstanceOf(obj, "CompoundItem"));
+    CHECK(managed.isInstanceOf(obj, "System.Object"));
+}
+
 TEST_CASE("TypeInfoTable static fields") {
     SETUP;
     const Address gameAssembly = 0x7FF6'0000'0000;

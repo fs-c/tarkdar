@@ -1,55 +1,62 @@
 #!/usr/bin/env python3
-"""Compare two viewer datasets (bin + json) for exact or near equality.
+"""Compare two viewer datasets (format 2) for exact equality.
 
-    python extract/compare_datasets.py <dirA> <dirB> [name]
+    python extract/compare_datasets.py <dirA> <dirB>
+
+Exit status 0 when identical. Otherwise it reports which header keys, chunk
+arrays or source paths differ.
 """
 
 from __future__ import annotations
 
-import json
 import sys
-from collections import Counter
 from pathlib import Path
 
+import numpy as np
 
-def load(d: Path, name: str):
-    return json.loads((d / f"{name}.json").read_text()), (d / f"{name}.bin").read_bytes()
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from t3d import dataset  # noqa: E402
+
+
+def compare(a_dir: Path, b_dir: Path, log=print) -> bool:
+    ia, ca, sa = dataset.read(a_dir)
+    ib, cb, sb = dataset.read(b_dir)
+    ok = True
+    for k in sorted(set(ia) | set(ib)):
+        if ia.get(k) != ib.get(k):
+            ok = False
+            log(f"index[{k}] differs:\n  A={str(ia.get(k))[:300]}\n  B={str(ib.get(k))[:300]}")
+    if len(ca) != len(cb):
+        ok = False
+        log(f"chunk count differs: {len(ca)} vs {len(cb)}")
+    for n, ((ma, aa), (mb, ab)) in enumerate(zip(ca, cb)):
+        for k in sorted(set(ma) | set(mb)):
+            if ma.get(k) != mb.get(k):
+                ok = False
+                log(f"chunk {n} meta[{k}] differs")
+        for k in sorted(set(aa) | set(ab)):
+            if k not in aa or k not in ab:
+                ok = False
+                log(f"chunk {n} array {k}: only in {'A' if k in aa else 'B'}")
+            elif aa[k].shape != ab[k].shape or aa[k].dtype != ab[k].dtype:
+                ok = False
+                log(f"chunk {n} array {k}: {aa[k].dtype}{aa[k].shape} vs {ab[k].dtype}{ab[k].shape}")
+            elif not np.array_equal(aa[k], ab[k]):
+                ok = False
+                rows = np.argwhere(aa[k] != ab[k])
+                log(f"chunk {n} array {k}: {len(rows):,} elements differ, first at {rows[0].tolist()}")
+    if sa != sb:
+        ok = False
+        log(f"sources differ: {len(sa['paths']):,} vs {len(sb['paths']):,} paths")
+    log("IDENTICAL" if ok else "DIFFERENT")
+    return ok
 
 
 def main():
-    a_dir, b_dir = Path(sys.argv[1]), Path(sys.argv[2])
-    name = sys.argv[3] if len(sys.argv) > 3 else a_dir.name
-    a, abin = load(a_dir, name)
-    b, bbin = load(b_dir, name)
-    ok = True
-
-    print(f"bin: {len(abin):,} vs {len(bbin):,} bytes -> {'identical' if abin == bbin else 'DIFFERENT'}")
-    ok &= abin == bbin
-    for k in sorted(set(a) | set(b)):
-        if k in ("meshes", "instances"):
-            continue
-        if a.get(k) != b.get(k):
-            ok = False
-            print(f"json[{k}] differs:\n  A={str(a.get(k))[:300]}\n  B={str(b.get(k))[:300]}")
-    if a["meshes"] != b["meshes"]:
-        ok = False
-        na = Counter(m["name"] for m in a["meshes"])
-        nb = Counter(m["name"] for m in b["meshes"])
-        print(f"meshes differ: {len(a['meshes'])} vs {len(b['meshes'])}; "
-              f"only A: {list((na - nb).items())[:10]} only B: {list((nb - na).items())[:10]}")
-        for i, (x, y) in enumerate(zip(a["meshes"], b["meshes"])):
-            if x != y:
-                print(f"  first diff at mesh {i}: {x} vs {y}")
-                break
-    if a["instances"] != b["instances"]:
-        ok = False
-        print(f"instances differ: {len(a['instances'])} vs {len(b['instances'])}")
-        for i, (x, y) in enumerate(zip(a["instances"], b["instances"])):
-            if x != y:
-                print(f"  first diff at instance {i}: {x} vs {y}")
-                break
-    print("IDENTICAL" if ok else "DIFFERENT")
-    sys.exit(0 if ok else 1)
+    if len(sys.argv) != 3:
+        sys.exit(__doc__)
+    sys.exit(0 if compare(Path(sys.argv[1]), Path(sys.argv[2])) else 1)
 
 
 if __name__ == "__main__":

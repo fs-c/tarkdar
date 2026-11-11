@@ -1,0 +1,16 @@
+{
+  "name": "tarkdar-map-harness",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Headless measurement harness for the 3D map viewer: screenshots, renderer counts, image metrics.",
+  "scripts": {
+    "capture": "node capture.mjs",
+    "compare": "node compare.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "playwright": "^1.60.0",
+    "pngjs": "^7.0.0"
+  }
+}

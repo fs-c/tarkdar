@@ -3,16 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tarkdar — Customs 3D spike</title>
+    <title>Tarkdar — 3D map spike</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <div id="app"></div>
 
     <header class="hud hud-top-left">
       <h1>Customs <span>bigmap</span></h1>
-      <p class="sub">Overview profile · LOD1 + decimation · no textures</p>
+      <p class="sub">Overview</p>
       <dl id="stats" class="stats">
         <div><dt>unique tris</dt><dd id="stat-unique">–</dd></div>
         <div><dt>instanced tris</dt><dd id="stat-instanced">–</dd></div>
@@ -24,12 +23,12 @@
       <select id="map-select" title="Map">
         <option value="customs">Customs</option>
         <option value="streets">Streets</option>
-        <option value="streets-exterior">Streets exterior</option>
       </select>
       <button id="btn-reset" title="Reset view (R)">Reset view</button>
       <button id="btn-top" title="Top-down view (T)">Top</button>
       <button id="btn-wire" title="Toggle wireframe (F)">Wireframe</button>
       <button id="btn-veg" class="active" title="Toggle vegetation (V)">Vegetation</button>
+      <button id="btn-color" title="Toggle material colours (C)">Colour</button>
       <button id="btn-grid" class="active" title="Toggle grid (G)">Grid</button>
       <button id="btn-pick" title="Pick objects (P)">Pick</button>
       <button id="btn-explore" title="Open the strip-down explorer">Explore</button>
@@ -90,7 +89,7 @@
         <h2>Selection</h2>
         <span id="pick-count">0</span>
       </header>
-      <p class="hint">Click an object. Shift-click to add. The report includes mesh, scene, position and size.</p>
+      <p class="hint">Click an object. Shift-click to add. The report includes mesh, material, scene, hierarchy path, position and size.</p>
       <ul id="pick-list"></ul>
       <div class="picker-actions">
         <button id="pick-copy">Copy report</button>
@@ -119,6 +118,6 @@
       </div>
     </div>
 
-    <script type="module" src="/src/main.js"></script>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

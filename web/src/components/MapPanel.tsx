@@ -1,4 +1,4 @@
-// Map view of the side panel: which floor to show and which layers to draw.
+// Map view of the side panel: which layers to draw (and, on 2D maps with several, which floor).
 
 import type { LootPrefs, TrailPrefs } from "../hooks";
 import { formatPrice } from "../items";
@@ -6,7 +6,7 @@ import type { Layers } from "../render";
 import { PanelBody, Section, Segmented, type SegmentedOption, ToggleRow } from "../ui";
 
 interface Props {
-  /** Number of map floors (no floor picker below 2). */
+  /** Number of map floors; the floor picker only shows from 2 (2D maps). */
   floors: number;
   /** Floor shown now, and the floor picked by hand (null: auto). */
   layer: number;
@@ -38,13 +38,11 @@ export function MapPanel(p: Props) {
   ];
   return (
     <PanelBody>
-      <Section title="Floor">
-        {p.floors < 2 ? (
-          <p className="muted">This map has a single floor.</p>
-        ) : (
+      {p.floors >= 2 && (
+        <Section title="Floor">
           <Segmented label="Floor" options={floorOptions} value={p.manualLayer} marked={p.layer} onChange={p.onPickFloor} />
-        )}
-      </Section>
+        </Section>
+      )}
       <Section title="Layers">
         {LAYERS.map(({ key, label, hint }) => (
           <ToggleRow key={key} label={label} hint={hint} checked={p.layers[key]} onChange={() => p.onToggleLayer(key)} />

@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.py[cod]
+# extraction cache: stored in B2 via assets.json at the repo root (scripts/assets.py)
+cache/
+harness/node_modules/
+harness/runs/
+harness/data/

@@ -1,12 +1,17 @@
-# Map folders
+# 2D map folders
 
-Each map is a folder under `maps/` (`--maps-root`) holding a `map.json` and its layer images. The
-backend lists the folders at `/maps/index.json`; the frontend picks the folder whose `ids` contain
-the raid's location id.
+A raid is drawn on a 3D map when its location has one (`maps/3d/`, see `docs/maps3d.md`). This
+document is about the older 2D maps, still used for the locations without a 3D map: a calibrated
+image per map. They are meant to go once every location has a 3D map.
 
-Map images aren't committed (except `maps/demo`). The ones in use, with their `map.json`, are in
-B2: `scripts/assets.py pull maps/` (see the README, "Data files"). For a new map, bring your own
-image, calibrate it, then `scripts/assets.py push maps/` and commit `assets.json`.
+Each 2D map is a folder under `maps/2d/` (`--maps-root` is `maps`) holding a `map.json` and its
+layer images. The backend lists the folders of `maps/2d` and `maps/3d` at `/maps/index.json`; the
+frontend picks the folder whose `ids` contain the raid's location id, the 3D one if there are both
+(Settings has a switch for the 2D one).
+
+Map images aren't committed (except `maps/2d/demo`). The ones in use, with their `map.json`, are
+in B2: `scripts/assets.py pull maps/2d` (see the README, "Data files"). For a new map, bring your
+own image, calibrate it, then `scripts/assets.py push maps/2d` and commit `assets.json`.
 
 ## `map.json`
 
@@ -51,7 +56,7 @@ doesn't, split it into separate folders.
 1. Create the folder with the images and a `map.json` with the right `ids` and `layers`. Use any two
    rough points for `calibration` to start with, for example
    `{"world": [0, 0], "pixel": [0, 0]}` and `{"world": [100, 100], "pixel": [100, -100]}`.
-2. Start a raid on that map and open the frontend. Open **Settings** (cogwheel, bottom left) and press **Calibrate this map**.
+2. Start a raid on that map and open the frontend. Open **Settings** (cogwheel, bottom left) and press **Calibrate this map** (shown while a 2D map is on screen).
 3. Stand somewhere recognisable in game (a building corner, a crossroads), then click that exact spot
    on the map image. The click is paired with your current world position.
 4. Repeat at 2–4 places far apart, ideally spread over the whole map.

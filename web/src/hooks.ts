@@ -6,7 +6,8 @@ import { Connection, type RadarState } from "./connection";
 import { type Backfill, LiveTimeline } from "./liveTimeline";
 import { fetchRecordings, parseLine, readRecording } from "./recordings";
 import { type ItemCatalog, emptyCatalog } from "./items";
-import { type LoadedMap, type MapEntry, fetchMapIndex, findMap, loadMap, selectLayer } from "./maps";
+import { DEFAULT_MAP_SETTINGS, type MapSettings } from "./map3d/settings";
+import { type LoadedMap, type Map2DEntry, type MapEntry, fetchMapIndex, loadMap, selectLayer } from "./maps";
 import type { Layers } from "./render";
 
 export interface LiveState {
@@ -77,11 +78,10 @@ export function useMapIndex(): MapEntry[] {
   return index;
 }
 
-/** The map for the raid location (null: no raid, or no map folder for it). Reloads on location change. */
-export function useRaidMap(index: MapEntry[], locationId: string | null): LoadedMap | null {
+/** The 2D map of a map folder, with its images (null: none). Reloads when the folder changes. */
+export function useMap2D(entry: Map2DEntry | null): LoadedMap | null {
   const [map, setMap] = useState<LoadedMap | null>(null);
   const [, setImagesLoaded] = useState(0); // images load into `map` in place: re-render to draw them
-  const entry = locationId ? findMap(index, locationId) : undefined;
   useEffect(() => {
     if (!entry) return setMap(null);
     let live = true;
@@ -94,6 +94,18 @@ export function useRaidMap(index: MapEntry[], locationId: string | null): Loaded
     return () => void (live = false);
   }, [entry]);
   return map;
+}
+
+/** How the 3D map is shown, and the map debugging tools. */
+export interface MapPrefs extends MapSettings {
+  /** Use the 2D map where a location has both (until the 2D maps are retired). */
+  prefer2d: boolean;
+  /** Clicking the 3D map (not a marker) records the world position under the cursor. */
+  coordinatePick: boolean;
+}
+
+export function useMapPrefs() {
+  return usePersistentState<MapPrefs>("radar.map", { ...DEFAULT_MAP_SETTINGS, prefer2d: false, coordinatePick: false });
 }
 
 /**

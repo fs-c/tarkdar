@@ -1,6 +1,5 @@
 import type { CatalogStatus } from "../catalog";
 import type { RadarState } from "../connection";
-import type { LoadedMap } from "../maps";
 import { cx } from "../ui";
 import s from "./StatusBar.module.css";
 
@@ -11,9 +10,15 @@ const STATE_LABELS: Record<string, string> = {
   cooldown: "raid ended",
 };
 
+/** The shown map: its name and number of floors (a 3D map has one). */
+export interface MapStatus {
+  name: string;
+  floors: number;
+}
+
 export function statusParts(
   s: RadarState,
-  map: LoadedMap | null,
+  map: MapStatus | null,
   layer: number,
   manualLayer: number | null,
   catalog: CatalogStatus,
@@ -31,9 +36,8 @@ export function statusParts(
   else parts.push(STATE_LABELS[state] ?? state);
   if (state === "inRaid") {
     if (!map) parts.push("no map for this location");
-    else if (map.config.layers.length > 1)
-      parts.push(`${map.config.name}, floor ${layer + 1}/${map.config.layers.length}${manualLayer === null ? " (auto)" : ""}`);
-    else parts.push(map.config.name);
+    else if (map.floors > 1) parts.push(`${map.name}, floor ${layer + 1}/${map.floors}${manualLayer === null ? " (auto)" : ""}`);
+    else parts.push(map.name);
     const alive = s.players.filter((p) => !p.dead && !p.absent).length;
     parts.push(`${alive} alive / ${s.players.length} players`);
     if (s.loot.length) parts.push(`${s.loot.length} loot`);
@@ -46,7 +50,7 @@ export function statusParts(
 
 interface Props {
   state: RadarState;
-  map: LoadedMap | null;
+  map: MapStatus | null;
   layer: number;
   manualLayer: number | null;
   catalog: CatalogStatus;

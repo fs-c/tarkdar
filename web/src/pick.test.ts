@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { pick, selectedPosition } from "./pick";
 import type { Exfil, LootEntry, Player, WorldPos } from "./protocol";
 import { NO_MAP_TRANSFORM, type Layers } from "./render";
+import { flatProjector } from "./projector";
 import { View } from "./view";
 
 // NO_MAP_TRANSFORM: 2 px/m, north up. View centred on the origin, 200×200, zoom 1: world (x, z)
@@ -17,24 +18,24 @@ const all: Layers = { loot: true, containers: true, exfils: true, explosives: tr
 describe("pick", () => {
   it("picks the nearest marker within its radius", () => {
     const src = { players: [player(1, 0, 0), player(2, 3, 0)], exfils: [], loot: [], explosives: none };
-    expect(pick(view, NO_MAP_TRANSFORM, src, all, 105, 100)).toEqual({ kind: "player", id: 2 });
-    expect(pick(view, NO_MAP_TRANSFORM, src, all, 101, 100)).toEqual({ kind: "player", id: 1 });
-    expect(pick(view, NO_MAP_TRANSFORM, src, all, 150, 150)).toBeNull();
+    expect(pick(flatProjector(view, NO_MAP_TRANSFORM), src, all, 105, 100)).toEqual({ kind: "player", id: 2 });
+    expect(pick(flatProjector(view, NO_MAP_TRANSFORM), src, all, 101, 100)).toEqual({ kind: "player", id: 1 });
+    expect(pick(flatProjector(view, NO_MAP_TRANSFORM), src, all, 150, 150)).toBeNull();
   });
 
   it("skips hidden layers", () => {
     const src = { players: [], exfils: [exfil(1, 0, 0)], loot: [loot(2, "item", 0, 0), loot(3, "container", 0, 0)], explosives: none };
-    expect(pick(view, NO_MAP_TRANSFORM, src, { ...all, exfils: false, containers: false }, 100, 100)).toEqual({ kind: "loot", id: 2 });
-    expect(pick(view, NO_MAP_TRANSFORM, src, { ...all, exfils: false, loot: false }, 100, 100)).toEqual({ kind: "loot", id: 3 });
-    expect(pick(view, NO_MAP_TRANSFORM, src, { ...all, loot: false, containers: false }, 100, 100)).toEqual({ kind: "exfil", id: 1 });
+    expect(pick(flatProjector(view, NO_MAP_TRANSFORM), src, { ...all, exfils: false, containers: false }, 100, 100)).toEqual({ kind: "loot", id: 2 });
+    expect(pick(flatProjector(view, NO_MAP_TRANSFORM), src, { ...all, exfils: false, loot: false }, 100, 100)).toEqual({ kind: "loot", id: 3 });
+    expect(pick(flatProjector(view, NO_MAP_TRANSFORM), src, { ...all, loot: false, containers: false }, 100, 100)).toEqual({ kind: "exfil", id: 1 });
   });
 
 
   it("picks tripwires at their midpoint, only with the explosives layer on", () => {
     const wire = { id: 4, from: [-10, 0, 0] as WorldPos, to: [10, 0, 0] as WorldPos };
     const s = { players: [], exfils: [], loot: [], explosives: { grenades: [], tripwires: [wire] } };
-    expect(pick(view, NO_MAP_TRANSFORM, s, all, 100, 100)).toEqual({ kind: "tripwire", id: 4 });
-    expect(pick(view, NO_MAP_TRANSFORM, s, { ...all, explosives: false }, 100, 100)).toBeNull();
+    expect(pick(flatProjector(view, NO_MAP_TRANSFORM), s, all, 100, 100)).toEqual({ kind: "tripwire", id: 4 });
+    expect(pick(flatProjector(view, NO_MAP_TRANSFORM), s, { ...all, explosives: false }, 100, 100)).toBeNull();
     expect(selectedPosition({ kind: "tripwire", id: 4 }, s)).toEqual([0, 0, 0]);
   });
 });

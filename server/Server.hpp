@@ -16,7 +16,7 @@ struct ServerConfig {
     std::string bindAddress = "127.0.0.1";  // LAN access is opt-in
     std::uint16_t port = 8080;
     std::filesystem::path webRoot = "web/dist";  // built frontend
-    std::filesystem::path mapsRoot = "maps";     // one folder per map, each with map.json
+    std::filesystem::path mapsRoot = "maps";     // 2d/<map>/ and 3d/<map>/, each with a map.json
     std::filesystem::path dataRoot = "data";     // item/quest data files
     std::filesystem::path recordingsRoot = "recordings";  // raid recordings
     bool live = true;  // false: serving recordings only (--offline); sent in "hello"
@@ -25,7 +25,7 @@ struct ServerConfig {
 // HTTP + WebSocket server:
 //   GET /ws               WebSocket: the message stream (docs/protocol.md)
 //   GET /maps/index.json  generated list of map folders and their configs
-//   GET /maps/<path>      files under mapsRoot
+//   GET /maps/<path>      files under mapsRoot (<kind>/<folder>/<file>)
 //   GET /data/<path>      files under dataRoot
 //   GET /api/recordings   list of raid recordings (JSON)
 //   GET /api/recordings/<name>  one recording file (the active one flushed first)
@@ -60,7 +60,8 @@ private:
 // allowed.
 [[nodiscard]] bool originAllowed(std::string_view origin, std::string_view host);
 
-// JSON array of {"folder": name, "config": <contents of map.json>} for every subfolder of mapsRoot
+// JSON array of {"kind": "2d"|"3d", "folder": name, "config": <contents of map.json>} for every
+// subfolder of mapsRoot/2d and mapsRoot/3d
 // with a valid map.json, sorted by folder name.
 [[nodiscard]] std::string buildMapsIndex(const std::filesystem::path& mapsRoot);
 

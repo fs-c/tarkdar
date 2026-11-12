@@ -1,13 +1,17 @@
 import { decodePack } from "./container";
 
 /** Mirror of tools/maps3d/t3d/pack.py `encode` (no compression). */
-export function encodePack(meta: unknown, arrays: Record<string, { dtype: string; shape: number[]; bytes: Uint8Array }>): ArrayBuffer {
-  const descr: Record<string, { offset: number; dtype: string; shape: number[] }> = {};
+export function encodePack(
+  meta: unknown,
+  arrays: Record<string, { dtype: string; shape: number[]; bytes: Uint8Array; codec?: string; segments?: [number, number][] }>,
+  version = 1,
+): ArrayBuffer {
+  const descr: Record<string, { offset: number; dtype: string; shape: number[]; codec?: string; segments?: [number, number][] }> = {};
   const blobs: { offset: number; bytes: Uint8Array }[] = [];
   let offset = 0;
   for (const [name, a] of Object.entries(arrays).sort(([x], [y]) => (x < y ? -1 : 1))) {
     offset += (16 - (offset % 16)) % 16;
-    descr[name] = { offset, dtype: a.dtype, shape: a.shape };
+    descr[name] = { offset, dtype: a.dtype, shape: a.shape, ...(a.codec && { codec: a.codec, segments: a.segments }) };
     blobs.push({ offset, bytes: a.bytes });
     offset += a.bytes.byteLength;
   }
@@ -17,7 +21,7 @@ export function encodePack(meta: unknown, arrays: Record<string, { dtype: string
   const out = new Uint8Array(base + offset);
   out.set(new TextEncoder().encode("T3DP"), 0);
   const view = new DataView(out.buffer);
-  view.setUint32(4, 1, true);
+  view.setUint32(4, version, true);
   view.setUint32(8, header.byteLength, true);
   out.set(header, 12);
   for (const b of blobs) out.set(b.bytes, base + b.offset);
@@ -62,6 +66,44 @@ describe("decodePack", () => {
     const wrongVersion = new Uint8Array(encodePack({}, {}));
     wrongVersion[4] = 9;
     expect(() => decodePack(wrongVersion.buffer)).toThrow(/version=9/);
+  });
+
+  it("decodes arrays stored through a codec piece by piece", () => {
+    // A stand-in for the meshopt decoder: the "encoded" bytes are the data itself.
+    const calls: string[] = [];
+    const copy = (kind: string) => (target: Uint8Array, count: number, size: number, source: Uint8Array) => {
+      calls.push(`${kind} ${count}x${size}`);
+      target.set(source);
+    };
+    const decoder = { decodeVertexBuffer: copy("vertex"), decodeIndexBuffer: copy("index") };
+    const rows = new Uint16Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    const indices = new Uint32Array([0, 1, 2, 2, 1, 3, 70000, 1, 2]);
+    const buffer = encodePack(
+      {},
+      {
+        v: { dtype: "<u2", shape: [3, 4], bytes: bytesOf(rows), codec: "meshopt-vertex", segments: [[2, 16], [1, 8]] },
+        i: { dtype: "<u4", shape: [9], bytes: bytesOf(indices), codec: "meshopt-index", segments: [[6, 24], [3, 12]] },
+        none: { dtype: "<u2", shape: [0], bytes: new Uint8Array(0), codec: "meshopt-index", segments: [] },
+        raw: { dtype: "|u1", shape: [2], bytes: new Uint8Array([7, 8]) },
+      },
+      2,
+    );
+    const pack = decodePack(buffer, decoder);
+    expect(pack.arrays.v!.data).toBeInstanceOf(Uint16Array);
+    expect([...pack.arrays.v!.data]).toEqual([...rows]);
+    expect([...pack.arrays.i!.data]).toEqual([...indices]);
+    expect(pack.arrays.none!.data.length).toBe(0);
+    expect([...pack.arrays.raw!.data]).toEqual([7, 8]);
+    expect(calls).toEqual(["index 6x4", "index 3x4", "vertex 2x8", "vertex 1x8"]);
+    expect(pack.arrays.v!.data.buffer).not.toBe(buffer);
+
+    expect(() => decodePack(buffer)).toThrow(/decoder is needed/);
+    const short = encodePack({}, { v: { dtype: "<u2", shape: [3, 4], bytes: bytesOf(rows), codec: "meshopt-vertex", segments: [[2, 16]] } }, 2);
+    expect(() => decodePack(short, decoder)).toThrow(/do not add up/);
+    const long = encodePack({}, { v: { dtype: "<u2", shape: [1, 4], bytes: bytesOf(rows), codec: "meshopt-vertex", segments: [[2, 16]] } }, 2);
+    expect(() => decodePack(long, decoder)).toThrow(/past the end/);
+    const unknown = encodePack({}, { v: { dtype: "<u2", shape: [1, 4], bytes: bytesOf(rows), codec: "zip", segments: [[1, 8]] } }, 2);
+    expect(() => decodePack(unknown, decoder)).toThrow(/unknown codec/);
   });
 
   it("rejects big-endian, unknown and truncated arrays", () => {

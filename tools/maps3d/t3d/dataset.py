@@ -1,8 +1,8 @@
-"""3D map dataset, format 2: `index.json` + binary chunks (+ draped images).
+"""3D map dataset, format 3: `index.json` + binary chunks (+ draped images).
 
     <out>/index.json     small header: map, bounds, categories, scenes,
                          materials, stats and the list of chunks
-    <out>/chunk-0.t3d    geometry chunk (t3d.pack container, not compressed)
+    <out>/chunk-0.t3d    geometry chunk: a gzipped t3d.pack container
     <out>/texture-N.png  colour image draped over mesh N (terrain ground colour);
                          listed in the chunk header as meshTextures
 
@@ -17,9 +17,26 @@ layout. Today there is one chunk of kind "instanced":
     slot_*   one row per (instance, part): category, flags, colour, material
     colors   optional: baked per-vertex colour (sRGB), parallel to positions
     ground_height, ground_building
-             optional (t3d/ground.py): ground height (f32) and "a building stands here"
+             optional (t3d/ground.py): ground height and "a building stands here"
              (u8, 0 or 255) on a grid, rows along z; the header's `ground` has the grid's
              origin (x, z of the corner of cell 0, 0) and cell size
+
+The file is about an eighth of the arrays it holds (`_stored` / `expand`, mirrored by
+`expandChunk` in web/src/map3d/dataset.ts):
+
+    positions      u16 x 4 (the 4th is padding): a position within the mesh's `mesh_bounds`,
+                   0..65535 per axis: at most 4 mm off in a 500 m cell
+    normals        i8 x 4 (padding); all zero for flat shaded meshes
+    ground_height  u16: steps of `ground.heightStep` above `ground.heightBase`, each row
+                   as differences to the cell before (modulo 65536)
+    positions, normals, colors, indices16, indices32
+                   through the meshoptimizer vertex / index codecs (t3d/pack.py), which work
+                   because `optimise` puts every mesh's triangles and vertices in an order
+                   in which neighbours are alike
+    the whole file gzipped (the browser unpacks it with DecompressionStream)
+
+Readers (`read` here, `loadMapData` in the viewer) undo all of it: what they hand on are
+float positions, 3-byte normals and float ground heights, as the arrays are described above.
 
 Everything is in three.js space (see geometry.py). Matrices are the first
 three rows of the world matrix, column-major (12 floats).
@@ -27,8 +44,9 @@ three rows of the world matrix, column-major (12 floats).
 
 from __future__ import annotations
 
+import gzip
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -36,7 +54,9 @@ import numpy as np
 from . import geometry, pack
 from .classify import CATEGORIES, CATEGORY_ID, FLAG_CUTOUT, FLAG_TRANSPARENT
 
-FORMAT = 2
+FORMAT = 3
+GROUND_STEP = 0.02       # metres: resolution of the stored ground heights
+GZIP_MAGIC = b"\x1f\x8b"
 INDEX_NAME = "index.json"
 NO_COLOR = (0, 0, 0, 0)  # alpha 0: the viewer falls back to the category colour
 MESH_FLAT = 1            # mesh_flags bit: flat shaded
@@ -59,6 +79,8 @@ class Geom:
     texture_rect: tuple | None = None
 
     def bounds(self):
+        if not len(self.positions):
+            return np.zeros(3, dtype=np.float32), np.zeros(3, dtype=np.float32)
         return self.positions.min(axis=0), self.positions.max(axis=0)
 
 
@@ -98,7 +120,52 @@ def _round(values, digits=3):
     return [round(float(v), digits) for v in values]
 
 
+def optimise(g: Geom) -> Geom:
+    """The same mesh with its triangles (within each part) and vertices in the order the
+    codecs and a GPU's vertex cache like; unused vertices and a part's incomplete last
+    triangle are dropped."""
+    import meshoptimizer as mo
+
+    count = len(g.positions)
+    pieces, parts = [], []
+    for first, length in g.parts.tolist():
+        source = np.ascontiguousarray(g.indices[first:first + length - length % 3], dtype=np.uint32)
+        piece = np.zeros_like(source)
+        if len(source):
+            mo.optimize_vertex_cache(piece, source, len(source), count)
+        parts.append([sum(len(p) for p in pieces), len(piece)])
+        pieces.append(piece)
+    indices = np.concatenate(pieces) if pieces else np.zeros(0, dtype=np.uint32)
+    if not len(indices):
+        return replace(g, positions=g.positions[:0], normals=g.normals[:0], indices=indices,
+                       parts=np.array(parts, dtype=np.uint32).reshape(-1, 2),
+                       colors=None if g.colors is None else g.colors[:0])
+    remap = np.zeros(count, dtype=np.uint32)
+    used = mo.optimize_vertex_fetch_remap(remap, indices, len(indices), count)
+    order = np.empty(used, dtype=np.int64)          # new vertex -> old vertex
+    kept = np.flatnonzero(remap != 0xFFFFFFFF)
+    order[remap[kept]] = kept
+    return replace(g, positions=g.positions[order], normals=g.normals[order], indices=remap[indices],
+                   parts=np.array(parts, dtype=np.uint32), colors=None if g.colors is None else g.colors[order])
+
+
+def quantise(positions: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> np.ndarray:
+    """(V, 3) positions -> (V, 4) u16: 0..65535 between lo and hi per axis; the 4th is padding."""
+    extent = (hi - lo).astype(np.float64)
+    scale = np.divide(65535.0, extent, out=np.zeros(3), where=extent > 0)
+    out = np.zeros((len(positions), 4), dtype="<u2")
+    out[:, :3] = np.clip(np.rint((positions.astype(np.float64) - lo) * scale), 0, 65535)
+    return out
+
+
+def dequantise(stored: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> np.ndarray:
+    """Inverse of `quantise`, in the arithmetic the viewer uses (float64, rounded to float32 once)."""
+    step = (hi.astype(np.float64) - lo) / 65535.0
+    return (lo + stored[:, :3] * step).astype(np.float32)
+
+
 def _chunk_arrays(ds: Dataset):
+    """The chunk's arrays as the readers hand them on (`_stored` turns them into what is written)."""
     geoms = ds.geoms
     m = len(geoms)
     vertex_count = np.array([len(g.positions) for g in geoms], dtype=np.uint32)
@@ -166,6 +233,51 @@ def _chunk_arrays(ds: Dataset):
         "slot_color": np.array([s.color for s in slots], dtype=np.uint8).reshape(len(slots), 4),
         "slot_material": np.array([s.material for s in slots], dtype=np.int32),
     }
+
+
+def _stored(arrays: dict, ground: dict | None) -> dict:
+    """What is written for `arrays` (see the module docstring). Fills in `ground`'s
+    heightBase / heightStep."""
+    out = dict(arrays)
+    starts, counts = arrays["mesh_vertex_start"], arrays["mesh_vertex_count"]
+    bounds = arrays["mesh_bounds"]
+    positions = np.zeros((len(arrays["positions"]), 4), dtype="<u2")
+    for start, count, box in zip(starts.tolist(), counts.tolist(), bounds):
+        positions[start:start + count] = quantise(arrays["positions"][start:start + count], box[:3], box[3:])
+    out["positions"] = pack.Coded(positions, pack.VERTEX_CODEC)
+    normals = np.zeros((len(arrays["normals"]), 4), dtype=np.int8)
+    normals[:, :3] = arrays["normals"]
+    out["normals"] = pack.Coded(normals, pack.VERTEX_CODEC)
+    if "colors" in arrays:
+        out["colors"] = pack.Coded(arrays["colors"], pack.VERTEX_CODEC)
+    wide = arrays["mesh_index_wide"].astype(bool)
+    for name, selected in (("indices16", ~wide), ("indices32", wide)):
+        out[name] = pack.Coded(arrays[name], pack.INDEX_CODEC, arrays["mesh_index_count"][selected].tolist())
+    if "ground_height" in arrays:
+        heights = arrays["ground_height"].astype(np.float64)
+        base = float(np.floor(heights.min() / GROUND_STEP) * GROUND_STEP) if heights.size else 0.0
+        step = max(GROUND_STEP, float(heights.max() - base) / 65535.0) if heights.size else GROUND_STEP
+        levels = np.rint((heights - base) / step).astype(np.int64)
+        ground["heightBase"], ground["heightStep"] = base, step
+        out["ground_height"] = np.diff(levels, axis=1, prepend=0).astype("<u2")     # wraps modulo 65536
+    return out
+
+
+def expand(meta: dict, arrays: dict) -> dict:
+    """Stored arrays of a chunk -> the arrays as described in the module docstring."""
+    out = dict(arrays)
+    stored = arrays["positions"]
+    positions = np.empty((len(stored), 3), dtype=np.float32)
+    for start, count, box in zip(arrays["mesh_vertex_start"].tolist(), arrays["mesh_vertex_count"].tolist(),
+                                 arrays["mesh_bounds"]):
+        positions[start:start + count] = dequantise(stored[start:start + count], box[:3], box[3:])
+    out["positions"] = positions
+    out["normals"] = np.ascontiguousarray(arrays["normals"][:, :3])
+    if "ground_height" in arrays:
+        ground = meta["ground"]
+        levels = np.cumsum(arrays["ground_height"], axis=1, dtype=np.uint16)
+        out["ground_height"] = (ground["heightBase"] + levels * np.float64(ground["heightStep"])).astype(np.float32)
+    return out
 
 
 def _bounds(ds: Dataset):
@@ -237,6 +349,7 @@ def write(ds: Dataset, out_dir: Path) -> dict:
     """Write the dataset; returns the index header."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    ds = replace(ds, geoms=[optimise(g) for g in ds.geoms])
     for stale in out_dir.glob("*.t3d"):
         stale.unlink()
 
@@ -257,7 +370,8 @@ def write(ds: Dataset, out_dir: Path) -> dict:
         chunk_meta["ground"] = {"origin": _round(ds.ground.origin), "cell": ds.ground.cell}
         arrays["ground_height"] = ds.ground.heights.astype("<f4")
         arrays["ground_building"] = ds.ground.building.astype(np.uint8) * 255
-    data = pack.encode(chunk_meta, arrays)
+    # mtime 0: the same dataset is the same file.
+    data = gzip.compress(pack.encode(chunk_meta, _stored(arrays, chunk_meta.get("ground"))), compresslevel=9, mtime=0)
     chunk_name = "chunk-0.t3d"
     (out_dir / chunk_name).write_bytes(data)
 
@@ -283,10 +397,19 @@ def write(ds: Dataset, out_dir: Path) -> dict:
     return index
 
 
+def read_chunk(path: Path):
+    """(chunk meta, arrays) of one chunk file, expanded."""
+    data = Path(path).read_bytes()
+    if data[:2] == GZIP_MAGIC:
+        data = gzip.decompress(data)
+    meta, arrays = pack.decode(data)
+    return meta, expand(meta, arrays)
+
+
 def read(out_dir: Path):
     """Read a written dataset back: (index, [(chunk meta, arrays), ...])."""
     out_dir = Path(out_dir)
     index = json.loads((out_dir / INDEX_NAME).read_text())
     if index.get("format") != FORMAT:
         raise ValueError(f"{out_dir}: dataset format {index.get('format')}, expected {FORMAT}")
-    return index, [pack.decode((out_dir / c["file"]).read_bytes()) for c in index["chunks"]]
+    return index, [read_chunk(out_dir / c["file"]) for c in index["chunks"]]

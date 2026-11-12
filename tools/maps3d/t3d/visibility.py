@@ -120,18 +120,25 @@ def visible_triangles(positions: np.ndarray, indices: np.ndarray, directions: np
     corners = np.asarray(positions, dtype=np.float64)
     exposed = above_ground(points, occ[0], pixel, ground_clearance) if occ is not None else None
 
-    def chunks(pts, own, front, eligible=None):
-        """(pixel key, depth, triangle id) of the front-facing samples, in bounded pieces."""
+    def chunks(pts, own, front):
+        """(pixel key, depth, triangle id, position of the piece, selection within it) of the
+        front-facing samples, in bounded pieces."""
         for start in range(0, len(pts), CHUNK):
             ids = own[start:start + CHUNK]
             sel = front[ids]
-            if eligible is not None:
-                sel &= eligible[start:start + CHUNK]
             if not sel.any():
                 continue
-            proj = pts[start:start + CHUNK][sel] @ basis.T
-            px = np.floor((proj[:, :2] - lo) / pixel).astype(np.int64)
-            yield px[:, 1] * width + px[:, 0], proj[:, 2], ids[sel]
+            selected = pts[start:start + CHUNK][sel]
+            # One axis at a time and in place: this loop is memory-bound.
+            column, row = selected @ basis[0], selected @ basis[1]
+            for axis, values in enumerate((column, row)):
+                values -= lo[axis]
+                values /= pixel
+                np.floor(values, out=values)
+            key = row.astype(key_type)
+            key *= width
+            key += column.astype(key_type)
+            yield key, selected @ basis[2], ids[sel], start, sel
 
     for d in directions:
         # Orthonormal basis (u, v, d); depth = distance towards the viewer.
@@ -147,13 +154,21 @@ def visible_triangles(positions: np.ndarray, indices: np.ndarray, directions: np
         lo = (extent.min(axis=0) - pixel).astype(np.float32)
         width, rows = (np.ceil((extent.max(axis=0) - lo) / pixel).astype(np.int64) + 2).tolist()
         nearest = np.full(width * rows, -np.inf, dtype=np.float32)
+        key_type = np.int32 if width * rows < 2**31 else np.int64
 
         front = normals @ d > 0
-        for key, depth, _ in chunks(points, owner, front):
+        # Projecting the samples is nearly all of the work: the projected samples are kept
+        # for the test below instead of being projected a second time.
+        projected = []
+        for key, depth, ids, start, sel in chunks(points, owner, front):
             np.maximum.at(nearest, key, depth)
+            if eligible is not None:
+                keep = eligible[start:start + CHUNK][sel]
+                key, depth, ids = key[keep], depth[keep], ids[keep]
+            projected.append((key, depth, ids))
         if use_occluders:
-            for key, depth, _ in chunks(occ[0], occ[1], occ[2] @ d > 0):
+            for key, depth, *_ in chunks(occ[0], occ[1], occ[2] @ d > 0):
                 np.maximum.at(nearest, key, depth)
-        for key, depth, ids in chunks(points, owner, front, eligible):
+        for key, depth, ids in projected:
             visible[ids[depth >= nearest[key] - bias]] = True
     return visible

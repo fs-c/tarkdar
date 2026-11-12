@@ -38,6 +38,42 @@ class PackTest(unittest.TestCase):
             if a.size:
                 self.assertEqual((a.__array_interface__["data"][0] - base) % 16, 0)
 
+    def test_coded_arrays_round_trip(self):
+        rng = np.random.default_rng(1)
+        arrays = {
+            "vertices": rng.integers(0, 65535, (pack.VERTEX_SEGMENT + 5, 4)).astype("<u2"),   # two pieces
+            "bytes": rng.integers(0, 255, (5, 4)).astype(np.uint8),
+            "narrow": np.array([0, 1, 2, 2, 1, 3, 0, 2, 1], dtype="<u2"),
+            "wide": rng.integers(0, 70000, 300).astype("<u4"),
+            "none": np.zeros(0, dtype="<u4"),
+            "plain": np.arange(5, dtype="<f4"),
+        }
+        coded = {
+            "vertices": pack.Coded(arrays["vertices"], pack.VERTEX_CODEC),
+            "bytes": pack.Coded(arrays["bytes"], pack.VERTEX_CODEC),
+            "narrow": pack.Coded(arrays["narrow"], pack.INDEX_CODEC, [6, 0, 3]),     # a piece per mesh
+            "wide": pack.Coded(arrays["wide"], pack.INDEX_CODEC),
+            "none": pack.Coded(arrays["none"], pack.INDEX_CODEC, []),
+            "plain": arrays["plain"],
+        }
+        raw = pack.encode({"k": 1}, coded)
+        self.assertEqual(raw, pack.encode({"k": 1}, coded))
+        self.assertEqual(raw[4:8], (2).to_bytes(4, "little"))            # version: has coded arrays
+        self.assertEqual(pack.encode({}, {"plain": arrays["plain"]})[4:8], (1).to_bytes(4, "little"))
+        meta, out = pack.decode(raw)
+        self.assertEqual(meta, {"k": 1})
+        for name, a in arrays.items():
+            self.assertEqual((out[name].dtype, out[name].shape), (a.dtype, a.shape), name)
+            np.testing.assert_array_equal(out[name], a)
+
+    def test_coded_arrays_are_checked(self):
+        with self.assertRaises(ValueError):
+            pack.encode({}, {"x": pack.Coded(np.zeros((4, 3), dtype=np.uint8), pack.VERTEX_CODEC)})    # 3-byte rows
+        with self.assertRaises(ValueError):
+            pack.encode({}, {"x": pack.Coded(np.zeros(6, dtype="<u4"), pack.INDEX_CODEC, [3])})        # 3 of 6
+        with self.assertRaises(ValueError):
+            pack.encode({}, {"x": pack.Coded(np.zeros(6, dtype="<u4"), "nope")})
+
     def test_rejects_other_data(self):
         with self.assertRaises(ValueError):
             pack.decode(b"NOPE" + bytes(32))

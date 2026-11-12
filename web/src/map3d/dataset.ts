@@ -1,8 +1,12 @@
-// 3D map dataset, format 2 (tools/maps3d/t3d/dataset.py): index.json + a binary chunk.
+// 3D map dataset, format 3 (tools/maps3d/t3d/dataset.py): index.json + a binary chunk.
 // MapData wraps the "instanced" chunk and derives what rendering needs per instance and per slot.
 // A slot is one (instance, part) pair, i.e. one material slot of one placed mesh: the unit that
 // has a category and gets drawn. In an overview dataset the "meshes" are merged map cells, each
 // placed once.
+// The chunk file is compact (gzip, meshoptimizer codecs, 16-bit positions and ground heights);
+// loadMapData undoes that (gunzip, decodePack, expandChunk), so MapData has plain arrays.
+
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 
 import { decodePack, type NumericArray, type Pack } from "./container";
 
@@ -55,13 +59,16 @@ export interface GroundMap {
 export interface ChunkMeta {
   kind: string;
   meshNames: string[];
-  /** Where the `ground_height` and `ground_building` arrays lie. */
-  ground?: { origin: [number, number]; cell: number };
+  /**
+   * Where the `ground_height` and `ground_building` arrays lie. In the file a height is a number
+   * of `heightStep`s above `heightBase` (expandChunk).
+   */
+  ground?: { origin: [number, number]; cell: number; heightBase?: number; heightStep?: number };
   /** Colour images draped over meshes (terrain), by mesh index. */
   meshTextures?: Record<string, MeshTexture>;
 }
 
-export const DATASET_FORMAT = 2;
+export const DATASET_FORMAT = 3;
 /** mesh_flags bit: shade per face; the mesh has no usable normals. */
 export const MESH_FLAT = 1;
 
@@ -226,6 +233,99 @@ export class MapData {
   }
 }
 
+/**
+ * The arrays of a chunk as stored -> as MapData takes them (`expand` in t3d/dataset.py):
+ * positions from 16-bit steps within their mesh's bounds, normals without their padding,
+ * ground heights from 16-bit steps stored as differences along each row.
+ */
+export function expandChunk(pack: Pack<ChunkMeta>): Pack<ChunkMeta> {
+  const arrays = { ...pack.arrays };
+  const vertexStart = typed(pack, "mesh_vertex_start", Uint32Array);
+  const vertexCount = typed(pack, "mesh_vertex_count", Uint32Array);
+  const bounds = typed(pack, "mesh_bounds", Float32Array);
+  const flags = pack.arrays.mesh_flags ? typed(pack, "mesh_flags", Uint8Array) : null;
+
+  const stored = typed(pack, "positions", Uint16Array);
+  const storedNormals = typed(pack, "normals", Int8Array);
+  const vertices = stored.length / 4;
+  const positions = new Float32Array(vertices * 3);
+  const normals = new Int8Array(vertices * 3);
+  for (let mesh = 0; mesh < vertexStart.length; mesh++) {
+    const first = vertexStart[mesh]!;
+    const end = first + vertexCount[mesh]!;
+    for (let axis = 0; axis < 3; axis++) {
+      const lo = bounds[mesh * 6 + axis]!;
+      const step = (bounds[mesh * 6 + 3 + axis]! - lo) / 65535;
+      for (let v = first; v < end; v++) positions[v * 3 + axis] = lo + stored[v * 4 + axis]! * step;
+    }
+    if (flags && flags[mesh]! & MESH_FLAT) continue; // no normals: left zero
+    for (let v = first; v < end; v++) {
+      normals[v * 3] = storedNormals[v * 4]!;
+      normals[v * 3 + 1] = storedNormals[v * 4 + 1]!;
+      normals[v * 3 + 2] = storedNormals[v * 4 + 2]!;
+    }
+  }
+  arrays.positions = { data: positions, shape: [vertices, 3] };
+  arrays.normals = { data: normals, shape: [vertices, 3] };
+
+  const ground = pack.arrays.ground_height;
+  if (ground && pack.meta.ground) {
+    const levels = typed(pack, "ground_height", Uint16Array);
+    const { heightBase = 0, heightStep = 1 } = pack.meta.ground;
+    const [rows, columns] = ground.shape as [number, number];
+    const heights = new Float32Array(levels.length);
+    for (let row = 0; row < rows; row++) {
+      let level = 0;
+      for (let i = row * columns; i < (row + 1) * columns; i++) {
+        level = (level + levels[i]!) & 0xffff;
+        heights[i] = heightBase + level * heightStep;
+      }
+    }
+    arrays.ground_height = { data: heights, shape: ground.shape };
+  }
+  return { meta: pack.meta, arrays };
+}
+
+/** Everything a stream yields, as one buffer. `onProgress` gets the bytes read so far. */
+async function readAll(stream: ReadableStream<Uint8Array>, onProgress?: (received: number) => void): Promise<ArrayBuffer> {
+  const reader = stream.getReader();
+  const pieces: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    pieces.push(value);
+    received += value.byteLength;
+    onProgress?.(received);
+  }
+  const out = new Uint8Array(received);
+  let offset = 0;
+  for (const piece of pieces) {
+    out.set(piece, offset);
+    offset += piece.byteLength;
+  }
+  return out.buffer;
+}
+
+async function gunzip(file: ArrayBuffer): Promise<ArrayBuffer> {
+  const stream = new DecompressionStream("gzip");
+  const writer = stream.writable.getWriter();
+  // Not awaited: the write only finishes as the other end is read.
+  void writer.write(new Uint8Array(file));
+  void writer.close();
+  // Read piece by piece: `new Response(stream).arrayBuffer()` is the short way, but in Chromium
+  // it now and then takes two seconds over 40 MB instead of a tenth of one.
+  return readAll(stream.readable);
+}
+
+/** A chunk file's bytes -> the pack MapData takes. */
+export async function decodeChunk(file: ArrayBuffer): Promise<Pack<ChunkMeta>> {
+  const head = new Uint8Array(file, 0, Math.min(2, file.byteLength));
+  const buffer = head[0] === 0x1f && head[1] === 0x8b ? await gunzip(file) : file;
+  await MeshoptDecoder.ready;
+  return expandChunk(decodePack<ChunkMeta>(buffer, MeshoptDecoder));
+}
+
 async function fetchChecked(url: string, signal?: AbortSignal): Promise<Response> {
   const res = await fetch(url, { signal });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} — ${url}`);
@@ -234,24 +334,7 @@ async function fetchChecked(url: string, signal?: AbortSignal): Promise<Response
 
 async function fetchBinary(url: string, onProgress?: (received: number) => void, signal?: AbortSignal): Promise<ArrayBuffer> {
   const res = await fetchChecked(url, signal);
-  if (!res.body) return res.arrayBuffer();
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let received = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    received += value.byteLength;
-    onProgress?.(received);
-  }
-  const out = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return out.buffer;
+  return res.body ? readAll(res.body, onProgress) : res.arrayBuffer();
 }
 
 /** Loads a dataset folder. `onProgress` gets the fraction of the geometry downloaded (0..1). */
@@ -260,6 +343,6 @@ export async function loadMapData(base: string, onProgress?: (fraction: number) 
   if (index.format !== DATASET_FORMAT) throw new Error(`dataset format ${index.format}, expected ${DATASET_FORMAT}: rebuild it`);
   const chunk = index.chunks.find((c) => c.kind === "instanced");
   if (!chunk) throw new Error("dataset has no instanced chunk");
-  const buffer = await fetchBinary(`${base}/${chunk.file}`, (received) => onProgress?.(Math.min(1, received / chunk.byteLength)), signal);
-  return new MapData(index, decodePack<ChunkMeta>(buffer));
+  const file = await fetchBinary(`${base}/${chunk.file}`, (received) => onProgress?.(Math.min(1, received / chunk.byteLength)), signal);
+  return new MapData(index, await decodeChunk(file));
 }

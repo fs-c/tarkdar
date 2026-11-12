@@ -16,7 +16,7 @@ players above the 3D terrain is 5 cm.
 maps/3d/<map>/            what the backend serves (build output, in the asset store, not in git)
   map.json                name + location ids: makes the backend list the folder
   index.json              dataset header
-  chunk-0.t3d             geometry
+  chunk-0.t3d             geometry (compact: see "Dataset format")
   texture-N.png           terrain ground colour images
 tools/maps3d/             the pipeline (Python) and the measurement harness
   extract_cache.py        stage 1: game files -> cache/        (needs the game + UnityPy)
@@ -44,7 +44,7 @@ To rebuild them (Python 3.14+, a C++ compiler for the `meshoptimizer` package):
 cd tools/maps3d
 make cache-pull     # the extraction cache from the asset store
 make install        # .venv
-make maps           # both maps into maps/3d/, about 4 min on 6 cores
+make maps           # both maps into maps/3d/, just under 4 min on 6 cores
 make test
 make publish        # upload maps/3d to the asset store; commit assets.json
 ```
@@ -88,7 +88,8 @@ scene paths, its location `ids`, and whether `*indoor*` scenes are optional.
 - **Settings → 3D map**: material colours, trees, contour lines. **Map debugging**: coordinate pick
   (click the map: world position, the mesh under the cursor and the camera, as JSON to paste into
   a bug report), wireframe, render statistics.
-- three.js is loaded only when a 3D map is shown (a separate chunk, ~140 kB gzipped).
+- three.js is loaded only when a 3D map is shown (a separate chunk, ~155 kB gzipped,
+  including the decoder for the map files).
 
 ## How a map is built
 
@@ -123,7 +124,8 @@ scene paths, its location `ids`, and whether `*indoor*` scenes are optional.
 | after simplification | 8.7M | 9.5M |
 | after hidden-surface removal | 5.0M | 7.9M |
 | cell meshes (≈ draw calls) | 108 | 101 |
-| `chunk-0.t3d` | 137 MB | 208 MB |
+| `chunk-0.t3d` | 18 MB | 23 MB |
+| … as plain arrays (what the viewer holds, format 2's file size) | 148 MB | 217 MB |
 
 The dataset holds the game's colours as they are (sRGB albedo means; median luma 0.3). The
 viewer turns them into map colours **in the fragment shader** (`stage.ts`, `mapGrade`): luma →
@@ -176,12 +178,12 @@ building in the plan style.
 
 ## Dataset format
 
-Format 2, written by `t3d/dataset.py`, read by `web/src/map3d/dataset.ts`.
+Format 3, written by `t3d/dataset.py`, read by `web/src/map3d/dataset.ts`.
 
 - `index.json`: map, bounds and `focusBounds` (the playable area the camera frames), `categories`
   (ids are positions in this list), `stats`, `build` parameters, and the list of `chunks`.
-- `chunk-0.t3d`: the `t3d/pack.py` container (magic, JSON header, 16-byte-aligned arrays), not
-  compressed, so the browser uses the arrays in place. Kind `instanced`:
+- `chunk-0.t3d`: the `t3d/pack.py` container (magic, JSON header, 16-byte-aligned arrays),
+  gzipped. Kind `instanced`; the arrays as the readers hand them on:
   - `mesh_*`: per mesh: vertex/index ranges, parts, local bounds, flags (1 = flat shaded)
   - `part_range`: submesh index ranges (one per material slot)
   - `positions` f32×3, `normals` i8×3, `indices16` / `indices32`, optional `colors` u8×4 (sRGB)
@@ -190,6 +192,24 @@ Format 2, written by `t3d/dataset.py`, read by `web/src/map3d/dataset.ts`.
   - `inst_*`: per placed mesh: mesh, scene, world matrix (column-major 3×4)
   - `slot_*`: per (instance, part): category, flags, flat colour, material
   - header: `meshNames`, `meshTextures` (draped images with the local XZ rectangle they cover)
+- **What is in the file** is an eighth of that (`_stored` in `dataset.py`); the readers
+  (`dataset.read`, `loadMapData` → `decodeChunk` → `expandChunk`) undo it, so nothing downstream
+  knows:
+  - every mesh's triangles and vertices are put in vertex-cache order (`optimise`; unused vertices
+    go), which is what makes the codecs below work;
+  - `positions` are u16×4 (the 4th is padding): steps of a 65535th of the mesh's `mesh_bounds`
+    per axis. That moves a vertex by at most 4 mm in a cell and 7 mm in the 1 km terrain;
+  - `normals` are i8×4 (padding), all zero for flat shaded meshes;
+  - `ground_height` is u16: steps of `ground.heightStep` (2 cm) above `ground.heightBase`, each
+    row stored as differences to the cell before;
+  - `positions`, `normals`, `colors` go through the meshoptimizer vertex codec and the index
+    arrays through its index codec, one piece per mesh (`pack.Coded`; the header entry of such an
+    array has `codec` and `segments`, and the pack has version 2). The viewer decodes them with
+    the decoder three.js ships (`three/addons/libs/meshopt_decoder.module.js`);
+  - the whole file is gzipped (level 9, no timestamp: the same dataset is the same file) and
+    unpacked in the browser with `DecompressionStream`.
+- Loading Streets from the backend takes about 0.25 s before anything reaches the GPU: 25 ms to
+  fetch, 90 ms to gunzip, 100 ms for the codecs, 40 ms to expand (headless Chromium, no GPU).
 - In a built map the "meshes" are the merged cells, each placed once with an identity matrix; the
   format is the same for the harness's full-detail reference, where meshes are the game's and
   instanced.
@@ -227,8 +247,12 @@ carrying the original normals through simplification (they left dark patches) wh
 halving the vertex count.
 
 The table is from the standalone viewer these maps were developed in. With the renderer in
-`web/src/map3d` (terrain relief, solid glass) the current maps measure **0.912** (worst view
-0.873) on Customs and **0.945** (worst 0.912) on Streets, with 114 and 108 draw calls.
+`web/src/map3d` (terrain relief, solid glass) the current maps measure **0.896** (worst view
+0.863) on Customs and **0.944** (worst 0.910) on Streets, with 148 and 110 draw calls. (Before
+roads and tree markers, which the reference captures do not have: 0.912 and 0.945 with 114 and
+108.) The compact format costs 0.001: the same maps as plain arrays measure 0.897 and 0.945, and
+rendered side by side the two differ by SSIM 0.997, which is z-fighting speckle that falls
+differently.
 
 Frame rates were never measured on a GPU by the harness (the development container has none).
 
@@ -276,6 +300,19 @@ Frame rates were never measured on a GPU by the harness (the development contain
     the plan formulas mix in sRGB. The standard material's lighting still runs and is then
     overwritten at the end of the fragment shader.
 
+18. **The index codec may return a triangle starting at another of its corners** (same winding).
+    Nothing may depend on which vertex of a triangle comes first; comparisons of two datasets
+    have to allow for it.
+19. **The Python meshoptimizer binding's decoders trust their arguments**: `decode_vertex_buffer`
+    allocates `count` elements of the dtype it is given (a one-byte dtype is a buffer overrun),
+    and `decode_index_buffer` always returns u4 storage, half used for 2-byte indices. `pack.py`
+    is the only place that calls them.
+20. **`web/src/map3d/chunk.fixture.ts` is generated** (`python -m tests.web_fixture` in
+    `tools/maps3d`): a chunk as the pipeline writes it and what the pipeline reads back, which
+    the viewer's test must decode to the same numbers. A Python test fails when it is stale.
+21. **Do not read the gunzipped stream with `new Response(stream).arrayBuffer()`**: in Chromium
+    that sometimes takes two seconds for 40 MB; `readAll` in `dataset.ts` takes a tenth of one.
+
 `tools/maps3d/tests/test_build.py` (`ValidationChecksTest`) checks known objects of the real
 Customs cache when it is present (sizes, counts, categories).
 
@@ -297,7 +334,8 @@ Customs cache when it is present (sizes, counts, categories).
 - No interiors: Streets is built from its exterior scenes, and hidden-surface removal strips what
   is under roofs. Glass is drawn solid for that reason.
 - One level of detail; curved objects are faceted close up, thin objects are gone.
-- Maps are not compressed: 137 MB and 208 MB over HTTP, fine on localhost or a LAN.
+- The viewer still holds a map as plain arrays (148 MB and 217 MB in the browser, about 125 MB
+  and 190 MB of that on the GPU); only the file is compact.
 - The coordinate pick names the cell under the cursor, not the game object.
 - The edge between the game's terrain (ground colour image) and the backdrop around it (one
   colour) is visible. Streets has no game terrain: its ground is ordinary geometry.
@@ -309,10 +347,13 @@ In the order it would pay off:
 1. **More maps** (needs the game): a preset per map, `make cache`, `make maps`, `make publish`;
    then the 2D map of that location can go. When all are covered: delete `Radar2D`
    (`RadarCanvas.tsx`), `calibration.ts`, `view.ts`, `maps/2d` and `docs/maps.md`.
-2. **Compression**: per-cell int16 positions and meshopt vertex/index codecs (the Python bindings
-   encode, the `meshoptimizer` npm package decodes) behind the chunk header: roughly 30–50 MB a
-   map.
-3. **Interiors** as their own cells, shown with a cut above the local player's floor.
-4. **Detail levels per cell** (the chunk header already has `level`, `error`, `cell`), and
+2. **GPU memory**: hand the 16-bit positions to the GPU as they are (the scale goes into the
+   instance matrix) instead of expanding them: 17 MB less on Customs, 24 MB on Streets. Cutting
+   meshes at 65,535 vertices would halve the index memory as well, for 60 to 80 more draw calls.
+3. **A faster bake**: hidden-surface removal is still nearly all of a build's CPU time
+   (`visibility.py`, a sampled depth buffer in numpy); and a cache of baked cells keyed by their
+   input would make a rebuild that changes nothing in a cell skip it.
+4. **Interiors** as their own cells, shown with a cut above the local player's floor.
+5. **Detail levels per cell** (the chunk header already has `level`, `error`, `cell`), and
    hidden-surface removal across cells.
-5. **Per-object picking**: a source id per triangle.
+6. **Per-object picking**: a source id per triangle.

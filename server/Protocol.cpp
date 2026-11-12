@@ -152,6 +152,26 @@ std::string encodePlayers(const eft::PlayersSnapshot& snap) {
     return envelope("players", snap.raidId, snap.revision, std::move(data));
 }
 
+std::optional<std::string> encodeSkeletons(const eft::PlayersSnapshot& snap) {
+    std::vector<crow::json::wvalue> list;
+    for (const auto& p : snap.players) {
+        if (!p.joints || p.dead || p.absent) continue;
+        // Whole centimetres relative to the player's position: about 3 characters per number.
+        std::vector<crow::json::wvalue> j;
+        j.reserve(eft::kJointCount * 3);
+        for (const auto& v : *p.joints)
+            for (const float c : {v.x, v.y, v.z}) j.emplace_back(static_cast<std::int64_t>(std::lround(c * 100.0f)));
+        crow::json::wvalue v;
+        v["id"] = p.id;
+        v["j"] = std::move(j);
+        list.push_back(std::move(v));
+    }
+    if (list.empty()) return std::nullopt;
+    crow::json::wvalue data;
+    data["players"] = std::move(list);
+    return envelope("skeletons", snap.raidId, snap.revision, std::move(data));
+}
+
 std::string encodeExfils(const eft::ExfilsSnapshot& snap) {
     std::vector<crow::json::wvalue> list;
     for (const auto& e : snap.exfils) {

@@ -60,7 +60,8 @@ export class LiveTimeline {
   private ingest(msg: Message): void {
     if (!this.timeline) return;
     this.buffer?.push(msg);
-    if (this.timeline.ingest(msg)) this.changed();
+    // Skeletons come just before the players of the same moment, which redraw: no update of their own.
+    if (this.timeline.ingest(msg) && msg.type !== "skeletons") this.changed();
   }
 
   private changed(): void {

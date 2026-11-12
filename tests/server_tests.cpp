@@ -93,6 +93,20 @@ TEST_CASE("protocol encoding") {
     CHECK(contains(e, R"("id":4)"));
     CHECK((contains(e, R"({"tpl":"ak","slot":"FirstPrimaryWeapon"})") || contains(e, R"({"slot":"FirstPrimaryWeapon","tpl":"ak"})")));
 
+    // Skeletons: only players with joints, alive and present; whole cm relative to the position.
+    CHECK_FALSE(server::encodeSkeletons(snap));
+    eft::Joints joints{};
+    joints[static_cast<std::size_t>(eft::Joint::Head)] = {0.014f, 1.706f, -0.25f};
+    snap.players[0].joints = joints;
+    snap.players[1].joints = joints;  // dead: left out
+    const auto sk = server::encodeSkeletons(snap);
+    REQUIRE(sk);
+    CHECK(server::messageType(*sk) == "skeletons");
+    CHECK(contains(*sk, R"("rev":9)"));
+    CHECK((contains(*sk, R"("id":1,"j":[0,0,0,)") || contains(*sk, R"("j":[0,0,0,)")));
+    CHECK(contains(*sk, R"(,1,171,-25,)"));  // the head (joint 6)
+    CHECK_FALSE(contains(*sk, R"("id":2)"));
+
     CHECK_FALSE(server::messageType("not json"));
     CHECK_FALSE(server::messageType(R"({"no":"type"})"));
 }
@@ -187,6 +201,25 @@ TEST_CASE("LiveFeed broadcasts only changes") {
     CHECK(types == std::vector<std::string>{"status", "players", "exfils", "explosives", "loot", "equipment", "players", "status"});
 }
 
+TEST_CASE("LiveFeed sends skeletons with the players that have joints") {
+    server::MessageHub hub;
+    std::vector<std::string> types;
+    hub.setTap([&](const std::string& m) { types.push_back(server::messageType(m).value_or("?")); });
+    eft::WorldState world;
+    server::LiveFeed feed({.status = {}, .world = &world}, hub);
+    feed.poll();
+    types.clear();
+    eft::PlayersSnapshot snap{.raidId = 1, .revision = 1, .players = {{.id = 1, .position = math::Vec3{1, 2, 3}}}};
+    world.players.publish(snap);
+    CHECK(feed.poll() == 1);  // no joints: no skeletons
+    snap.revision = 2;
+    snap.players[0].joints = eft::Joints{};
+    world.players.publish(snap);
+    CHECK(feed.poll() == 2);
+    CHECK(feed.poll() == 0);
+    CHECK(types == std::vector<std::string>{"players", "skeletons", "players"});
+}
+
 namespace {
 // Lines of a recording, plain or gzipped.
 std::vector<std::string> readLines(const fs::path& file) {
@@ -270,6 +303,17 @@ TEST_CASE("RaidRecorder writes one file per raid") {
         loot({.raidId = 1, .revision = 4, .loot = {changed}});  // keyframe due
         rec.onMessage("exfils", 1, server::encodeExfils({.raidId = 1, .revision = 1}));
         rec.onMessage("exfils", 2, server::encodeExfils({.raidId = 2, .revision = 1}));  // other raid: ignored
+        const auto skeletons = [&](std::uint64_t rev) {
+            auto p = playersAt(1, rev, 3);
+            p.players[0].joints = eft::Joints{};
+            rec.onSkeletons(1, *server::encodeSkeletons(p));
+        };
+        skeletons(10);  // written
+        now += 100;
+        skeletons(11);  // throttled: dropped
+        now += 100;
+        skeletons(12);  // due
+        rec.onSkeletons(2, *server::encodeSkeletons([] { auto p = playersAt(2, 1, 0); p.players[0].joints = eft::Joints{}; return p; }()));  // other raid
         players(playersAt(1, 6, 3, true));  // pending when the raid ends: written on finish
 
         send({.state = eft::Status::State::Cooldown});
@@ -282,7 +326,8 @@ TEST_CASE("RaidRecorder writes one file per raid") {
     CHECK(files[0].string().ends_with("_bigmap.jsonl.gz"));
     const auto lines = readLines(files[0]);
     CHECK(types(lines) == std::vector<std::string>{"recording", "players", "loot", "status", "players", "players",
-                                                   "lootDiff", "loot", "exfils", "players", "status"});
+                                                   "lootDiff", "loot", "exfils", "skeletons", "skeletons", "players",
+                                                   "status"});
     CHECK(contains(lines[0], R"("locationId":"bigmap")"));
     CHECK(contains(lines[0], R"("format":1)"));
     CHECK(contains(lines[4], R"("rev":3)"));
@@ -290,8 +335,10 @@ TEST_CASE("RaidRecorder writes one file per raid") {
     CHECK(contains(lines[6], R"("removed":[1])"));
     CHECK(contains(lines[6], R"("tpl":"d")"));
     CHECK(contains(lines[6], R"("contents")"));
-    CHECK(contains(lines[9], R"("rev":6)"));
-    CHECK(contains(lines[10], R"("state":"cooldown")"));
+    CHECK(contains(lines[9], R"("rev":10)"));
+    CHECK(contains(lines[10], R"("rev":12)"));
+    CHECK(contains(lines[11], R"("rev":6)"));
+    CHECK(contains(lines[12], R"("state":"cooldown")"));
 }
 
 TEST_CASE("RaidRecorder: a new raid id starts a new file; keep prunes old ones") {

@@ -21,6 +21,9 @@ inline constexpr int kRecordingFormat = 1;
 [[nodiscard]] std::string encodeHello(bool live = true);
 [[nodiscard]] std::string encodeStatus(const eft::Status& status);
 [[nodiscard]] std::string encodePlayers(const eft::PlayersSnapshot& players);
+// The joints of every alive, present player that has them; nullopt if no player has any. Shares the
+// players snapshot's revision.
+[[nodiscard]] std::optional<std::string> encodeSkeletons(const eft::PlayersSnapshot& players);
 [[nodiscard]] std::string encodeExfils(const eft::ExfilsSnapshot& exfils);
 [[nodiscard]] std::string encodeExplosives(const eft::ExplosivesSnapshot& explosives);
 [[nodiscard]] std::string encodeLoot(const eft::LootSnapshot& loot);

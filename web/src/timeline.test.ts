@@ -1,7 +1,7 @@
 import { LiveTimeline } from "./liveTimeline";
-import type { LootEntry, Message, Player, RecordedMessage, StatusData } from "./protocol";
+import { JOINT_COUNT, type LootEntry, type Message, type Player, type RecordedMessage, type StatusData } from "./protocol";
 import { ingestLines } from "./recordings";
-import { Timeline, diffLoot } from "./timeline";
+import { Skeletons, Timeline, diffLoot } from "./timeline";
 
 const T0 = 1_000_000;
 
@@ -151,5 +151,57 @@ describe("LiveTimeline", () => {
     await flush();
     await flush();
     expect(live.timeline?.start).toBe(T0);
+  });
+});
+
+describe("Skeletons", () => {
+  /** A skeleton whose every coordinate is `cm`. */
+  const skel = (cm: number) => new Array<number>(JOINT_COUNT * 3).fill(cm);
+  const skeletons = (t: number, rev: number, list: { id: number; j: number[] }[]) => env("skeletons", t, rev, { players: list });
+
+  it("keeps a sample per step, the newest always, and interpolates between them", () => {
+    const s = new Skeletons();
+    s.push(T0, skel(0));
+    s.push(T0 + 33, skel(10));
+    s.push(T0 + 66, skel(20)); // closer than a step to T0: replaces the last
+    expect(s.n).toBe(2);
+    s.push(T0 + 200, skel(40)); // a step after T0 + 0: kept
+    expect(s.n).toBe(3);
+    expect(Array.from(s.t.subarray(0, 3))).toEqual([T0, T0 + 66, T0 + 200]);
+    expect(s.at(T0 + 33)![0]).toBeCloseTo(0.1); // halfway from 0 to 20 cm
+    expect(s.at(T0 + 200)![0]).toBeCloseTo(0.4);
+    expect(s.at(T0 + 700)![0]).toBeCloseTo(0.4); // held a while
+    expect(s.at(T0 + 900)).toBeNull(); // then gone
+    expect(s.at(T0 - 1)).toBeNull();
+    s.push(T0 + 100, skel(0)); // out of order: ignored
+    expect(s.n).toBe(3);
+    s.push(T0 + 900, [1, 2, 3]); // malformed: ignored
+    expect(s.n).toBe(3);
+  });
+
+  it("gives players their joints, in metres, while alive", () => {
+    const tl = new Timeline();
+    tl.ingest(status(T0, "inRaid"));
+    tl.ingest(skeletons(T0 + 90, 1, [{ id: 1, j: skel(5) }])); // before the player's track exists: dropped
+    tl.ingest(players(T0 + 100, 1, [player(1, 0)]));
+    tl.ingest(skeletons(T0 + 200, 2, [{ id: 1, j: skel(150) }]));
+    tl.ingest(players(T0 + 200, 2, [player(1, 1)]));
+    expect(tl.stateAt(T0 + 150).players[0]!.joints).toBeUndefined();
+    expect(tl.stateAt(T0 + 200).players[0]!.joints![JOINT_COUNT * 3 - 1]).toBeCloseTo(1.5);
+    tl.ingest(skeletons(T0 + 300, 3, [{ id: 1, j: skel(150) }]));
+    tl.ingest(players(T0 + 300, 3, [player(1, 1, { dead: true })]));
+    expect(tl.stateAt(T0 + 300).players[0]!.joints).toBeUndefined();
+  });
+
+  it("are taken in by the live timeline without an update of their own", () => {
+    const live = new LiveTimeline(null);
+    live.handle(status(T0, "inRaid") as Message);
+    live.handle(players(T0 + 100, 1, [player(1, 0)]) as Message);
+    const version = live.getVersion();
+    live.handle(skeletons(T0 + 200, 2, [{ id: 1, j: skel(10) }]) as Message);
+    expect(live.getVersion()).toBe(version);
+    live.handle(players(T0 + 200, 2, [player(1, 1)]) as Message);
+    expect(live.getVersion()).toBe(version + 1);
+    expect(live.timeline!.stateAt(T0 + 200).players[0]!.joints).toBeDefined();
   });
 });

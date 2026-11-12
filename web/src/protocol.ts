@@ -48,10 +48,26 @@ export interface Player {
   /** Degrees, as stored by the game. Assumed: 0 = +z (north), 90 = +x (east). */
   yaw: number;
   pitch: number;
+  /** Frontend-derived (timeline, from `skeletons`): the body's joints relative to `pos`, in metres,
+   *  JOINT_COUNT × [x, y, z] in Joint order. Absent when the skeleton isn't known right now. */
+  joints?: ArrayLike<number>;
 }
 
 export interface PlayersData {
   players: Player[];
+}
+
+/** Body joints, in the order of a skeleton's `j` (docs/protocol.md, `skeletons`). */
+export const Joint = {
+  base: 0, leftFoot: 1, rightFoot: 2, pelvis: 3, chest: 4, neck: 5, head: 6,
+  leftHip: 7, leftKnee: 8, rightHip: 9, rightKnee: 10,
+  leftShoulder: 11, leftElbow: 12, leftHand: 13, rightShoulder: 14, rightElbow: 15, rightHand: 16,
+} as const;
+export const JOINT_COUNT = 17;
+
+export interface SkeletonsData {
+  /** `j`: JOINT_COUNT × [x, y, z], whole centimetres relative to the player's position. */
+  players: { id: number; j: number[] }[];
 }
 
 export interface Exfil {
@@ -108,6 +124,7 @@ export type Message =
   | Envelope<"hello", HelloData>
   | Envelope<"status", StatusData>
   | Envelope<"players", PlayersData>
+  | Envelope<"skeletons", SkeletonsData>
   | Envelope<"exfils", { exfils: Exfil[] }>
   | Envelope<"explosives", ExplosivesData>
   | Envelope<"loot", { loot: LootEntry[] }>

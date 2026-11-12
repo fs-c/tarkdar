@@ -22,6 +22,8 @@ export interface Projector {
    * (screen pixels per map-image pixel); the 3D view reports a comparable number.
    */
   detail: number;
+  /** Distance from the camera (any unit, larger is further), for drawing far before near; 3D only. */
+  depth?(pos: WorldPos): number;
 }
 
 /** The 2D map: world x/z through the map's calibration, then the pan/zoom camera. */

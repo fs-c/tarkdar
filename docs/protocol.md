@@ -93,6 +93,18 @@ changes, at most about 30 times per second.
 
 The whole list is sent on every change (players are few; positions change every tick anyway).
 
+### `skeletons`
+```json
+{ "players": [ { "id": 1, "j": [0, 0, 0, -15, 6, 4, 15, 4, -3, 1, 95, 2, ...] } ] }
+```
+Body joints of the alive, present players whose whole skeleton is readable, from the same snapshot as
+the `players` message (same `rev`, sent right before it; not sent while no player has joints).
+- **`j`:** 17 joints × `[x, y, z]`, in whole centimetres relative to the player's `pos`, Unity axes.
+  Joint order: base (floor level), left foot, right foot, pelvis, chest, neck, head, left hip, left
+  knee, right hip, right knee, left shoulder, left elbow, left hand, right shoulder, right elbow,
+  right hand (`eft::Joint`).
+- A player missing from the list has no usable skeleton right now (draw a plain marker).
+
 ### `exfils`
 ```json
 { "exfils": [ { "id": 1, "kind": "regular", "name": "ZB-1011", "status": 4, "pos": [180.0, 0.0, 150.0] } ] }
@@ -164,6 +176,8 @@ stream, with these differences:
   { "type": "lootDiff", "raid": 3, "rev": 42, "t": ..., "data": {
     "added": [ <loot entries> ], "removed": [ 7, 12 ], "changed": [ <loot entries, complete> ] } }
   ```
+- **`skeletons`** is throttled harder than `players` (at most 5 per second); the ones in between are
+  dropped. Recordings from before it existed have none.
 - `status`, `exfils`, `explosives` and `equipment` are written as sent. The last line is the
   `status` that ended the raid (unless the backend stopped mid-raid).
 - A last line may be cut off (a raid in progress, or a crash): readers skip lines that don't parse.

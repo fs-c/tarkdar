@@ -28,6 +28,7 @@ export interface MapProjection {
   toScreen(pos: WorldPos): [number, number];
   pxPerMetre(pos: WorldPos): number;
   detail: number;
+  depth(pos: WorldPos): number;
 }
 
 /** Screen pixels per metre that count as the 2D view's zoom 1 (label thresholds, see Projector). */
@@ -405,7 +406,7 @@ export class Map3D {
   /** A snapshot of the current camera for drawing markers. Valid until the next frame. */
   projector(): MapProjection {
     const stage = this.stage;
-    if (!stage) return { width: 0, height: 0, toScreen: () => [NaN, NaN], pxPerMetre: () => 0, detail: 0 };
+    if (!stage) return { width: 0, height: 0, toScreen: () => [NaN, NaN], pxPerMetre: () => 0, detail: 0, depth: () => 0 };
     const { camera, width, height } = stage;
     camera.updateMatrixWorld();
     const viewProjection = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -423,12 +424,14 @@ export class Map3D {
       return Number.isFinite(d) ? d : 0;
     };
     const t = stage.controls.target;
+    const eye = camera.position.clone();
     return {
       width,
       height,
       toScreen: (pos) => project(pos[0], pos[1], -pos[2]),
       pxPerMetre,
       detail: pxPerMetre([t.x, t.y, -t.z]) / DETAIL_PX_PER_METRE,
+      depth: (pos) => Math.hypot(pos[0] - eye.x, pos[1] - eye.y, -pos[2] - eye.z),
     };
   }
 

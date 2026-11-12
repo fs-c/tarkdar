@@ -122,6 +122,7 @@ void RaidRecorder::start(const eft::Status& status) {
     lastPlayersWrite_ = 0;
     pendingPlayers_.clear();
     playerFlags_.clear();
+    lastSkeletonsWrite_ = 0;
     lastLoot_.reset();
     lastLootKeyframe_ = 0;
     stats_.clear();
@@ -129,7 +130,7 @@ void RaidRecorder::start(const eft::Status& status) {
     write("recording", encodeRecordingHeader(status));
     // Snapshots of this raid published before its status said so. Status is written by the caller.
     for (const auto& [type, latest] : latest_)
-        if (latest.raidId == raidId_ && type != "loot" && type != "players") write(type, latest.message);
+        if (latest.raidId == raidId_ && type != "loot" && type != "players" && type != "skeletons") write(type, latest.message);
     if (const auto it = latest_.find("players"); it != latest_.end() && it->second.raidId == raidId_ && earlyPlayers_)
         writePlayers(*earlyPlayers_, it->second.message, now_());
     earlyPlayers_.reset();
@@ -200,6 +201,15 @@ void RaidRecorder::writeLoot(const eft::LootSnapshot& loot, const std::string& m
     if (!added.empty() || !removed.empty() || !changed.empty())
         write("lootDiff", encodeLootDiff(loot.raidId, loot.revision, added, removed, changed));
     lastLoot_ = loot;
+}
+
+void RaidRecorder::onSkeletons(std::uint64_t raidId, const std::string& message) {
+    std::lock_guard lock(mutex_);
+    if (!recording(raidId)) return;
+    const auto now = now_();
+    if (lastSkeletonsWrite_ && now - lastSkeletonsWrite_ < config_.skeletonsInterval.count()) return;
+    write("skeletons", message);
+    lastSkeletonsWrite_ = now;
 }
 
 void RaidRecorder::onMessage(const std::string& type, std::uint64_t raidId, const std::string& message) {

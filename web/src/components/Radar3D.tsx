@@ -206,7 +206,7 @@ export function Radar3D({ url, scene, settings, follow, heading, onPan, onTurn, 
 
   useImperativeHandle(ref, () => ({
     centerOn: (pos) => mapRef.current?.flyTo(() => pos),
-    projector: () => mapRef.current?.projector() ?? { width: 0, height: 0, toScreen: () => [NaN, NaN], pxPerMetre: () => 0, detail: 0 },
+    projector: () => mapRef.current?.projector() ?? { width: 0, height: 0, toScreen: () => [NaN, NaN], pxPerMetre: () => 0, detail: 0, depth: () => 0 },
     pickSurface: (x, y) => mapRef.current?.pick(x, y) ?? null,
     pose: () => mapRef.current?.pose() ?? null,
   }));

@@ -79,6 +79,11 @@ for a raid → in raid → cooldown → waiting for a raid.
   `game/eft/players/Skeleton.hpp`) share one transform hierarchy per player, so they cost little
   more than the 3 position bones. A player gets either every joint or none. The bone indices are
   checked by name with `--diagnose` (its Skeleton section lists every bone).
+- **Skeletons are their own message** (`skeletons`, whole cm relative to the position), sent just
+  before the `players` of the same snapshot, so the recorder can keep fewer of them (5/s) than of
+  positions. The frontend's timeline stores them per player (thinned to one per 150 ms) and draws
+  players close up as figures on the marker canvas, through the 3D camera: no extra map frames,
+  but no occlusion by the map either.
 - **Ids, not addresses.** Players and loot get small integer ids, stable within a raid. Addresses
   never leave the backend.
 - **Loot is classified by runtime class**, including base classes, so SPT subclasses still match.

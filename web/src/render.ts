@@ -4,7 +4,7 @@ import { type Affine, pixelsPerMetre, worldToPixel } from "./calibration";
 import { LabelPlacer, candidatesAround } from "./labels";
 import { type LoadedMap, selectLayer } from "./maps";
 import { type ItemCatalog, type ValueTier, containerName, exfilStatus, formatPrice, valueTier } from "./items";
-import type { Exfil, ExplosivesData, LootEntry, Player } from "./protocol";
+import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type WorldPos } from "./protocol";
 import { type PlayerType, type PlayerTypeInfo, MINOR_TYPES, SPECIAL_TYPES, bossGroups, playerType } from "./roles";
 import { ui } from "./theme";
 import type { Timeline } from "./timeline";
@@ -87,6 +87,8 @@ export interface Scene {
   /** World positions picked with the coordinate tool (3D map debugging), drawn numbered. */
   debugPoints: [number, number, number][];
   trails: TrailScene | null;
+  /** Up close, draw players with a known skeleton as figures instead of dots (3D map). */
+  bodies: boolean;
 }
 
 /** Where players have been: drawn from the timeline's tracks up to `at`. */
@@ -147,7 +149,7 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
   const rank = ({ p, info }: { p: Player; info: PlayerTypeInfo }) =>
     p.local ? 4 : p.dead ? 1 : MINOR_TYPES.has(info.type) ? 0 : SPECIAL_TYPES.has(info.type) ? 3 : 2;
   typed.sort((a, b) => rank(a) - rank(b));
-  for (const { p, info } of typed) drawPlayer(ctx, pr, p, info, local?.pos?.[1] ?? null);
+  for (const { p, info } of typed) drawPlayer(ctx, pr, p, info, local?.pos?.[1] ?? null, scene.bodies);
 
   if (scene.hovered) {
     const [x, y] = pr.toScreen(scene.hovered);
@@ -277,9 +279,16 @@ function drawGrid(ctx: CanvasRenderingContext2D, view: View, t: Affine): void {
   }
 }
 
-function drawPlayer(ctx: CanvasRenderingContext2D, pr: Projector, p: Player, info: PlayerTypeInfo, localY: number | null): void {
+function drawPlayer(
+  ctx: CanvasRenderingContext2D,
+  pr: Projector,
+  p: Player,
+  info: PlayerTypeInfo,
+  localY: number | null,
+  bodies: boolean,
+): void {
   if (!p.pos) return;
-  const [x, y] = pr.toScreen(p.pos);
+  let [x, y] = pr.toScreen(p.pos);
   if (!onScreen(pr, x, y)) return;
 
   // Plain AI scavs are many and rarely what matters: smaller and fainter, so PMCs and player scavs
@@ -289,9 +298,32 @@ function drawPlayer(ctx: CanvasRenderingContext2D, pr: Projector, p: Player, inf
   const boss = info.type === "boss";
   const color = p.dead ? COLORS.dead : TYPE_COLORS[info.type];
   ctx.globalAlpha = (p.absent ? 0.35 : 1) * (scav ? 0.55 : 1);
-  const r = p.local || boss ? 7 : scav ? 4 : 5.5;
+  let r = p.local || boss ? 7 : scav ? 4 : 5.5;
 
-  if (p.dead) {
+  // Close enough, and the skeleton is known: the figure, with the facing line and label at its head.
+  const head = bodies && !p.dead && p.joints && pr.pxPerMetre(p.pos) >= BODY_MIN_PX_PER_METRE ? drawBody(ctx, pr, p.pos, p.joints, color) : null;
+  if (head) {
+    [x, y] = head.at;
+    r = head.radius;
+    const yaw = (p.yaw * Math.PI) / 180;
+    const [ax, ay] = pr.toScreen([head.pos[0] + Math.sin(yaw), head.pos[1], head.pos[2] + Math.cos(yaw)]);
+    const du = Number.isFinite(ax) ? ax - x : 0, dv = Number.isFinite(ay) ? ay - y : 0;
+    const len = Math.hypot(du, dv) || 1;
+    const lineLen = r + (p.local ? 22 : scav ? 9 : 14);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + (du / len) * r, y + (dv / len) * r);
+    ctx.lineTo(x + (du / len) * lineLen, y + (dv / len) * lineLen);
+    ctx.stroke();
+    if (special) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = boss ? 2 : 1.5;
+      ctx.beginPath();
+      ctx.arc(x, y, r + (boss ? 4 : 3), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else if (p.dead) {
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -344,6 +376,111 @@ function drawPlayer(ctx: CanvasRenderingContext2D, pr: Projector, p: Player, inf
     haloText(ctx, label, x + r + (special ? 7 : 3), y + 4);
   }
   ctx.globalAlpha = 1;
+}
+
+/** Players are drawn as figures from this many screen pixels per metre on (a 1.8 m figure: 14 px). */
+const BODY_MIN_PX_PER_METRE = 8;
+
+/** The figure's limbs: joints they connect and thickness (m). */
+const BODY_SEGMENTS: readonly { from: number; to: number; width: number }[] = [
+  { from: Joint.pelvis, to: Joint.chest, width: 0.3 },
+  { from: Joint.chest, to: Joint.neck, width: 0.26 },
+  { from: Joint.leftHip, to: Joint.rightHip, width: 0.2 },
+  { from: Joint.leftShoulder, to: Joint.rightShoulder, width: 0.14 },
+  { from: Joint.leftHip, to: Joint.leftKnee, width: 0.15 },
+  { from: Joint.leftKnee, to: Joint.leftFoot, width: 0.11 },
+  { from: Joint.rightHip, to: Joint.rightKnee, width: 0.15 },
+  { from: Joint.rightKnee, to: Joint.rightFoot, width: 0.11 },
+  { from: Joint.leftShoulder, to: Joint.leftElbow, width: 0.11 },
+  { from: Joint.leftElbow, to: Joint.leftHand, width: 0.09 },
+  { from: Joint.rightShoulder, to: Joint.rightElbow, width: 0.11 },
+  { from: Joint.rightElbow, to: Joint.rightHand, width: 0.09 },
+];
+/** Head radius (m), and how far its centre sits beyond the head bone, along neck → head (m). */
+const HEAD_RADIUS = 0.12;
+const HEAD_LIFT = 0.09;
+/** The far side of the figure is darkened by up to this much (0..1), so limbs read in depth. */
+const BODY_FAR_SHADE = 0.35;
+
+/**
+ * A player as a figure: round-capped limbs between the joints, thicker the closer, drawn far to
+ * near so limbs overlap the right way, with a dark outline around the whole. Returns the head (screen
+ * position, radius in px, world position), where the facing line and label go; null if the
+ * figure couldn't be projected (behind the camera).
+ */
+function drawBody(
+  ctx: CanvasRenderingContext2D,
+  pr: Projector,
+  pos: WorldPos,
+  joints: ArrayLike<number>,
+  color: string,
+): { at: [number, number]; radius: number; pos: WorldPos } | null {
+  const world = (j: number): WorldPos => [pos[0] + joints[j * 3]!, pos[1] + joints[j * 3 + 1]!, pos[2] + joints[j * 3 + 2]!];
+  const neck = world(Joint.neck), headBone = world(Joint.head);
+  const up = [headBone[0] - neck[0], headBone[1] - neck[1], headBone[2] - neck[2]];
+  const upLen = Math.hypot(up[0]!, up[1]!, up[2]!) || 1;
+  const head: WorldPos = [
+    headBone[0] + (up[0]! / upLen) * HEAD_LIFT,
+    headBone[1] + (up[1]! / upLen) * HEAD_LIFT,
+    headBone[2] + (up[2]! / upLen) * HEAD_LIFT,
+  ];
+
+  type Part = { depth: number; draw: (outline: boolean) => void };
+  const parts: Part[] = [];
+  for (const seg of BODY_SEGMENTS) {
+    const a = world(seg.from), b = world(seg.to);
+    const [ax, ay] = pr.toScreen(a), [bx, by] = pr.toScreen(b);
+    if (!Number.isFinite(ax + ay + bx + by)) return null;
+    const mid: WorldPos = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+    const width = Math.max(1.5, seg.width * pr.pxPerMetre(mid));
+    parts.push({
+      depth: pr.depth?.(mid) ?? 0,
+      draw: (outline) => {
+        ctx.lineWidth = outline ? width + 2 : width;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
+        ctx.stroke();
+      },
+    });
+  }
+  const [hx, hy] = pr.toScreen(head);
+  if (!Number.isFinite(hx + hy)) return null;
+  const radius = Math.max(2.5, HEAD_RADIUS * pr.pxPerMetre(head));
+  parts.push({
+    depth: pr.depth?.(head) ?? 0,
+    draw: (outline) => {
+      ctx.beginPath();
+      ctx.arc(hx, hy, outline ? radius + 1 : radius, 0, Math.PI * 2);
+      ctx.fill();
+    },
+  });
+
+  parts.sort((a, b) => b.depth - a.depth);
+  const near = parts.at(-1)!.depth, far = parts[0]!.depth;
+  const alpha = ctx.globalAlpha;
+  ctx.globalAlpha = Math.max(alpha, 0.9); // overlapping translucent limbs would show their seams
+  ctx.lineCap = "round";
+  // One outline around the whole figure (all outlines first: none cuts across a joint), then the
+  // limbs far to near, the far ones darker.
+  ctx.strokeStyle = ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+  for (const part of parts) part.draw(true);
+  for (const part of parts) {
+    const shade = far > near ? ((part.depth - near) / (far - near)) * BODY_FAR_SHADE : 0;
+    ctx.strokeStyle = ctx.fillStyle = darken(color, shade);
+    part.draw(false);
+  }
+  ctx.lineCap = "butt";
+  ctx.globalAlpha = alpha;
+  return { at: [hx, hy], radius, pos: head };
+}
+
+/** "#rrggbb" mixed towards black by `amount` (0..1); other colour formats are returned as they are. */
+export function darken(color: string, amount: number): string {
+  if (amount <= 0 || !/^#[0-9a-f]{6}$/i.test(color)) return color;
+  const k = 1 - Math.min(1, amount);
+  const c = (i: number) => Math.round(Number.parseInt(color.slice(i, i + 2), 16) * k);
+  return `rgb(${c(1)}, ${c(3)}, ${c(5)})`;
 }
 
 /** Text with a dark outline, so it reads on the dark 2D background and on the light 3D map alike. */

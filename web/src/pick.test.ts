@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pick, selectedPosition } from "./pick";
-import type { Exfil, LootEntry, Player, WorldPos } from "./protocol";
+import { type Exfil, JOINT_COUNT, Joint, type LootEntry, type Player, type WorldPos } from "./protocol";
 import { NO_MAP_TRANSFORM, type Layers } from "./render";
 import { flatProjector } from "./projector";
 import { View } from "./view";
@@ -21,6 +21,14 @@ describe("pick", () => {
     expect(pick(flatProjector(view, NO_MAP_TRANSFORM), src, all, 105, 100)).toEqual({ kind: "player", id: 2 });
     expect(pick(flatProjector(view, NO_MAP_TRANSFORM), src, all, 101, 100)).toEqual({ kind: "player", id: 1 });
     expect(pick(flatProjector(view, NO_MAP_TRANSFORM), src, all, 150, 150)).toBeNull();
+  });
+
+  it("picks a player drawn as a figure by its chest and head too", () => {
+    const joints = new Float32Array(JOINT_COUNT * 3);
+    joints[Joint.head * 3] = 20; // 40 px east of the feet (flat projection: only x and z show)
+    const src = { players: [{ ...player(1, 0, 0), joints }], exfils: [], loot: [], explosives: none };
+    expect(pick(flatProjector(view, NO_MAP_TRANSFORM), src, all, 140, 100)).toEqual({ kind: "player", id: 1 });
+    expect(pick(flatProjector(view, NO_MAP_TRANSFORM), src, all, 120, 100)).toBeNull();
   });
 
   it("skips hidden layers", () => {

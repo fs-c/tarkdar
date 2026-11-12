@@ -7,6 +7,7 @@
 #include "game/eft/Game.hpp"
 #include "game/eft/Layouts.hpp"
 #include "game/eft/Names.hpp"
+#include "game/eft/players/Skeleton.hpp"
 #include "core/unity/Transforms.hpp"
 
 #include <eft_offsets.hpp>
@@ -88,8 +89,19 @@ public:
         Address instance = 0;
         Address rotation = 0;     // Vector2 yaw/pitch
         Address corpseField = 0;  // non-null once dead
-        Address trs = 0;  // skeleton hierarchy TrsX array: slot 0 = Base, 1 = left foot, 2 = right foot
+        Address trs = 0;  // skeleton hierarchy TrsX array, one slot per joint in Joint order (slot 0 = Base)
     };
+
+    // Joint offsets from Base in the fakes' skeletons (Joint order): a standing figure facing +z.
+    static constexpr std::array<math::Vec3, eft::kJointCount> kFakeJointOffsets{{
+        {0, 0, 0},         {-0.15f, 0, 0},    {0.15f, 0, 0},     {0, 0.95f, 0},     {0, 1.35f, 0},
+        {0, 1.55f, 0},     {0, 1.7f, 0},      {-0.1f, 0.9f, 0},  {-0.12f, 0.5f, 0}, {0.1f, 0.9f, 0},
+        {0.12f, 0.5f, 0},  {-0.2f, 1.45f, 0}, {-0.25f, 1.15f, 0}, {-0.27f, 0.9f, 0}, {0.2f, 1.45f, 0},
+        {0.25f, 1.15f, 0}, {0.27f, 0.9f, 0},
+    }};
+    // Length of the bone list of skeletons created from now on; below the highest joint bone, only
+    // the position bones resolve (if it's still above 23).
+    std::size_t skeletonBones = 134;
 
     // A full EFT.Player (ClientPlayer) with profile, side, role (WildSpawnType; 1 = assault), movement
     // context and a skeleton whose Base bone is at `position` and whose feet are 0.15 m to either side.
@@ -153,22 +165,27 @@ public:
         heap.put<Address>(bodyField, body);
         heap.put<Address>(body + off::PlayerBody::SkeletonRootJoint, root);
         const Address hierarchy = heap.alloc(0x100);
-        fp.trs = heap.alloc(3 * sizeof(unity::TrsX));
-        const Address parents = heap.alloc(3 * 4);
+        constexpr std::size_t n = eft::kJointCount;
+        fp.trs = heap.alloc(n * sizeof(unity::TrsX));
+        const Address parents = heap.alloc(n * 4);
         heap.put<Address>(hierarchy + kUnity.hierarchyLocalTransforms, fp.trs);
         heap.put<Address>(hierarchy + kUnity.hierarchyParentIndices, parents);
-        const std::int32_t parentIdx[] = {-1, 0, 0};
-        heap.putBytes(parents, parentIdx, sizeof(parentIdx));
-        heap.put(fp.trs + 1 * sizeof(unity::TrsX), unity::TrsX{{-0.15f, 0, 0}, 0, {}, {1, 1, 1}, 0});
-        heap.put(fp.trs + 2 * sizeof(unity::TrsX), unity::TrsX{{0.15f, 0, 0}, 0, {}, {1, 1, 1}, 0});
-        std::vector<Address> bones(24, 0);
-        const std::size_t boneIndex[] = {0, 18, 23};
-        for (std::int32_t slot = 0; slot < 3; ++slot) {
-            const Address native = heap.alloc(0x100), managedTransform = heap.alloc(0x40);
+        std::vector<std::int32_t> parentIdx(n, 0);
+        parentIdx[0] = -1;
+        heap.putBytes(parents, parentIdx.data(), n * 4);
+        for (std::size_t slot = 1; slot < n; ++slot)
+            heap.put(fp.trs + slot * sizeof(unity::TrsX), unity::TrsX{kFakeJointOffsets[slot], 0, {}, {1, 1, 1}, 0});
+        std::vector<Address> bones(skeletonBones, 0);
+        for (std::size_t slot = 0; slot < n; ++slot) {
+            const auto& src = eft::kJointSources[slot];
+            if (src.bone >= bones.size()) continue;
+            const Address native = heap.alloc(0x100), managedTransform = heap.alloc(0x40), object = heap.alloc(0x100);
             heap.put<Address>(native + kUnity.transformHierarchy, hierarchy);
-            heap.put<std::int32_t>(native + kUnity.transformIndex, slot);
+            heap.put<std::int32_t>(native + kUnity.transformIndex, static_cast<std::int32_t>(slot));
+            heap.put<Address>(native + kUnity.componentGameObject, object);
+            heap.put<Address>(object + kUnity.gameObjectName, heap.cString(slot == 0 ? std::string(src.nameSuffix) : "Base Human" + std::string(src.nameSuffix)));
             heap.put<Address>(managedTransform + kIl2Cpp.unityObjectCachedPtr, native);
-            bones[boneIndex[slot]] = managedTransform;
+            bones[src.bone] = managedTransform;
         }
         heap.put<Address>(root + off::Skeleton::Values, heap.list(bones));
         fakePlayers[fp.instance] = fp;

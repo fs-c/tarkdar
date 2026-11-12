@@ -5,6 +5,7 @@
 #include "game/eft/Read.hpp"
 #include "game/eft/model/WorldState.hpp"
 #include "game/eft/players/Players.hpp"
+#include "game/eft/players/Skeleton.hpp"
 #include "game/eft/raid/RaidFinder.hpp"
 #include "game/eft/raid/Roster.hpp"
 #include "game/eft/world/Exfils.hpp"
@@ -197,6 +198,13 @@ void checkPlayers(Report& r, const std::shared_ptr<const eft::RaidSession>& sess
                "literals PlayerBody.SkeletonRootJoint, Skeleton.Values; unityLayout.Transform*/TransformHierarchy.*");
     else
         r.ok(std::format("{} of {} players have a position", positioned, snap->players.size()));
+    int withJoints = 0;
+    for (const auto& p : snap->players) withJoints += p.joints ? 1 : 0;
+    if (withJoints == 0 && positioned > 0)
+        r.fail("no player has a full skeleton (joints)",
+               "the joint bone indices in kJointSources (game/eft/players/Skeleton.hpp); see the Skeleton section");
+    else
+        r.ok(std::format("{} of {} players have a full skeleton", withJoints, snap->players.size()));
     for (const auto& p : snap->players) {
         if (!p.local && &p - snap->players.data() > 4) continue;  // the local player + a few others
         r.info(std::format("#{} {}{} side {}{}{} {}: pos {} yaw {:.1f} pitch {:.1f}", p.id, eft::kindName(p.kind),
@@ -232,6 +240,84 @@ void checkPlayers(Report& r, const std::shared_ptr<const eft::RaidSession>& sess
     else
         r.ok(std::format("equipment for {} players (e.g. #{}: {} slots, {} items)", eq->players.size(),
                          eq->players[0].playerId, eq->players[0].slots.size(), countNodes(eq->players[0].slots)));
+}
+
+std::string signedVec(math::Vec3 v) { return std::format("({:+.2f}, {:+.2f}, {:+.2f})", v.x, v.y, v.z); }
+
+// Checks one skeleton's joint bones by name; with `listAll`, also lists every bone (index, GameObject
+// name, offset from Base), which is what the joint table in Skeleton.hpp is maintained from.
+void checkSkeletonOf(Report& r, const eft::Game& game, std::string_view who, Address bodyField, bool listAll) {
+    const auto bones = eft::readAllBones(game, bodyField);
+    if (bones.empty()) {
+        r.fail(std::format("{}: bone list unreadable", who), "literals PlayerBody.SkeletonRootJoint, Skeleton.Values");
+        return;
+    }
+    r.ok(std::format("{}: {} bones", who, bones.size()));
+    const std::optional<math::Vec3> base = bones[0].pose ? std::optional{bones[0].pose->position} : std::nullopt;
+    auto offset = [&](const eft::BoneInfo& b) {
+        return b.pose && base ? signedVec(b.pose->position - *base) : std::string("(unreadable)");
+    };
+    int matched = 0;
+    for (std::size_t j = 0; j < eft::kJointCount; ++j) {
+        const auto& src = eft::kJointSources[j];
+        if (src.bone >= bones.size()) {
+            r.fail(std::format("{}: joint {} wants bone {}, the list has {}", who, j, src.bone, bones.size()),
+                   "kJointSources in game/eft/players/Skeleton.hpp");
+            continue;
+        }
+        const auto& b = bones[src.bone];
+        if (b.name.ends_with(src.nameSuffix)) {
+            ++matched;
+            continue;
+        }
+        // Where the expected name actually is, if anywhere.
+        std::string found = "nowhere";
+        for (const auto& o : bones)
+            if (o.name.ends_with(src.nameSuffix)) found = std::format("at bone {}", o.index);
+        r.fail(std::format("{}: joint {} expects *{} at bone {}, found '{}' (*{} is {})", who, j, src.nameSuffix,
+                           src.bone, b.name, src.nameSuffix, found),
+               "kJointSources in game/eft/players/Skeleton.hpp");
+    }
+    if (matched == int(eft::kJointCount)) r.ok(std::format("{}: all {} joint bones named as expected", who, matched));
+    if (!listAll) return;
+    for (const auto& b : bones)
+        r.info(std::format("bone {:3} {:<28} {}", b.index, b.name.empty() ? "?" : "'" + b.name + "'", offset(b)));
+}
+
+void checkSkeleton(Report& r, const std::shared_ptr<const eft::RaidSession>& session) {
+    r.section("Skeleton");
+    const auto& game = session->game;
+    const Address local = session->start.localPlayer;
+    checkSkeletonOf(r, game, "local player", local + off::Player::_playerBody, true);
+
+    // Every player's joints as the tracking reads them, with the reason for each one without.
+    const auto roster = eft::readRoster(game, session->start.localGameWorld);
+    bool client = false, observed = false;
+    int full = 0, checked = 0;
+    for (Address p : roster ? roster->players : std::vector<Address>{}) {
+        const auto klass = classOf(game, p);
+        const bool isObserved = klass.ends_with("ObservedPlayerView");
+        if (!isObserved && !klass.ends_with("Player")) continue;  // not built either; see Players
+        const Address bodyField = p + (isObserved ? off::ObservedPlayerView::PlayerBody : off::Player::_playerBody);
+        // One other player of each kind by name: their bodies are built differently.
+        if (p != local) {
+            bool& seen = isObserved ? observed : client;
+            if (!seen) {
+                seen = true;
+                checkSkeletonOf(r, game, std::format("{} player {}", isObserved ? "observed" : "client", hex(p)),
+                                bodyField, false);
+            }
+        }
+        ++checked;
+        const auto bones = eft::resolveSkeletonBones(game, bodyField);
+        std::string problem;
+        if (!bones) problem = "position bones unresolved";
+        else if (!bones->full) problem = "joint bones unresolved";
+        else problem = eft::jointProblem(game.transforms.worldPoses(bones->used(), mem::Freshness::Fresh));
+        if (problem.empty()) ++full;
+        else r.info(std::format("no joints for {} ({}): {}", hex(p), klass, problem));
+    }
+    r.ok(std::format("{} of {} players' skeletons give every joint", full, checked));
 }
 
 void checkExfils(Report& r, const std::shared_ptr<const eft::RaidSession>& session) {
@@ -358,6 +444,7 @@ int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out) {
         auto session = std::make_shared<eft::RaidSession>(
             eft::RaidSession{.id = 1, .game = game, .start = *raid, .startedAt = Clock::now()});
         checkPlayers(r, session);
+        checkSkeleton(r, session);
         checkExfils(r, session);
         checkExplosives(r, session);
         checkLoot(r, session);

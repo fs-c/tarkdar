@@ -5,7 +5,7 @@ Usage: make-demo-stream.py [output.jsonl] [--seconds N]
 
 The default output is recordings/demo.jsonl. Open it in the frontend's raid list, with the backend
 serving the recordings:  radar-backend --offline
-The location id is "demo", which matches maps/demo/. Format: docs/protocol.md, "Raid recordings".
+The location id is "demo", which matches maps/2d/demo/. Format: docs/protocol.md, "Raid recordings".
 
 Scenario: the local player walks a loop around the map centre, passing through a two-floor
 "building" (y up to 6 m), while bots wander, one dies after 20 s (leaving a corpse) and one leaves

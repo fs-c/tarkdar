@@ -1,0 +1,13 @@
+/* The WebGL canvas (added by Map3D) fills the host; the marker canvas lies on top and lets
+   pointer events through to the map's camera controls. */
+.radar {
+  position: absolute; inset: 0; touch-action: none; cursor: grab;
+  & > canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+}
+.markers { pointer-events: none; z-index: 1; }
+.status {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2; margin: 0;
+  padding: 8px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--overlay-surface); color: var(--muted); font-size: var(--fs-sm);
+  &[data-tone="error"] { color: var(--danger); }
+}

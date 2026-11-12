@@ -15,6 +15,6 @@ node_modules/
 *.assets-tmp
 .assets-hashes.json
 
-# Map images are copyrighted, so maps (images + their map.json calibration) live in B2 too.
-# maps/demo is synthetic and committed.
+# Maps are derived from copyrighted material, so they live in B2 too: maps/2d (images + their
+# map.json calibration) and maps/3d (built by tools/maps3d). maps/2d/demo is synthetic and committed.
 /maps/

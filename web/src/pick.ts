@@ -1,9 +1,8 @@
 // Hit-testing clicks on the radar: which marker (player, exfil, loot) is under the cursor.
 
-import { type Affine, worldToPixel } from "./calibration";
 import type { Exfil, ExplosivesData, LootEntry, Player, WorldPos } from "./protocol";
 import type { Layers } from "./render";
-import type { View } from "./view";
+import type { Projector } from "./projector";
 
 export type Selection =
   | { kind: "player"; id: number }
@@ -24,11 +23,11 @@ export interface Pickable {
 export const isContainerLoot = (l: LootEntry): boolean => l.kind === "container" || l.kind === "airdrop";
 
 /** The nearest visible player, exfil or loot marker within a few pixels of screen position (x, y). */
-export function pick(view: View, t: Affine, src: Pickable, layers: Layers, x: number, y: number): Selection | null {
+export function pick(pr: Projector, src: Pickable, layers: Layers, x: number, y: number): Selection | null {
   let best: { sel: Selection; d: number } | null = null;
   const consider = (sel: Selection, pos: WorldPos | null | undefined, radius: number) => {
     if (!pos) return;
-    const [sx, sy] = view.toScreen(...worldToPixel(t, pos[0], pos[2]));
+    const [sx, sy] = pr.toScreen(pos);
     const d = Math.hypot(sx - x, sy - y);
     if (d <= radius && (!best || d < best.d)) best = { sel, d };
   };

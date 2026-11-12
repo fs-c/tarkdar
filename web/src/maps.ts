@@ -1,5 +1,5 @@
-// Map folders served by the backend: maps/<folder>/map.json plus the layer images.
-// Format documented in docs/maps.md.
+// Map folders served by the backend: maps/2d/<folder>/ (map.json plus the layer images) and
+// maps/3d/<folder>/ (map.json plus a 3D dataset). Formats: docs/maps.md, docs/maps3d.md.
 
 import { type Affine, type ControlPoint, fitTransform } from "./calibration";
 
@@ -17,10 +17,21 @@ export interface MapConfig {
   layerHysteresis?: number;
 }
 
-export interface MapEntry {
+/** A folder of maps/2d: map images with a calibration. */
+export interface Map2DEntry {
+  kind: "2d";
   folder: string;
   config: MapConfig;
 }
+
+/** A folder of maps/3d: a 3D dataset (map3d/dataset.ts). World coordinates are the game's, no calibration. */
+export interface Map3DEntry {
+  kind: "3d";
+  folder: string;
+  config: { name: string; ids: string[] };
+}
+
+export type MapEntry = Map2DEntry | Map3DEntry;
 
 export interface LoadedMap {
   folder: string;
@@ -40,29 +51,38 @@ export async function fetchMapIndex(): Promise<MapEntry[]> {
 export function validEntry(e: unknown): e is MapEntry {
   const entry = e as Partial<MapEntry> | null;
   const c = entry?.config as Partial<MapConfig> | undefined;
+  const common =
+    typeof entry?.folder === "string" && !!c && typeof c.name === "string" && Array.isArray(c.ids) && c.ids.every((x) => typeof x === "string");
   const ok =
-    typeof entry?.folder === "string" &&
-    !!c &&
-    Array.isArray(c.ids) &&
-    c.ids.every((x) => typeof x === "string") &&
-    Array.isArray(c.layers) &&
-    c.layers.length > 0 &&
-    c.layers.every((l) => typeof l?.image === "string" && (l.maxY === undefined || typeof l.maxY === "number")) &&
-    Array.isArray(c.calibration?.points) &&
-    c.calibration.points.every(
-      (p) => Array.isArray(p?.world) && p.world.length === 2 && Array.isArray(p?.pixel) && p.pixel.length === 2,
-    );
-  if (!ok) console.warn(`maps: ignoring malformed map folder ${String(entry?.folder)}`, e);
+    common &&
+    (entry?.kind === "3d" ||
+      (entry?.kind === "2d" &&
+        Array.isArray(c.layers) &&
+        c.layers.length > 0 &&
+        c.layers.every((l) => typeof l?.image === "string" && (l.maxY === undefined || typeof l.maxY === "number")) &&
+        Array.isArray(c.calibration?.points) &&
+        c.calibration.points.every(
+          (p) => Array.isArray(p?.world) && p.world.length === 2 && Array.isArray(p?.pixel) && p.pixel.length === 2,
+        )));
+  if (!ok) console.warn(`maps: ignoring malformed map folder ${String(entry?.kind)}/${String(entry?.folder)}`, e);
   return ok;
 }
 
-/** The map whose ids contain the location id (case-insensitive). */
-export function findMap(index: MapEntry[], locationId: string): MapEntry | undefined {
+/**
+ * The map whose ids contain the location id (case-insensitive). When a location has both, the 3D
+ * map wins unless `prefer2d`.
+ */
+export function findMap(index: MapEntry[], locationId: string, prefer2d = false): MapEntry | undefined {
   const id = locationId.toLowerCase();
-  return index.find((m) => m.config.ids.some((x) => x.toLowerCase() === id));
+  const matches = index.filter((m) => m.config.ids.some((x) => x.toLowerCase() === id));
+  const first = prefer2d ? "2d" : "3d";
+  return matches.find((m) => m.kind === first) ?? matches[0];
 }
 
-export function loadMap(entry: MapEntry, onImageLoaded: () => void): LoadedMap {
+/** URL of a 3D map's dataset folder. */
+export const map3dUrl = (entry: Map3DEntry): string => `/maps/3d/${encodeURIComponent(entry.folder)}`;
+
+export function loadMap(entry: Map2DEntry, onImageLoaded: () => void): LoadedMap {
   const map: LoadedMap = {
     folder: entry.folder,
     config: entry.config,
@@ -76,7 +96,7 @@ export function loadMap(entry: MapEntry, onImageLoaded: () => void): LoadedMap {
       onImageLoaded();
     };
     img.onerror = () => console.warn(`map ${entry.folder}: failed to load ${layer.image}`);
-    img.src = `/maps/${encodeURIComponent(entry.folder)}/${encodeURIComponent(layer.image)}`;
+    img.src = `/maps/2d/${encodeURIComponent(entry.folder)}/${encodeURIComponent(layer.image)}`;
   });
   return map;
 }

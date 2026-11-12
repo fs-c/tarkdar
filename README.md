@@ -1,6 +1,6 @@
 # radar
 
-Read-only 2D radar for SP-Tarkov, the single-player mod for Tarkov, reading the game's memory 
+Read-only radar for SP-Tarkov, the single-player mod for Tarkov, reading the game's memory 
 from a QEMU guest on a Linux host via VMM (MemProcFS) + LeechCore.
 
 ## Building
@@ -33,14 +33,16 @@ marked `ignore = dirty`, so it doesn't show as modified.
 ## Data files (Backblaze B2)
 
 Large or copyrighted files are not in git. They live in a private B2 bucket and
-are listed in `assets.json` by path and SHA-256: the il2cpp dump, the map
-images and their `map.json` calibrations (except `maps/demo`), a couple of
-sample recordings and the 3D map extraction cache. `scripts/assets.py` (stdlib
+are listed in `assets.json` by path and SHA-256: the il2cpp dump, the 3D maps
+(`maps/3d`, see `docs/maps3d.md`) and the cache they are built from
+(`tools/maps3d/cache`), the 2D map images and their `map.json` calibrations
+(`maps/2d`, except `maps/2d/demo`) and a couple of sample recordings. `scripts/assets.py` (stdlib
 Python, no install) manages them:
 
 ```sh
 scripts/assets.py status               # missing / modified / new files
 scripts/assets.py pull                 # download everything missing (or: pull maps/ dumps/)
+                                       # running the radar needs maps/; tools/maps3d/cache only to rebuild 3D maps
 scripts/assets.py push                 # upload changed tracked files, update assets.json
 scripts/assets.py add recordings/X.gz  # start tracking a file (or directory)
 ```

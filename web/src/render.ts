@@ -1,6 +1,6 @@
 // Draws the radar: map layer (or a world grid when there's no map), players, calibration markers.
 
-import { type Affine, directionToPixel, pixelsPerMetre, worldToPixel } from "./calibration";
+import { type Affine, pixelsPerMetre, worldToPixel } from "./calibration";
 import { LabelPlacer, candidatesAround } from "./labels";
 import { type LoadedMap, selectLayer } from "./maps";
 import { type ItemCatalog, type ValueTier, containerName, exfilStatus, formatPrice, valueTier } from "./items";
@@ -8,6 +8,7 @@ import type { Exfil, ExplosivesData, LootEntry, Player } from "./protocol";
 import { type PlayerType, type PlayerTypeInfo, MINOR_TYPES, SPECIAL_TYPES, bossGroups, playerType } from "./roles";
 import { ui } from "./theme";
 import type { Timeline } from "./timeline";
+import { type Projector, flatProjector } from "./projector";
 import type { View } from "./view";
 
 /** Used when there's no map for the location: 2 px per metre, north up, world origin at (0, 0). */
@@ -58,7 +59,7 @@ const ITEM_MARKERS: Record<ValueTier, { color: string; size: number }> = {
   high: { color: ui.gold, size: 5 },
 };
 
-/** Item labels show from this zoom on (and then only where they fit). */
+/** Item labels show from this level of detail on (and then only where they fit). */
 const ITEM_LABEL_ZOOM = 2.5;
 
 export interface Layers {
@@ -83,6 +84,8 @@ export interface Scene {
   /** Hovered in the list view: drawn as a soft highlight. */
   hovered: [number, number, number] | null;
   calibrationPixels: [number, number][];
+  /** World positions picked with the coordinate tool (3D map debugging), drawn numbered. */
+  debugPoints: [number, number, number][];
   trails: TrailScene | null;
 }
 
@@ -96,6 +99,7 @@ export interface TrailScene {
   selected: number | null;
 }
 
+/** The 2D radar: map image (or world grid), markers, calibration crosses. */
 export function render(ctx: CanvasRenderingContext2D, view: View, scene: Scene): void {
   const transform = scene.map?.transform ?? NO_MAP_TRANSFORM;
   ctx.fillStyle = COLORS.background;
@@ -110,42 +114,7 @@ export function render(ctx: CanvasRenderingContext2D, view: View, scene: Scene):
     drawGrid(ctx, view, transform);
   }
 
-  if (scene.layers.loot || scene.layers.containers) drawLoot(ctx, view, transform, scene);
-  if (scene.layers.exfils) for (const e of scene.exfils) drawExfil(ctx, view, transform, e);
-  if (scene.layers.explosives) drawExplosives(ctx, view, transform, scene.explosives);
-
-  if (scene.trails) drawTrails(ctx, view, transform, scene);
-
-  const local = scene.players.find((p) => p.local && p.pos);
-  const groups = bossGroups(scene.players);
-  const typed = scene.players.map((p) => ({ p, info: playerType(p, groups) }));
-  // Drawn bottom to top: plain scavs, the dead, everyone else, special bots, us.
-  const rank = ({ p, info }: { p: Player; info: PlayerTypeInfo }) =>
-    p.local ? 4 : p.dead ? 1 : MINOR_TYPES.has(info.type) ? 0 : SPECIAL_TYPES.has(info.type) ? 3 : 2;
-  typed.sort((a, b) => rank(a) - rank(b));
-  for (const { p, info } of typed) drawPlayer(ctx, view, transform, p, info, local?.pos?.[1] ?? null);
-
-  if (scene.hovered) {
-    const [x, y] = view.toScreen(...worldToPixel(transform, scene.hovered[0], scene.hovered[2]));
-    ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(x, y, 18, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  }
-
-  if (scene.selected) {
-    const [x, y] = view.toScreen(...worldToPixel(transform, scene.selected[0], scene.selected[2]));
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([3, 3]);
-    ctx.beginPath();
-    ctx.arc(x, y, 13, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-  }
+  renderMarkers(ctx, flatProjector(view, transform), scene);
 
   for (const [u, v] of scene.calibrationPixels) {
     const [x, y] = view.toScreen(u, v);
@@ -160,10 +129,68 @@ export function render(ctx: CanvasRenderingContext2D, view: View, scene: Scene):
   }
 }
 
+/**
+ * Everything that moves: loot, exfils, explosives, trails, players, selection. Drawn in screen
+ * space through the projector, so it is the same code over the 2D image and over the 3D map.
+ */
+export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene): void {
+  if (scene.layers.loot || scene.layers.containers) drawLoot(ctx, pr, scene);
+  if (scene.layers.exfils) for (const e of scene.exfils) drawExfil(ctx, pr, e);
+  if (scene.layers.explosives) drawExplosives(ctx, pr, scene.explosives);
+
+  if (scene.trails) drawTrails(ctx, pr, scene);
+
+  const local = scene.players.find((p) => p.local && p.pos);
+  const groups = bossGroups(scene.players);
+  const typed = scene.players.map((p) => ({ p, info: playerType(p, groups) }));
+  // Drawn bottom to top: plain scavs, the dead, everyone else, special bots, us.
+  const rank = ({ p, info }: { p: Player; info: PlayerTypeInfo }) =>
+    p.local ? 4 : p.dead ? 1 : MINOR_TYPES.has(info.type) ? 0 : SPECIAL_TYPES.has(info.type) ? 3 : 2;
+  typed.sort((a, b) => rank(a) - rank(b));
+  for (const { p, info } of typed) drawPlayer(ctx, pr, p, info, local?.pos?.[1] ?? null);
+
+  if (scene.hovered) {
+    const [x, y] = pr.toScreen(scene.hovered);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  if (scene.selected) {
+    const [x, y] = pr.toScreen(scene.selected);
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.arc(x, y, 13, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  scene.debugPoints.forEach((pos, i) => {
+    const [x, y] = pr.toScreen(pos);
+    ctx.strokeStyle = COLORS.calibration;
+    ctx.fillStyle = COLORS.calibration;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 7, y);
+    ctx.lineTo(x + 7, y);
+    ctx.moveTo(x, y - 7);
+    ctx.lineTo(x, y + 7);
+    ctx.stroke();
+    ctx.font = "bold 11px sans-serif";
+    ctx.fillText(String(i + 1), x + 6, y - 6);
+  });
+}
+
 const TRAIL_BUCKETS = 6;
 
 /** Trails fade with age (in TRAIL_BUCKETS steps); parts on other floors than the shown one are dimmed. */
-function drawTrails(ctx: CanvasRenderingContext2D, view: View, t: Affine, scene: Scene): void {
+function drawTrails(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene): void {
   const { timeline, at, since, selected } = scene.trails!;
   const groups = bossGroups(scene.players);
   const floors = scene.map && scene.map.config.layers.length > 1 ? scene.map.config.layers : null;
@@ -187,12 +214,12 @@ function drawTrails(ctx: CanvasRenderingContext2D, view: View, t: Affine, scene:
       const ti = track.timeOf(i);
       if (ti > at) break;
       const [wx, wy, wz] = track.posOf(i);
-      const [x, y] = view.toScreen(...worldToPixel(t, wx, wz));
+      const [x, y] = pr.toScreen([wx, wy, wz]);
       points.push({ t: ti, x, y, wy });
     }
     const pose = track.poseAt(at);
     if (pose && points.length) {
-      const [x, y] = view.toScreen(...worldToPixel(t, pose.pos[0], pose.pos[2]));
+      const [x, y] = pr.toScreen(pose.pos);
       points.push({ t: at, x, y, wy: pose.pos[1] });
     }
     if (points.length < 2) continue;
@@ -250,11 +277,10 @@ function drawGrid(ctx: CanvasRenderingContext2D, view: View, t: Affine): void {
   }
 }
 
-function drawPlayer(ctx: CanvasRenderingContext2D, view: View, t: Affine, p: Player, info: PlayerTypeInfo, localY: number | null): void {
+function drawPlayer(ctx: CanvasRenderingContext2D, pr: Projector, p: Player, info: PlayerTypeInfo, localY: number | null): void {
   if (!p.pos) return;
-  const [u, v] = worldToPixel(t, p.pos[0], p.pos[2]);
-  const [x, y] = view.toScreen(u, v);
-  if (x < -50 || y < -50 || x > view.width + 50 || y > view.height + 50) return;
+  const [x, y] = pr.toScreen(p.pos);
+  if (!onScreen(pr, x, y)) return;
 
   // Plain AI scavs are many and rarely what matters: smaller and fainter, so PMCs and player scavs
   // stand out. Bosses, guards, raiders, rogues and cultists get a halo and their name.
@@ -276,9 +302,11 @@ function drawPlayer(ctx: CanvasRenderingContext2D, view: View, t: Affine, p: Pla
     ctx.stroke();
   } else {
     // Facing: yaw 0 = world +z, 90 = world +x (assumed Unity convention; see the verification
-    // playbook). The world direction goes through the map transform, so rotated maps work too.
+    // playbook). A point one metre ahead goes through the projection, so rotated maps and a
+    // rotated 3D camera work too.
     const yaw = (p.yaw * Math.PI) / 180;
-    const [du, dv] = directionToPixel(t, Math.sin(yaw), Math.cos(yaw));
+    const [ax, ay] = pr.toScreen([p.pos[0] + Math.sin(yaw), p.pos[1], p.pos[2] + Math.cos(yaw)]);
+    const du = Number.isFinite(ax) ? ax - x : 0, dv = Number.isFinite(ay) ? ay - y : 0;
     const len = Math.hypot(du, dv) || 1;
     const lineLen = p.local ? 28 : scav ? 11 : 18;
     ctx.strokeStyle = color;
@@ -313,13 +341,24 @@ function drawPlayer(ctx: CanvasRenderingContext2D, view: View, t: Affine, p: Pla
     }
     ctx.fillStyle = special && !p.dead ? color : COLORS.label;
     ctx.font = scav ? "10px sans-serif" : boss ? "bold 12px sans-serif" : "11px sans-serif";
-    ctx.fillText(label, x + r + (special ? 7 : 3), y + 4);
+    haloText(ctx, label, x + r + (special ? 7 : 3), y + 4);
   }
   ctx.globalAlpha = 1;
 }
 
-function onScreen(view: View, x: number, y: number, margin = 50): boolean {
-  return x >= -margin && y >= -margin && x <= view.width + margin && y <= view.height + margin;
+/** Text with a dark outline, so it reads on the dark 2D background and on the light 3D map alike. */
+function haloText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number): void {
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = COLORS.labelHalo;
+  ctx.strokeText(text, x, y);
+  ctx.fillText(text, x, y);
+  ctx.lineJoin = "miter";
+}
+
+/** False for positions off the canvas, and for NaN (not projectable, see Projector). */
+function onScreen(pr: Projector, x: number, y: number, margin = 50): boolean {
+  return x >= -margin && y >= -margin && x <= pr.width + margin && y <= pr.height + margin;
 }
 
 /** A loot label waiting for placement: `texts` from most to least detailed, tried in that order. */
@@ -347,20 +386,15 @@ function textWidth(ctx: CanvasRenderingContext2D, text: string): number {
   return w;
 }
 
-function drawLoot(
-  ctx: CanvasRenderingContext2D,
-  view: View,
-  t: Affine,
-  { loot, layers, catalog, minLabelPrice }: Scene,
-): void {
-  const containerLabels = view.zoom >= 1.5;
-  const itemLabels = view.zoom >= ITEM_LABEL_ZOOM;
+function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, { loot, layers, catalog, minLabelPrice }: Scene): void {
+  const containerLabels = pr.detail >= 1.5;
+  const itemLabels = pr.detail >= ITEM_LABEL_ZOOM;
   const requests: LabelRequest[] = [];
   for (const l of loot) {
     const isContainer = l.kind === "container" || l.kind === "airdrop";
     if (isContainer ? !layers.containers : !layers.loot) continue;
-    const [x, y] = view.toScreen(...worldToPixel(t, l.pos[0], l.pos[2]));
-    if (!onScreen(view, x, y, 10)) continue;
+    const [x, y] = pr.toScreen(l.pos);
+    if (!onScreen(pr, x, y, 10)) continue;
     switch (l.kind) {
       case "item": {
         const info = catalog.lookup(l.tpl);
@@ -439,10 +473,10 @@ function drawLoot(
   ctx.lineJoin = "miter";
 }
 
-function drawExfil(ctx: CanvasRenderingContext2D, view: View, t: Affine, e: Exfil): void {
+function drawExfil(ctx: CanvasRenderingContext2D, pr: Projector, e: Exfil): void {
   if (!e.pos) return;
-  const [x, y] = view.toScreen(...worldToPixel(t, e.pos[0], e.pos[2]));
-  if (!onScreen(view, x, y, 150)) return;
+  const [x, y] = pr.toScreen(e.pos);
+  if (!onScreen(pr, x, y, 150)) return;
   const status = exfilStatus(e.status);
   const tones = { open: COLORS.exfilOpen, closed: COLORS.exfilClosed, pending: COLORS.exfilPending, neutral: COLORS.exfilNeutral };
   const color = e.kind === "secret" ? COLORS.exfilSecret : tones[status.tone];
@@ -457,15 +491,15 @@ function drawExfil(ctx: CanvasRenderingContext2D, view: View, t: Affine, e: Exfi
   ctx.fill();
   ctx.font = "11px sans-serif";
   ctx.fillStyle = color;
-  ctx.fillText(`${e.name}${e.kind === "secret" ? " (secret)" : ` · ${status.label}`}`, x + 10, y + 4);
+  haloText(ctx, `${e.name}${e.kind === "secret" ? " (secret)" : ` · ${status.label}`}`, x + 10, y + 4);
 }
 
-function drawExplosives(ctx: CanvasRenderingContext2D, view: View, t: Affine, ex: ExplosivesData): void {
+function drawExplosives(ctx: CanvasRenderingContext2D, pr: Projector, ex: ExplosivesData): void {
   ctx.strokeStyle = COLORS.danger;
   ctx.fillStyle = COLORS.danger;
   for (const w of ex.tripwires) {
-    const [x1, y1] = view.toScreen(...worldToPixel(t, w.from[0], w.from[2]));
-    const [x2, y2] = view.toScreen(...worldToPixel(t, w.to[0], w.to[2]));
+    const [x1, y1] = pr.toScreen(w.from);
+    const [x2, y2] = pr.toScreen(w.to);
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(x1, y1);
@@ -476,10 +510,10 @@ function drawExplosives(ctx: CanvasRenderingContext2D, view: View, t: Affine, ex
     ctx.fill();
   }
   // Grenades: a dot plus a ring sized to roughly a frag's danger radius (~8 m) on the map.
-  const ring = Math.max(6, 8 * pixelsPerMetre(t) * view.zoom);
   for (const g of ex.grenades) {
-    const [x, y] = view.toScreen(...worldToPixel(t, g.pos[0], g.pos[2]));
-    if (!onScreen(view, x, y, ring)) continue;
+    const ring = Math.max(6, 8 * pr.pxPerMetre(g.pos));
+    const [x, y] = pr.toScreen(g.pos);
+    if (!onScreen(pr, x, y, ring)) continue;
     ctx.beginPath();
     ctx.arc(x, y, 3, 0, Math.PI * 2);
     ctx.fill();

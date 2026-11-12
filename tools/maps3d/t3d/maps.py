@@ -48,6 +48,22 @@ def _streets(all_scenes: list[str]) -> list[str]:
     return [p for p in all_scenes if "/Locations/City/" in p and not STREETS_EXCLUDE_RE.search(p)]
 
 
+# Factory: the Factory_Rework scenes (the Day/Night split matches factory4_day / factory4_night).
+# Geometry, background, design and the day lighting scene; not scripts, AI, quests, sound or
+# culling. The night lighting scene is left out: the map is one dataset for both variants.
+FACTORY_SCENES = [
+    "Assets/Content/Locations/Factory_Rework/Factory_Rework_Areas.unity",
+    "Assets/Content/Locations/Factory_Rework/Factory_Rework_Main_Building.unity",
+    "Assets/Content/Locations/Factory_Rework/Factory_Rework_Basement.unity",
+    "Assets/Content/Locations/Factory_Rework/Factory_Rework_Admin_Office.unity",
+    "Assets/Content/Locations/Factory_Rework/Factory_Rework_Laboratory.unity",
+    "Assets/Content/Locations/Factory_Rework/Factory_Rework_Background.unity",
+    "Assets/Content/Locations/Factory_Rework/Factory_Rework_DesignStuff.unity",
+    "Assets/Content/Locations/Factory_Rework/Factory_Rework_DesignMain.unity",
+    "Assets/Content/Locations/Factory_Rework/Factory_Rework_Day_Light.unity",
+]
+
+
 # ids: the game's location ids this map is used for (matched case-insensitively
 #      by the frontend; written to the dataset's map.json).
 # indoorOptional: the build drops *indoor* scenes unless --include-indoor.
@@ -56,4 +72,6 @@ MAPS = {
                 "select": lambda scenes: list(CUSTOMS_SCENES)},
     "streets": {"label": "Streets", "tag": "TARKOVSTREETS", "ids": ["TarkovStreets"], "indoorOptional": True,
                 "select": _streets},
+    "factory": {"label": "Factory", "tag": "FACTORY4", "ids": ["factory4_day", "factory4_night"], "indoorOptional": False,
+                "select": lambda scenes: list(FACTORY_SCENES)},
 }

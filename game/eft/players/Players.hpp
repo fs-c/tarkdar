@@ -21,7 +21,7 @@ namespace radar::eft {
 // Two tasks on the live thread (so internal state needs no locking):
 //  - roster (kRosterInterval): diffs the registered-player list, builds new players, refreshes
 //    rotation and death state, tracks players that left the list;
-//  - positions (kPositionInterval): reads every alive player's position bones in one batch.
+//  - positions (kPositionInterval): reads every alive player's skeleton joints in one batch.
 // Plus one task on the background thread:
 //  - equipment (kEquipmentInterval): reads up to kEquipmentPerTick players' equipment trees, each
 //    player at most every kEquipmentRefresh, and publishes WorldState::equipment. It sees the roster
@@ -84,9 +84,10 @@ private:
         float yaw = 0, pitch = 0;
         bool dead = false;
         sched::Clock::time_point nextCorpseCheck{};
-        std::optional<PositionBones> bones;
+        std::optional<SkeletonBones> bones;
         sched::Clock::time_point nextBoneResolve{};
         std::optional<math::Vec3> position;
+        std::optional<Joints> joints;
         // Absence tracking.
         int misses = 0;
         std::optional<sched::Clock::time_point> missingSince;

@@ -50,6 +50,27 @@ TEST_CASE("pickPosition and plausibleSkeleton") {
     CHECK_FALSE(eft::plausibleSkeleton({pose({0.5f, 0.5f, 0.5f}), pose(left), pose(right)}));  // near origin
 }
 
+TEST_CASE("relativeJoints") {
+    const Vec3 base{10, 1, 20};
+    std::vector<std::optional<unity::Pose>> poses;
+    for (const Vec3 o : FakeWorld::kFakeJointOffsets) poses.push_back(pose(base + o));
+    const Vec3 position{10, 1.5f, 20};
+    const auto joints = eft::relativeJoints(poses, position);
+    REQUIRE(joints);
+    const auto head = static_cast<std::size_t>(eft::Joint::Head);
+    CHECK(near((*joints)[head], base + FakeWorld::kFakeJointOffsets[head] - position));
+
+    auto broken = poses;
+    broken[head].reset();
+    CHECK_FALSE(eft::relativeJoints(broken, position));  // a missing joint: no body at all
+    broken = poses;
+    broken[head] = pose(base + Vec3{0, 3.5f, 0});
+    CHECK_FALSE(eft::relativeJoints(broken, position));  // beyond reach of Base
+    CHECK(eft::jointProblem(broken) == "joint 6 (Head) is 3.5 m from Base");
+    CHECK(eft::jointProblem(poses).empty());
+    CHECK_FALSE(eft::relativeJoints(std::span{poses}.first(eft::kPositionJoints), position));
+}
+
 TEST_CASE("Players tracks the roster, positions, rotation and death") {
     FakeWorld w;
     w.newWorld(u"bigmap", 0);
@@ -89,6 +110,9 @@ TEST_CASE("Players tracks the roster, positions, rotation and death") {
     CHECK(p2->role == 22);
     CHECK(near(*snap->local()->position, {1, 1, 1}));
     const auto id1 = p1->id;
+    // The joints, relative to the position.
+    REQUIRE(p1->joints);
+    for (std::size_t j = 0; j < eft::kJointCount; ++j) CHECK(near((*p1->joints)[j], FakeWorld::kFakeJointOffsets[j]));
 
     SUBCASE("movement is picked up") {
         w.movePlayer(bot1, {55, 2, 61});
@@ -135,6 +159,37 @@ TEST_CASE("Players tracks the roster, positions, rotation and death") {
         players.positionsTick(t + milliseconds(20));  // resolves again, reads the new position
         CHECK(byPosition(*world.players.get(), {52, 2, 60}));
     }
+
+    SUBCASE("a joint out of reach drops the joints, not the position") {
+        const auto& fp = w.fakePlayers.at(bot1);
+        const auto head = static_cast<std::size_t>(eft::Joint::Head);
+        w.heap.put(fp.trs + head * sizeof(unity::TrsX), unity::TrsX{{0, 4, 0}, 0, {}, {1, 1, 1}, 0});
+        w.movePlayer(bot1, {51, 2, 60});
+        players.positionsTick(t + milliseconds(10));
+        const auto* p = byPosition(*world.players.get(), {51, 2, 60});
+        REQUIRE(p);
+        CHECK_FALSE(p->joints);
+    }
+}
+
+TEST_CASE("Players tracks the position of a skeleton too short for the joints") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 0);
+    w.skeletonBones = 24;  // up to the right foot
+    const Address bot = w.newPlayer(4, Vec3{50, 2, 60});
+    w.setRosterList({w.localPlayer, bot});
+
+    eft::WorldState world;
+    eft::Players players(makeSession(w), world);
+    const auto t = Clock::now();
+    players.rosterTick(t);
+    players.positionsTick(t);
+    const auto* p = byPosition(*world.players.get(), {50, 2, 60});
+    REQUIRE(p);
+    CHECK_FALSE(p->joints);
+    // The local player (built with the world, before the change) still has its joints.
+    REQUIRE(world.players.get()->local());
+    CHECK(world.players.get()->local()->joints);
 }
 
 TEST_CASE("Players builds observed players through their own layout") {

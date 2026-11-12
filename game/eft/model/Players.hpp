@@ -2,6 +2,7 @@
 
 #include "core/math/Math.hpp"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -28,6 +29,31 @@ enum class PlayerKind : std::uint8_t {
     }
     return "client";
 }
+
+// Body joints, in the order of PlayerState::joints (also the protocol's order). The first
+// kPositionJoints are the bones the position is derived from.
+enum class Joint : std::uint8_t {
+    Base,  // the skeleton root, at floor level
+    LeftFoot,
+    RightFoot,
+    Pelvis,
+    Chest,  // top of the spine
+    Neck,
+    Head,
+    LeftHip,
+    LeftKnee,
+    RightHip,
+    RightKnee,
+    LeftShoulder,
+    LeftElbow,
+    LeftHand,
+    RightShoulder,
+    RightElbow,
+    RightHand,
+};
+inline constexpr std::size_t kJointCount = 17;
+inline constexpr std::size_t kPositionJoints = 3;
+using Joints = std::array<math::Vec3, kJointCount>;
 
 struct PlayerState {
     std::uint32_t id = 0;  // small, stable within a raid, never reused in a raid
@@ -56,6 +82,9 @@ struct PlayerState {
     // vertical axis, pitch up/down.
     float yaw = 0;
     float pitch = 0;
+    // Joint positions relative to `position` (Joint order), from the same skeleton read; nullopt
+    // when the skeleton is only partly readable or doesn't look like a body.
+    std::optional<Joints> joints{};
 };
 
 struct PlayersSnapshot {

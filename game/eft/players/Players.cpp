@@ -243,30 +243,36 @@ void Players::positionsTick(Clock::time_point now) {
     for (auto& [instance, e] : entries_) {
         if (e.dead || e.absent) continue;
         if (!e.bones && now >= e.nextBoneResolve) {
-            e.bones = resolvePositionBones(game_, e.layout.bodyField);
+            e.bones = resolveSkeletonBones(game_, e.layout.bodyField);
             if (!e.bones) e.nextBoneResolve = now + kBoneRetry;
         }
         if (e.bones) tracked.push_back(&e);
     }
     if (tracked.empty()) return;
 
-    // One batched transform read for every tracked player's bones.
+    // One batched transform read for every tracked player's bones. A player's bones share one
+    // transform hierarchy, so the extra joints cost little more than the position bones.
     std::vector<Address> transforms;
-    transforms.reserve(tracked.size() * 3);
-    for (const Entry* e : tracked) transforms.insert(transforms.end(), e->bones->transforms.begin(), e->bones->transforms.end());
+    transforms.reserve(tracked.size() * kJointCount);
+    for (const Entry* e : tracked) transforms.insert(transforms.end(), e->bones->used().begin(), e->bones->used().end());
     const auto poses = game_.transforms.worldPoses(transforms, Freshness::Fresh);
 
     bool changed = false;
-    for (std::size_t i = 0; i < tracked.size(); ++i) {
-        Entry& e = *tracked[i];
-        const std::array<std::optional<unity::Pose>, 3> mine{poses[i * 3], poses[i * 3 + 1], poses[i * 3 + 2]};
-        if (auto position = pickPosition(mine)) {
+    std::size_t at = 0;
+    for (Entry* ep : tracked) {
+        Entry& e = *ep;
+        const std::span<const std::optional<unity::Pose>> mine{poses.data() + at, e.bones->count()};
+        at += mine.size();
+        const std::array<std::optional<unity::Pose>, 3> positionPoses{mine[0], mine[1], mine[2]};
+        if (auto position = pickPosition(positionPoses)) {
             e.position = position;
+            e.joints = e.bones->full ? relativeJoints(mine, *position) : std::nullopt;
             changed = true;
         }
-        if (!plausibleSkeleton(mine)) {
+        if (!plausibleSkeleton(positionPoses)) {
             // Stale bone pointers (e.g. the body was rebuilt): resolve again next tick.
             e.bones.reset();
+            e.joints.reset();
             e.nextBoneResolve = now;
         }
     }
@@ -294,6 +300,7 @@ void Players::publish() {
             .position = e.position,
             .yaw = e.yaw,
             .pitch = e.pitch,
+            .joints = e.joints,
         });
     }
     std::sort(snap.players.begin(), snap.players.end(), [](const auto& a, const auto& b) { return a.id < b.id; });

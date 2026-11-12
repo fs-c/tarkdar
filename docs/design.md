@@ -75,6 +75,10 @@ for a raid → in raid → cooldown → waiting for a raid.
   simulated elsewhere). Each kind resolves its own addresses; everything after that is shared.
 - **Positions come from skeleton bones**, read in one batch for all players. There's no usable
   position field.
+- **Body joints come from the same read.** 17 joints (`kJointSources` in
+  `game/eft/players/Skeleton.hpp`) share one transform hierarchy per player, so they cost little
+  more than the 3 position bones. A player gets either every joint or none. The bone indices are
+  checked by name with `--diagnose` (its Skeleton section lists every bone).
 - **Ids, not addresses.** Players and loot get small integer ids, stable within a raid. Addresses
   never leave the backend.
 - **Loot is classified by runtime class**, including base classes, so SPT subclasses still match.

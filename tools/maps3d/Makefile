@@ -21,13 +21,16 @@ cache-push:
 	$(REPO)/scripts/assets.py push cache --prune
 
 # Stage 2 - cache/ -> maps/3d/<map>/, served by the backend. No game files needed.
-maps: customs streets
+maps: customs streets factory
 
 customs:
 	$(PY) build.py --map customs
 
 streets:
 	$(PY) build.py --map streets
+
+factory:
+	$(PY) build.py --map factory
 
 # Upload the built maps (so machines without this toolchain can pull them); commit assets.json.
 publish:

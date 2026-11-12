@@ -300,6 +300,7 @@ export function App() {
     calibrationPixels: calibPoints.map((p) => p.pixel),
     debugPoints: map3d && mapPrefs.coordinatePick ? debugPicks.map((p) => p.pos) : [],
     trails: trailScene(),
+    bodies: !!map3d && mapPrefs.bodies,
   };
 
   const toggleCalibrate = () => {

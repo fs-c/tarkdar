@@ -22,6 +22,7 @@ namespace radar::server {
 // Records every raid to its own file in `dir`, from the same messages the live stream sends:
 //   - a "recording" header line first, then the messages as they happen;
 //   - players at most every `playersInterval` (and at once when someone dies, leaves or appears);
+//   - skeletons at most every `skeletonsInterval` (the ones in between are dropped);
 //   - loot as a full "loot" keyframe at the start and every `lootKeyframeInterval`, "lootDiff" lines
 //     in between.
 // A finished recording is gzipped in the background (<name>.jsonl → <name>.jsonl.gz).
@@ -31,6 +32,7 @@ public:
     struct Config {
         std::filesystem::path dir = "recordings";
         std::chrono::milliseconds playersInterval{100};
+        std::chrono::milliseconds skeletonsInterval{200};
         std::chrono::milliseconds lootKeyframeInterval{60'000};
         std::chrono::milliseconds flushInterval{1'000};
         // Finished recordings to keep; older ones are deleted when a raid starts. nullopt: keep all.
@@ -50,6 +52,7 @@ public:
     void onStatus(const eft::Status& status, const std::string& message);
     void onPlayers(const eft::PlayersSnapshot& players, const std::string& message);
     void onLoot(const eft::LootSnapshot& loot, const std::string& message);
+    void onSkeletons(std::uint64_t raidId, const std::string& message);
     // Other per-raid messages (exfils, explosives, equipment): written as they are.
     void onMessage(const std::string& type, std::uint64_t raidId, const std::string& message);
 
@@ -89,6 +92,7 @@ private:
     std::string pendingPlayers_;  // newest players message not written yet (written on finish)
     std::unordered_map<std::uint32_t, int> playerFlags_;  // id → dead/absent bits as last written
     std::optional<eft::PlayersSnapshot> earlyPlayers_;    // this raid's players from before the recording started
+    std::int64_t lastSkeletonsWrite_ = 0;
 
     // Loot diffing: the loot as last written, and when the last keyframe was.
     std::optional<eft::LootSnapshot> lastLoot_;

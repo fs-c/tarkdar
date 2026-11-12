@@ -1,6 +1,6 @@
 // Hit-testing clicks on the radar: which marker (player, exfil, loot) is under the cursor.
 
-import type { Exfil, ExplosivesData, LootEntry, Player, WorldPos } from "./protocol";
+import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type WorldPos } from "./protocol";
 import type { Layers } from "./render";
 import type { Projector } from "./projector";
 
@@ -31,7 +31,15 @@ export function pick(pr: Projector, src: Pickable, layers: Layers, x: number, y:
     const d = Math.hypot(sx - x, sy - y);
     if (d <= radius && (!best || d < best.d)) best = { sel, d };
   };
-  for (const p of src.players) consider({ kind: "player", id: p.id }, p.pos, 12);
+  for (const p of src.players) {
+    consider({ kind: "player", id: p.id }, p.pos, 12);
+    // Drawn as a figure (3D, close up): its chest and head count too.
+    if (p.pos && p.joints)
+      for (const j of [Joint.chest, Joint.head]) {
+        const o = j * 3;
+        consider({ kind: "player", id: p.id }, [p.pos[0] + p.joints[o]!, p.pos[1] + p.joints[o + 1]!, p.pos[2] + p.joints[o + 2]!], 12);
+      }
+  }
   if (layers.exfils) for (const e of src.exfils) consider({ kind: "exfil", id: e.id }, e.pos, 12);
   if (layers.explosives) {
     for (const g of src.explosives.grenades) consider({ kind: "grenade", id: g.id }, g.pos, 10);

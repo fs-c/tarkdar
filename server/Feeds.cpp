@@ -42,6 +42,16 @@ int LiveFeed::poll() {
             return [&rec, type](const auto& snap, const std::string& m) { rec->onMessage(type, snap.raidId, m); };
         };
         const auto& w = *sources_.world;
+        // Skeletons come from the same snapshot, as their own message (the recorder keeps fewer of them
+        // than of the players), sent first: a client redraws on players, with the matching skeletons.
+        if (auto players = w.players.get(); players != lastSkeletonsFrom_) {
+            if (auto message = encodeSkeletons(*players)) {
+                hub_.broadcast("skeletons", *message);
+                if (rec) rec->onSkeletons(players->raidId, *message);
+                ++sent;
+            }
+            lastSkeletonsFrom_ = std::move(players);
+        }
         forward(w.players, lastPlayers_, "players", [](const auto& s) { return encodePlayers(s); },
                 [&](const auto& s, const std::string& m) { rec->onPlayers(s, m); });
         forward(w.exfils, lastExfils_, "exfils", [](const auto& s) { return encodeExfils(s); }, other("exfils"));

@@ -6,16 +6,18 @@
 // overlaps it can be fed in one after the other.
 
 import { isSentinelPos } from "./connection";
-import type {
-  Exfil,
-  ExplosivesData,
-  LootDiffData,
-  LootEntry,
-  Player,
-  PlayerEquipment,
-  RecordedMessage,
-  StatusData,
-  WorldPos,
+import {
+  type Exfil,
+  type ExplosivesData,
+  type LootDiffData,
+  type LootEntry,
+  JOINT_COUNT,
+  type Player,
+  type PlayerEquipment,
+  type RecordedMessage,
+  type SkeletonsData,
+  type StatusData,
+  type WorldPos,
 } from "./protocol";
 
 /** The parts of RadarState a timeline provides for a moment. */
@@ -42,6 +44,68 @@ export type TimelineEvent =
 
 export type EventKind = TimelineEvent["kind"];
 
+/** Numbers per skeleton sample: JOINT_COUNT × [x, y, z]. */
+const SKELETON_STRIDE = JOINT_COUNT * 3;
+
+/**
+ * A player's skeletons over time: joint offsets from the position in whole centimetres. Samples are
+ * kept at most one per SKELETON_STEP_MS: a newer one closer than that to the one before the last
+ * replaces the last, so the newest skeleton is always there (live) without keeping all of them.
+ */
+export class Skeletons {
+  n = 0;
+  t = new Float64Array(16);
+  j = new Int16Array(16 * SKELETON_STRIDE);
+
+  push(t: number, joints: readonly number[]): void {
+    if (joints.length !== SKELETON_STRIDE) return;
+    let i = this.n;
+    if (i > 0 && t < this.t[i - 1]!) return; // out of order
+    if (i >= 2 && t - this.t[i - 2]! < SKELETON_STEP_MS) i--; // replaces the last
+    else if (i === this.t.length) this.grow();
+    this.t[i] = t;
+    this.j.set(joints, i * SKELETON_STRIDE);
+    this.n = i + 1;
+  }
+
+  /**
+   * Joints (metres, relative to the position) at t: interpolated between samples close enough,
+   * else the sample just before if it isn't older than SKELETON_MAX_AGE_MS. Null when there's none:
+   * the skeleton stopped coming (the player died, left, or its skeleton became unreadable).
+   */
+  at(t: number): Float32Array | null {
+    let lo = 0, hi = this.n - 1, i = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.t[mid]! <= t) {
+        i = mid;
+        lo = mid + 1;
+      } else hi = mid - 1;
+    }
+    if (i < 0 || t - this.t[i]! > SKELETON_MAX_AGE_MS) return null;
+    const out = new Float32Array(SKELETON_STRIDE);
+    const a = i * SKELETON_STRIDE;
+    const next = i + 1 < this.n && this.t[i + 1]! - this.t[i]! <= SKELETON_MAX_AGE_MS ? i + 1 : -1;
+    if (next < 0) {
+      for (let k = 0; k < SKELETON_STRIDE; k++) out[k] = this.j[a + k]! / 100;
+      return out;
+    }
+    const f = (t - this.t[i]!) / (this.t[next]! - this.t[i]!);
+    const b = next * SKELETON_STRIDE;
+    for (let k = 0; k < SKELETON_STRIDE; k++) out[k] = (this.j[a + k]! + (this.j[b + k]! - this.j[a + k]!) * f) / 100;
+    return out;
+  }
+
+  private grow(): void {
+    const t = new Float64Array(this.t.length * 2);
+    t.set(this.t);
+    const j = new Int16Array(t.length * SKELETON_STRIDE);
+    j.set(this.j);
+    this.t = t;
+    this.j = j;
+  }
+}
+
 /** A player's positions over time (only samples with a position, only when something moved). */
 export class Track {
   n = 0;
@@ -51,6 +115,7 @@ export class Track {
   z = new Float32Array(64);
   yaw = new Float32Array(64);
   pitch = new Float32Array(64);
+  readonly skeletons = new Skeletons();
   /** dead/absent changes, in time order; the first entry is when the player was first seen. */
   readonly flags: { t: number; dead: boolean; absent: boolean; extracted: boolean }[] = [];
 
@@ -185,6 +250,10 @@ function nearExfil(pos: WorldPos | null, exfils: Exfil[]): boolean {
 const TRAIL_STEP_M = 1;
 /** Samples further apart than this aren't interpolated (the player stood still in between). */
 const MAX_INTERPOLATION_GAP_MS = 500;
+/** Skeletons are kept at most this often (ms): recordings have them every 200 ms, live is faster. */
+const SKELETON_STEP_MS = 150;
+/** A skeleton older than this (ms) isn't shown, nor interpolated across. */
+const SKELETON_MAX_AGE_MS = 600;
 /** Live loot (full lists) is stored as a keyframe this often, as diffs in between. */
 const LOOT_KEYFRAME_MS = 60_000;
 
@@ -253,6 +322,9 @@ export class Timeline {
       case "players":
         this.ingestPlayers(t, msg.data.players);
         break;
+      case "skeletons":
+        this.ingestSkeletons(t, msg.data);
+        break;
       case "exfils":
         this.ingestExfils(t, msg.data.exfils);
         break;
@@ -305,6 +377,11 @@ export class Timeline {
       if (!parked) track.push(t, p);
     }
     if (added) this.playerIds = [...this.tracks.keys()].sort((a, b) => a - b);
+  }
+
+  private ingestSkeletons(t: number, data: SkeletonsData): void {
+    // Sent just before the players of the same moment: a new player's first one has no track yet.
+    for (const s of data.players) this.tracks.get(s.id)?.skeletons.push(t, s.j);
   }
 
   private ingestExfils(t: number, exfils: Exfil[]): void {
@@ -372,7 +449,10 @@ export class Timeline {
       if (!flags) continue; // not seen yet
       const pose = track.poseAt(t);
       if (pose) playersAt = Math.max(playersAt, Math.min(t, track.timeOf(track.n - 1)));
-      players.push({ ...track.meta, dead: flags.dead, absent: flags.absent, extracted: flags.extracted, pos: pose?.pos ?? null, yaw: pose?.yaw ?? 0, pitch: pose?.pitch ?? 0 });
+      const player: Player = { ...track.meta, dead: flags.dead, absent: flags.absent, extracted: flags.extracted, pos: pose?.pos ?? null, yaw: pose?.yaw ?? 0, pitch: pose?.pitch ?? 0 };
+      const joints = pose && !flags.dead && !flags.absent ? track.skeletons.at(t) : null;
+      if (joints) player.joints = joints;
+      players.push(player);
     }
     return { players, playersAt };
   }

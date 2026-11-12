@@ -36,6 +36,7 @@ private:
     std::chrono::milliseconds period_;
     std::shared_ptr<const eft::Status> lastStatus_;
     std::shared_ptr<const eft::PlayersSnapshot> lastPlayers_;
+    std::shared_ptr<const eft::PlayersSnapshot> lastSkeletonsFrom_;  // the snapshot skeletons were last sent for
     std::shared_ptr<const eft::ExfilsSnapshot> lastExfils_;
     std::shared_ptr<const eft::ExplosivesSnapshot> lastExplosives_;
     std::shared_ptr<const eft::LootSnapshot> lastLoot_;

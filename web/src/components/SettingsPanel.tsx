@@ -94,6 +94,12 @@ export function SettingsPanel(p: Props) {
         <ToggleRow label="Trees" hint="Simple markers where trees stand" checked={p.prefs.trees} onChange={toggle("trees")} />
         <ToggleRow label="Contour lines" hint="Every 2 m of terrain height" checked={p.prefs.contours} onChange={toggle("contours")} />
         <ToggleRow
+          label="Player figures"
+          hint="Up close, players are drawn from their skeleton instead of as dots"
+          checked={p.prefs.bodies}
+          onChange={toggle("bodies")}
+        />
+        <ToggleRow
           label="Use the 2D map"
           hint="Where a location has both a 2D and a 3D map"
           checked={p.prefs.prefer2d}

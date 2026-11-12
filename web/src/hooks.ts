@@ -104,10 +104,12 @@ export interface MapPrefs extends MapSettings {
   prefer2d: boolean;
   /** Clicking the 3D map (not a marker) records the world position under the cursor. */
   coordinatePick: boolean;
+  /** Up close, players are drawn as figures from their skeleton (3D map). */
+  bodies: boolean;
 }
 
 export function useMapPrefs() {
-  return usePersistentState<MapPrefs>("radar.map", { ...DEFAULT_MAP_SETTINGS, customPalette: null, prefer2d: false, coordinatePick: false });
+  return usePersistentState<MapPrefs>("radar.map", { ...DEFAULT_MAP_SETTINGS, customPalette: null, prefer2d: false, coordinatePick: false, bodies: true });
 }
 
 /**

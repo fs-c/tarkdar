@@ -1,0 +1,30 @@
+/* Floats over the map's top right corner. The options open to the left of the button, as one
+   pill with it; on a narrow map they scroll. */
+.switch {
+  position: absolute; top: 10px; right: 10px; z-index: 2; box-sizing: border-box; max-width: calc(100% - 20px);
+  display: flex; align-items: stretch; padding: 3px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--overlay);
+  box-shadow: 0 2px 10px var(--shadow);
+  &[data-open="true"] { background: var(--overlay-surface); }
+}
+.button {
+  flex: none; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--radius); background: none; cursor: pointer;
+  & .preview { width: 34px; height: 34px; }
+  &:hover .preview, &[aria-expanded="true"] .preview { outline: 1px solid var(--border-hover); }
+}
+.preview { display: block; width: 44px; height: 44px; border-radius: var(--radius); }
+.options {
+  display: flex; gap: 2px; min-width: 0; overflow: hidden; max-width: 0; opacity: 0;
+  transition: max-width 0.18s ease, opacity 0.18s ease, margin 0.18s ease;
+  .switch[data-open="true"] > & { max-width: 640px; opacity: 1; margin-right: 6px; overflow-x: auto; }
+}
+.option {
+  flex: none; display: grid; justify-items: center; gap: 3px; padding: 4px 4px 3px; border: 0; border-radius: var(--radius);
+  background: none; color: var(--muted); font-size: var(--fs-xs); cursor: pointer;
+  &:hover { background: var(--hover); color: var(--text); }
+  &[aria-checked="true"] { color: var(--accent-text); }
+  &[aria-checked="true"] .preview { outline: 2px solid var(--accent); outline-offset: 1px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .options { transition: none; }
+}

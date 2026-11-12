@@ -23,6 +23,17 @@ node capture.mjs --data customs --views views/customs.json --out runs/customs
 node compare.mjs runs/customs-reference runs/customs --diff runs/customs/diff
 ```
 
+For looking rather than measuring, `shot.mjs` takes screenshots through the map's own camera and
+settings (styles, projection), as the radar shows it:
+
+```bash
+node shot.mjs --data customs --out /tmp/shots --settings '{"style":"plan","orthographic":true}' \
+  --views '[{"name":"all"},{"name":"tilted","center":[150,0,0],"span":320,"tilt":45,"heading":20}]'
+```
+
+`center` is a game world position, `span` the metres across the height of the view, `tilt` degrees
+from vertical.
+
 The page (`page/`) is nothing but the radar's own 3D core (`web/src/map3d`) showing one dataset;
 `vite.config.mjs` serves it with the web app's vite and maps `--data <name>` to
 `harness/data/<name>` or `maps/3d/<name>`.

@@ -14,4 +14,7 @@
   box-shadow: 0 2px 10px var(--shadow);
   &:hover { color: var(--text); }
   &[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  &[data-heading="true"] { background: var(--accent); color: var(--on-accent); }
 }
+/* The style switcher takes the top right corner: what else floats there starts below it. */
+.main[data-style-switch="true"] { --top-right-inset: 50px; }

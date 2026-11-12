@@ -3,7 +3,7 @@
 // whole mesh, so one draw per mesh).
 
 import * as THREE from "three";
-import { liftColor, srgbBytesToLinear } from "./color";
+import { srgbBytesToLinear } from "./color";
 import { MESH_FLAT, type MapData } from "./dataset";
 import type { Stage } from "./stage";
 
@@ -76,7 +76,7 @@ export class InstanceRenderer {
     /** Dataset URL, for the draped images. */
     private readonly base: string,
   ) {
-    this.linearColors = data.colors ? srgbBytesToLinear(data.colors, true) : null;
+    this.linearColors = data.colors ? srgbBytesToLinear(data.colors) : null;
     stage.setVertexColors(this.linearColors !== null);
   }
 
@@ -171,7 +171,6 @@ export class InstanceRenderer {
     const perSlot = colored && !this.linearColors;
     const matrix = new THREE.Matrix4();
     const color = new THREE.Color();
-    const rgb: [number, number, number] = [0, 0, 0];
     for (const run of groupRuns(d, slots, perSlot)) {
       const { category, slots: list } = run;
       const mesh = d.partMesh[run.firstPart]!;
@@ -189,11 +188,7 @@ export class InstanceRenderer {
         if (perSlot && !image) {
           const c = s * 4;
           if (d.slotColor[c + 3]) {
-            rgb[0] = d.slotColor[c]!;
-            rgb[1] = d.slotColor[c + 1]!;
-            rgb[2] = d.slotColor[c + 2]!;
-            liftColor(rgb);
-            color.setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, THREE.SRGBColorSpace);
+            color.setRGB(d.slotColor[c]! / 255, d.slotColor[c + 1]! / 255, d.slotColor[c + 2]! / 255, THREE.SRGBColorSpace);
           } else {
             color.setHex(this.stage.categoryColor(category));
           }

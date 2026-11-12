@@ -1,4 +1,4 @@
-import { Locate, LocateFixed } from "lucide-react";
+import { Locate, LocateFixed, Navigation } from "lucide-react";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { type ControlPoint, formatCalibration, worldToPixel } from "../calibration";
 import type { RadarState } from "../connection";
@@ -23,6 +23,7 @@ import { RaidsPanel } from "./RaidsPanel";
 import { RadarCanvas } from "./RadarCanvas";
 import type { Radar3DHandle } from "./Radar3D";
 import { SettingsPanel } from "./SettingsPanel";
+import { StyleSwitch } from "./StyleSwitch";
 import { PlaybackBar } from "./PlaybackBar";
 import { ActivityBar, SidePanel, type ViewId } from "./Sidebar";
 import s from "./App.module.css";
@@ -98,6 +99,12 @@ export function App() {
   const radar3d = useRef<Radar3DHandle>(null);
   const [layers, toggleLayer] = useLayers();
   const [follow, setFollow] = useState(true);
+  // While following on the 3D map: the map turns with the local player's view direction.
+  const [followHeading, setFollowHeading] = useState(false);
+  const heading = follow && followHeading && !!map3d;
+  useEffect(() => {
+    if (!follow) setFollowHeading(false);
+  }, [follow]);
   const [camera] = useState(() => Object.assign(new View(), { zoom: 0.75 }));
   const [hovered, setHovered] = useState<Selection | null>(null);
   const [listPrefs, setListPrefs] = usePersistentState<ListPrefs>("radar.list", DEFAULT_PREFS);
@@ -253,6 +260,7 @@ export function App() {
       if (e.key === "Escape") setPicked((p) => ({ ...p, sel: null }));
       else if (e.key === "f") setFollow((f) => !f);
       else if (e.key === "l") togglePanel();
+      else if (e.key === "m") setMapPrefs((p) => ({ ...p, style: p.style === "plan" ? "realistic" : "plan" }));
       else if (e.key === " " && (e.target === document.body || e.target instanceof HTMLCanvasElement)) {
         e.preventDefault();
         pb.toggle();
@@ -401,7 +409,7 @@ export function App() {
             {panelBody()}
           </SidePanel>
         )}
-        <main className={s.main}>
+        <main className={s.main} data-style-switch={!!map3d}>
           {map3d ? (
             <Suspense fallback={null}>
               <Radar3D
@@ -410,7 +418,9 @@ export function App() {
                 scene={scene}
                 settings={mapPrefs}
                 follow={follow}
+                heading={heading}
                 onPan={() => setFollow(false)}
+                onTurn={() => setFollowHeading(false)}
                 onTap={onTap3d}
                 onStats={ui.open && ui.section === "settings" ? onMapStats : undefined}
               />
@@ -428,13 +438,36 @@ export function App() {
               onExitReplay={backToLive}
             />
           )}
+          {map3d && (
+            <StyleSwitch
+              style={mapPrefs.style}
+              palette={mapPrefs.palette}
+              custom={mapPrefs.customPalette}
+              onChange={(style, palette) => setMapPrefs((p) => ({ ...p, style, palette }))}
+            />
+          )}
+          {/* Off: flies to the local player and follows. Following, on the 3D map: turns the map
+              with their view direction, or not. Moving the map by hand (or F) stops following. */}
           <button
             className={s.follow}
             aria-pressed={follow}
-            title={follow ? "Following you (F)" : "Follow the local player (F)"}
-            onClick={() => setFollow((f) => !f)}
+            data-heading={heading}
+            title={
+              !follow
+                ? "Follow the local player (F)"
+                : !map3d
+                  ? "Following you (F)"
+                  : heading
+                    ? "Following your view direction: click for a fixed direction. Drag the map or press F to stop following."
+                    : "Following you: click to follow your view direction too. Drag the map or press F to stop following."
+            }
+            onClick={() => {
+              if (!follow) setFollow(true);
+              else if (map3d) setFollowHeading((h) => !h);
+              else setFollow(false);
+            }}
           >
-            {follow ? <LocateFixed size={20} /> : <Locate size={20} />}
+            {heading ? <Navigation size={20} /> : follow ? <LocateFixed size={20} /> : <Locate size={20} />}
           </button>
           {selection && (
             <DetailsPanel

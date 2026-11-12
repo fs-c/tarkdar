@@ -13,6 +13,7 @@ import { ui } from "../theme";
 import s from "./Radar3D.module.css";
 
 export interface Radar3DHandle {
+  /** Flies there. */
   centerOn(pos: WorldPos): void;
   /** The current camera, for hit-testing markers. */
   projector(): Projector;
@@ -26,10 +27,14 @@ interface Props {
   url: string;
   scene: Scene;
   settings: MapSettings;
-  /** Keep the local player centred. */
+  /** Keep the local player centred. Turning it on flies there. */
   follow: boolean;
+  /** While following: also turn the map so that the local player's view direction points up. */
+  heading: boolean;
   /** The user moved the map by hand: the caller turns follow off. */
   onPan: () => void;
+  /** The user turned the map by hand: the caller turns heading off. */
+  onTurn: () => void;
   /** Click without drag, in canvas CSS pixels. */
   onTap: (x: number, y: number) => void;
   /** Render statistics after each map frame (debugging); omit to skip the bookkeeping. */
@@ -40,14 +45,19 @@ interface Props {
 /** Metres of ground across the view when a map opens while following the local player. */
 const FOLLOW_SPAN = 350;
 
+const MOVE_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD"]);
+
 /** While following, the map is re-rendered at most this often (ms); markers update on every scene. */
 const FOLLOW_INTERVAL = 33;
+/** Flying to the local player from further out than this (metres across the view) also zooms in. */
+const FLY_ZOOM_ABOVE = 600;
 
-export function Radar3D({ url, scene, settings, follow, onPan, onTap, onStats, ref }: Props) {
+
+export function Radar3D({ url, scene, settings, follow, heading, onPan, onTurn, onTap, onStats, ref }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const mapRef = useRef<Map3D | null>(null);
-  const latest = useRef({ scene, follow, onPan, onTap, onStats });
+  const latest = useRef({ scene, follow, heading, onPan, onTurn, onTap, onStats, settings });
   const drawRequested = useRef(0);
   const [status, setStatus] = useState<{ progress: number | null; error: string | null }>({ progress: 0, error: null });
 
@@ -89,6 +99,7 @@ export function Radar3D({ url, scene, settings, follow, onPan, onTap, onStats, r
       latest.current.onStats?.(map.stats);
     };
     map.onUserPan = () => latest.current.onPan();
+    map.onUserTurn = () => latest.current.onTurn();
     let live = true;
     setStatus({ progress: 0, error: null });
     map.load(url, (progress) => live && setStatus({ progress, error: null })).then(
@@ -117,17 +128,27 @@ export function Radar3D({ url, scene, settings, follow, onPan, onTap, onStats, r
   // Every render: new scene. Follow moves the map's camera (rate-limited, the map then redraws
   // the markers itself); otherwise only the markers are redrawn.
   const lastFollow = useRef(0);
+  const wasFollowing = useRef(follow);
   const followTimer = useRef(0);
   useLayoutEffect(() => {
-    latest.current = { scene, follow, onPan, onTap, onStats };
+    latest.current = { scene, follow, heading, onPan, onTurn, onTap, onStats, settings };
     const map = mapRef.current;
     const local = follow ? scene.players.find((p) => p.local && p.pos)?.pos : null;
-    if (map?.loaded && local) {
+    // Follow turned on (not: the map opened while following): fly to the local player.
+    const turnedOn = follow && !wasFollowing.current;
+    wasFollowing.current = follow;
+    if (turnedOn && map?.loaded && local) {
+      const player = () => (latest.current.follow ? (latest.current.scene.players.find((p) => p.local && p.pos)?.pos ?? null) : null);
+      map.flyTo(player, map.viewSpan() > FLY_ZOOM_ABOVE ? FOLLOW_SPAN : null);
+    } else if (map?.loaded && local) {
       const recenter = () => {
         lastFollow.current = performance.now();
-        const now = latest.current;
-        const pos = now.follow ? now.scene.players.find((p) => p.local && p.pos)?.pos : null;
-        if (pos) mapRef.current?.centerOn(pos);
+        const now = latest.current, map = mapRef.current;
+        const player = now.follow ? now.scene.players.find((p) => p.local && p.pos) : null;
+        if (!player?.pos || !map) return;
+        // A flight ends on the player by itself.
+        if (!map.flying) map.centerOn(player.pos);
+        if (now.heading) map.turnTo(player.yaw);
       };
       window.clearTimeout(followTimer.current);
       const wait = FOLLOW_INTERVAL - (performance.now() - lastFollow.current);
@@ -149,8 +170,42 @@ export function Radar3D({ url, scene, settings, follow, onPan, onTap, onStats, r
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // WASD scheme: held keys move the view. By key position (e.code), so it works on any layout.
+  useEffect(() => {
+    if (settings.controls !== "wasd") return;
+    const held = new Set<string>();
+    let fast = false;
+    const apply = () => {
+      const axis = (plus: string, minus: string) => (held.has(plus) ? 1 : 0) - (held.has(minus) ? 1 : 0);
+      mapRef.current?.setMotion(axis("KeyD", "KeyA"), axis("KeyW", "KeyS"), fast);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      const down = e.type === "keydown";
+      fast = e.shiftKey;
+      if (MOVE_KEYS.has(e.code)) {
+        if (down && (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey)) return;
+        if (down) held.add(e.code);
+        else held.delete(e.code);
+      }
+      apply();
+    };
+    const release = () => {
+      held.clear();
+      apply();
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKey);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKey);
+      window.removeEventListener("blur", release);
+      release();
+    };
+  }, [settings.controls]);
+
   useImperativeHandle(ref, () => ({
-    centerOn: (pos) => mapRef.current?.centerOn(pos),
+    centerOn: (pos) => mapRef.current?.flyTo(() => pos),
     projector: () => mapRef.current?.projector() ?? { width: 0, height: 0, toScreen: () => [NaN, NaN], pxPerMetre: () => 0, detail: 0 },
     pickSurface: (x, y) => mapRef.current?.pick(x, y) ?? null,
     pose: () => mapRef.current?.pose() ?? null,

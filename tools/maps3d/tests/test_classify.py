@@ -53,7 +53,8 @@ class ShaderRulesTest(unittest.TestCase):
         self.assertEqual(c.classify("garage_wall", shader="shadow"), "shadow")
         self.assertEqual(c.classify("garage_wall", shader="shadow_2sided"), "shadow")
         self.assertEqual(c.classify("road_patch", shader="Decal/Ultra Deferred Decal Of God 3000"), "decal")
-        self.assertEqual(c.classify("road_patch", shader="Custom/Vert Paint SoftCutout Decal"), "decal")
+        # A decal by name only: this shader draws the road surfaces laid over the terrain.
+        self.assertEqual(c.classify("road_patch", shader="Custom/Vert Paint SoftCutout Decal"), "road")
         self.assertEqual(c.classify("privet_hedge_LOD1", shader="Nature/SpeedTree8"), "foliage")
         self.assertEqual(c.classify("x", shader="Hidden/Tree Billboard LOD"), "foliage")
         self.assertEqual(c.classify("glass_window", shader="Global Fog/Transparent Reflective Specular"), "glass")

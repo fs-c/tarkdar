@@ -8,7 +8,7 @@
 import * as THREE from "three";
 import { loadMapData, type MapData } from "./dataset";
 import { InstanceRenderer } from "./instances";
-import { DEFAULT_MAP_SETTINGS, type MapSettings } from "./settings";
+import { DEFAULT_MAP_SETTINGS, type MapSettings, PLAN_PALETTES } from "./settings";
 import { Stage } from "./stage";
 
 export type WorldPos = [number, number, number];
@@ -32,8 +32,19 @@ export interface MapProjection {
 
 /** Screen pixels per metre that count as the 2D view's zoom 1 (label thresholds, see Projector). */
 const DETAIL_PX_PER_METRE = 4;
+/** WASD movement: view heights per second, and the factor with Shift held. */
+const MOVE_SPEED = 0.7;
+const MOVE_FAST = 3;
+/** Following a direction: the remaining angle shrinks to 1/e in this many ms. */
+const TURN_TIME = 140;
 /** Categories that only make sense with textures; never drawn. */
 const HIDDEN = ["shadow", "decal", "background"];
+
+/** a - b, in (-pi, pi]. */
+function angleDifference(a: number, b: number): number {
+  const d = (a - b) % (2 * Math.PI);
+  return d > Math.PI ? d - 2 * Math.PI : d <= -Math.PI ? d + 2 * Math.PI : d;
+}
 
 export class Map3D {
   readonly stats: MapStats = { drawCalls: 0, triangles: 0, frameMs: 0, frames: 0 };
@@ -41,16 +52,24 @@ export class Map3D {
   onRender: (() => void) | null = null;
   /** The user moved the map by hand (so a caller that follows something can stop). */
   onUserPan: (() => void) | null = null;
+  /** The user turned the map by hand (so a caller that follows a direction can stop). */
+  onUserTurn: (() => void) | null = null;
 
   private stage: Stage | null = null;
   private data: MapData | null = null;
   private instances: InstanceRenderer | null = null;
   private settings: MapSettings = DEFAULT_MAP_SETTINGS;
   private frameRequested = 0;
+  private readonly motion = { right: 0, forward: 0, fast: false, frame: 0, time: 0 };
   private abort: AbortController | null = null;
   private readonly observer: ResizeObserver;
   /** Where the camera target was put by code; a different target means the user panned. */
   private readonly expectedTarget = new THREE.Vector3();
+  /** The heading code left the camera at; a different one means the user turned the map. */
+  private expectedHeading = 0;
+  private byCode = false;
+  private readonly turn = { goal: 0, frame: 0, time: 0 };
+  private flight: { frame: number; start: number; duration: number; from: THREE.Vector3; fromSpan: number; span: number | null; to: () => WorldPos | null } | null = null;
   private readonly scratch = new THREE.Vector3();
   private readonly scratch2 = new THREE.Vector3();
 
@@ -84,6 +103,7 @@ export class Map3D {
       high = Math.max(high, data.instBox[b + 4]!);
     }
     if (low < high) stage.setTerrainHeights(low, high);
+    stage.setGround(data.ground);
 
     this.stage = stage;
     this.data = data;
@@ -91,11 +111,20 @@ export class Map3D {
     this.resize();
     stage.frame(data.index.focusBounds);
     this.expectedTarget.copy(stage.controls.target);
+    this.expectedHeading = stage.heading();
     // Only now: framing the map above also "changes" the camera, and that is not the user.
     stage.controls.addEventListener("change", () => {
+      if (this.byCode) return;
       if (stage.controls.target.distanceToSquared(this.expectedTarget) > 1e-6) {
         this.expectedTarget.copy(stage.controls.target);
+        this.cancelFlight();
         this.onUserPan?.();
+      }
+      if (Math.abs(angleDifference(stage.heading(), this.expectedHeading)) > 1e-4) {
+        this.expectedHeading = stage.heading();
+        cancelAnimationFrame(this.turn.frame);
+        this.turn.frame = 0;
+        this.onUserTurn?.();
       }
       this.requestRender();
     });
@@ -108,6 +137,11 @@ export class Map3D {
     this.abort = null;
     cancelAnimationFrame(this.frameRequested);
     this.frameRequested = 0;
+    cancelAnimationFrame(this.motion.frame);
+    this.motion.frame = 0;
+    this.cancelFlight();
+    cancelAnimationFrame(this.turn.frame);
+    this.turn.frame = 0;
     this.instances?.dispose();
     this.stage?.dispose();
     this.instances = null;
@@ -121,7 +155,8 @@ export class Map3D {
   }
 
   setSettings(settings: MapSettings): void {
-    const recolor = settings.colored !== this.settings.colored;
+    const colored = (s: MapSettings) => s.colored || s.style === "plan";
+    const recolor = colored(settings) !== colored(this.settings);
     this.settings = settings;
     if (recolor) this.rebuild();
     this.applySettings();
@@ -132,7 +167,8 @@ export class Map3D {
     const data = this.data;
     const visible = new Set(data.index.categories.map((_, id) => id));
     for (const name of HIDDEN) visible.delete(data.categoryId(name));
-    this.instances.rebuild(data.slotsOf(visible), this.settings.colored);
+    // The plan style works from the material colours as well.
+    this.instances.rebuild(data.slotsOf(visible), this.settings.colored || this.settings.style === "plan");
   }
 
   private applySettings(): void {
@@ -142,6 +178,12 @@ export class Map3D {
     if (trees) trees.visible = this.settings.trees;
     stage.setContours(this.settings.contours);
     stage.setWireframe(this.settings.wireframe);
+    stage.setGrade(this.settings);
+    stage.setPlan(this.settings.style === "plan");
+    // A stored palette may predate a colour added since.
+    stage.setPalette({ ...PLAN_PALETTES.paper, ...this.settings.palette });
+    stage.setControlScheme(this.settings.controls);
+    stage.setOrthographic(this.settings.orthographic);
     this.requestRender();
   }
 
@@ -189,33 +231,155 @@ export class Map3D {
     stage.controls.update(); // fires "change": a frame is requested
   }
 
-  /** factor > 1 zooms in. */
-  zoomBy(factor: number): void {
+  /** Runs a camera change that is the code's own: not a pan or turn by the user. */
+  private own(change: (stage: Stage) => void): void {
     const stage = this.stage;
     if (!stage) return;
-    const offset = this.scratch.subVectors(stage.camera.position, stage.controls.target);
-    const distance = THREE.MathUtils.clamp(offset.length() / factor, stage.controls.minDistance, stage.controls.maxDistance);
-    stage.camera.position.copy(stage.controls.target).add(offset.setLength(distance));
-    stage.controls.update();
+    this.byCode = true;
+    try {
+      change(stage);
+    } finally {
+      this.byCode = false;
+    }
+    this.expectedTarget.copy(stage.controls.target);
+    this.expectedHeading = stage.heading();
+    this.requestRender();
   }
 
-  /** Zooms so that about `metres` of ground fit across the shorter side of the view. */
-  setViewSpan(metres: number): void {
-    const stage = this.stage;
-    if (!stage) return;
-    const offset = this.scratch.subVectors(stage.camera.position, stage.controls.target);
-    const distance = (metres * 0.5) / Math.tan(THREE.MathUtils.degToRad(stage.camera.fov / 2));
-    const clamped = THREE.MathUtils.clamp(distance, stage.controls.minDistance, stage.controls.maxDistance);
-    stage.camera.position.copy(stage.controls.target).add(offset.setLength(clamped));
-    stage.controls.update();
+  /** A flight (flyTo) is under way. */
+  get flying(): boolean {
+    return this.flight !== null;
   }
+
+  /**
+   * Flies the view to a position, smoothly. `to` is asked on every frame, so the flight ends on
+   * a moving target (the local player). `span`: also zoom to this many metres across the view.
+   * Moving the map by hand ends the flight where it is.
+   */
+  flyTo(to: () => WorldPos | null, span: number | null = null): void {
+    const stage = this.stage;
+    const goal = to();
+    if (!stage || !goal) return;
+    this.cancelFlight();
+    const from = stage.controls.target.clone();
+    const fromSpan = stage.span();
+    // Longer for longer ways, measured in views: a hop across the screen, not across the map.
+    const views = from.distanceTo(this.scratch.set(goal[0], goal[1], -goal[2])) / Math.max(fromSpan, 1);
+    const duration = THREE.MathUtils.clamp(350 + 250 * views, 350, 1200);
+    this.flight = { frame: requestAnimationFrame(this.flightStep), start: performance.now(), duration, from, fromSpan, span, to };
+  }
+
+  private cancelFlight(): void {
+    if (this.flight) cancelAnimationFrame(this.flight.frame);
+    this.flight = null;
+  }
+
+  private readonly flightStep = (now: number): void => {
+    const { flight, stage } = this;
+    if (!flight || !stage) return;
+    const goal = flight.to();
+    const t = goal ? Math.min(1, (now - flight.start) / flight.duration) : 1;
+    const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+    if (goal) {
+      const target = this.scratch.set(goal[0], goal[1], -goal[2]).lerp(flight.from, 1 - eased);
+      stage.camera.position.add(this.scratch2.subVectors(target, stage.controls.target));
+      stage.controls.target.copy(target);
+      this.expectedTarget.copy(target);
+      // Zoom is a ratio: interpolated in the exponent it looks even.
+      if (flight.span !== null) stage.setSpan(flight.fromSpan * (flight.span / flight.fromSpan) ** eased);
+      else stage.controls.update();
+    }
+    // The flight may have been cancelled by the update above (it reports a change).
+    if (this.flight === flight) flight.frame = t < 1 ? requestAnimationFrame(this.flightStep) : 0;
+    if (t >= 1 && this.flight === flight) this.flight = null;
+    // This frame, not the next one.
+    cancelAnimationFrame(this.frameRequested);
+    this.frameRequested = 0;
+    this.renderNow();
+  };
+
+  /**
+   * Turns the view, smoothly, until `degrees` (clockwise from north, a player's yaw) points up.
+   * Call it again whenever the direction changes: the view keeps following. Frames are rendered
+   * only while it turns.
+   */
+  turnTo(degrees: number): void {
+    this.turn.goal = THREE.MathUtils.degToRad(degrees);
+    if (!this.turn.frame && this.stage) {
+      this.turn.time = performance.now();
+      this.turn.frame = requestAnimationFrame(this.turnStep);
+    }
+  }
+
+  private readonly turnStep = (now: number): void => {
+    const { turn, stage } = this;
+    turn.frame = 0;
+    if (!stage) return;
+    const heading = stage.heading();
+    const difference = angleDifference(turn.goal, heading);
+    const arrived = Math.abs(difference) < 2e-3;
+    // The same share of the remaining angle per unit of time, whatever the frame rate.
+    const share = arrived ? 1 : 1 - Math.exp(-Math.max(0, now - turn.time) / TURN_TIME);
+    turn.time = now;
+    this.own(() => stage.setHeading(heading + difference * share));
+    cancelAnimationFrame(this.frameRequested);
+    this.frameRequested = 0;
+    this.renderNow();
+    if (!arrived) turn.frame = requestAnimationFrame(this.turnStep);
+  };
+
+  /** factor > 1 zooms in. */
+  zoomBy(factor: number): void {
+    if (!this.stage) return;
+    this.stage.setSpan(this.stage.span() / factor);
+    this.requestRender();
+  }
+
+  /** Metres of ground across the height of the view. */
+  viewSpan(): number {
+    return this.stage?.span() ?? 0;
+  }
+
+  /** Zooms so that about `metres` of ground fit across the height of the view. */
+  setViewSpan(metres: number): void {
+    if (!this.stage) return;
+    this.stage.setSpan(metres);
+    this.requestRender();
+  }
+
+  /**
+   * Keeps moving the view along the ground (the WASD keys): right and forward are -1, 0 or 1
+   * relative to the screen. Frames are rendered only while something is held.
+   */
+  setMotion(right: number, forward: number, fast: boolean): void {
+    Object.assign(this.motion, { right, forward, fast });
+    if ((right || forward) && !this.motion.frame && this.stage) {
+      this.motion.time = performance.now();
+      this.motion.frame = requestAnimationFrame(this.moveStep);
+    }
+  }
+
+  private readonly moveStep = (now: number): void => {
+    const { motion, stage } = this;
+    motion.frame = 0;
+    const length = Math.hypot(motion.right, motion.forward);
+    if (!stage || !length) return;
+    const seconds = Math.min(0.1, Math.max(0, now - motion.time) / 1000);
+    motion.time = now;
+    // Speed follows the zoom: the same share of the view per second at any height.
+    const metres = (stage.span() * MOVE_SPEED * (motion.fast ? MOVE_FAST : 1) * seconds) / length;
+    stage.move(motion.right * metres, motion.forward * metres); // "change": the user panned
+    // This frame, not the next one.
+    cancelAnimationFrame(this.frameRequested);
+    this.frameRequested = 0;
+    this.renderNow();
+    motion.frame = requestAnimationFrame(this.moveStep);
+  };
 
   /** Back to the top-down, north-up view of the whole map. */
   resetView(): void {
-    if (!this.stage) return;
-    this.stage.resetView();
-    this.expectedTarget.copy(this.stage.controls.target);
-    this.requestRender();
+    this.cancelFlight();
+    this.own((stage) => stage.resetView());
   }
 
   /** Camera position and target in world coordinates (debug reports). */
@@ -229,11 +393,11 @@ export class Map3D {
   setPose(position: WorldPos, target: WorldPos): void {
     const stage = this.stage;
     if (!stage) return;
-    stage.camera.position.set(position[0], position[1], -position[2]);
-    stage.controls.target.set(target[0], target[1], -target[2]);
-    this.expectedTarget.copy(stage.controls.target);
-    stage.controls.update();
-    this.requestRender();
+    this.own(() => {
+      stage.camera.position.set(position[0], position[1], -position[2]);
+      stage.controls.target.set(target[0], target[1], -target[2]);
+      stage.controls.update();
+    });
   }
 
   // ---- projection -----------------------------------------------------------------------------

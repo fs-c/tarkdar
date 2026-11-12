@@ -62,6 +62,23 @@ scene paths, its location `ids`, and whether `*indoor*` scenes are optional.
   exist.
 - Drag moves the map, the wheel zooms, right-drag (two fingers) tilts and turns it, `0` resets to
   top-down with north up, `+`/`-` zoom, `F` follows the local player.
+- **Settings → Controls → WASD**: `W A S D` move along the ground (Shift: faster, speed follows the
+  zoom), drag tilts and turns the camera, right-drag moves the map.
+- **Settings → Projection**: perspective (25° field of view) or orthographic (parallel: buildings
+  never lean). Switching keeps target, direction and zoom.
+- **The style button** in the map's top right corner opens a row of the styles with a small
+  preview of each: Realistic, the pre-made plan palettes, and your own palette if you made one
+  (`components/StyleSwitch.tsx`). `M` switches between realistic and plan.
+- **The follow button** (bottom right, `F`): off, it flies to the local player and follows them
+  (`Map3D.flyTo`: the flight ends on the moving player, takes longer the further it goes, and zooms
+  in when started from far out). While following it toggles **following the view direction**: the
+  map turns so that the player's view points up (`Map3D.turnTo`). Moving the map by hand or `F`
+  stops following; turning it by hand stops following the direction. Centring on something from a
+  list or the timeline flies there as well.
+- **Settings → Style**: **Realistic** shows what the place looks like (the game's material
+  colours, lit); **Plan** is drawn like a map, for reading a situation at a glance (below). Same
+  camera, same geometry: switching costs one frame.
+- **Settings → 3D map colours**: colour schemes and sliders for the colour grade (below), live.
 - Markers (players, loot, exfils, explosives, trails, labels) are the 2D radar's, drawn on a canvas
   over the map through a projection (`web/src/projector.ts`): same code on both kinds of map. They
   show through buildings.
@@ -83,10 +100,12 @@ scene paths, its location `ids`, and whether `*indoor*` scenes are optional.
 2. **Select** (`build.py`): LOD1 where a LOD group has it; a renderer listed in several levels is
    shown at each of them. Streets drops its `*indoor*` scenes.
 3. **Classify** (`classify.py`), per material slot: structure, terrain, foliage, water, glass,
-   shadow, decal, background. The shader name decides where it is unambiguous (`shadow*`,
+   shadow, decal, background, road. The shader name decides where it is unambiguous (`shadow*`,
    `Decal/*`, SpeedTree, water, glass); mesh-name tokens cover the rest.
-4. **Cells** (`hlod.py`): structure and glass are merged per 128 m grid cell into world space;
-   shadow, decal, background and foliage are dropped; terrain and water stay as they are.
+4. **Cells** (`hlod.py`): structure, glass and road are merged per 128 m grid cell into world
+   space; shadow, decal, background and foliage are dropped; terrain and water stay as they are.
+   Roads keep their up-facing triangles as authored (no simplification, no hidden-surface
+   removal): they lie centimetres above the terrain.
 5. **Simplify**: each cell with meshoptimizer to an absolute error of **10 cm**, with pruning:
    detached parts smaller than the error vanish, so there is no size cutoff for props.
 6. **Hidden-surface removal** (`visibility.py`): a triangle is kept if a front-facing sample of it
@@ -96,6 +115,7 @@ scene paths, its location `ids`, and whether `*indoor*` scenes are optional.
 7. **Finish**: vertices welded by position + colour (cells are flat shaded); material colour
    (albedo-thumbnail mean × `_Color`) baked per vertex; terrain ground colour image from splat
    maps × layer colours; one marker instance per tree of 3 m or more.
+8. **Ground map** (`ground.py`), from the finished cells: see "The plan style".
 
 | | Customs | Streets |
 |---|---:|---:|
@@ -105,9 +125,54 @@ scene paths, its location `ids`, and whether `*indoor*` scenes are optional.
 | cell meshes (≈ draw calls) | 108 | 101 |
 | `chunk-0.t3d` | 137 MB | 208 MB |
 
-The viewer lifts the baked colours (`web/src/map3d/color.ts`: luma → 0.36 + 0.58 × luma, hue
-kept; the raw means have a median luma of 0.3) and shades terrain with slope, a height tint and
-2 m contour lines (`stage.ts`). These are viewer constants: no rebuild to change them.
+The dataset holds the game's colours as they are (sRGB albedo means; median luma 0.3). The
+viewer turns them into map colours **in the fragment shader** (`stage.ts`, `mapGrade`): luma →
+lift + contrast × luma with the hue kept, then saturation, with an extra saturation factor for the
+terrain's ground image. The values are settings (`settings.ts` `ColorGrade`, presets in
+`COLOR_SCHEMES`), so changing them costs one frame: no reload, no rebuild. Terrain is then shaded
+with slope, a height tint and 2 m contour lines. One exception: backdrop terrain without a ground
+image has the average ground colour baked in at the default ground saturation (`hlod.py`).
+
+## The plan style
+
+A hand-drawn map is readable because it has few flat colours that say what a thing *is*, and
+outlines. The material colours cannot do that: seen from above, a roof, the road next to it and
+bare ground are the same grey-beige. The plan style gets there from geometry alone
+(`stage.ts`, `PLAN_PARS` and `OUTLINE_FRAGMENT`):
+
+- **Structure is coloured by its height above the ground**, not by its material: at floor level
+  (under 0.3 m: pavements, slabs) the floor colour, varied a little by the material; up to 2 m
+  the cover colour (what one can look over); above that the obstacle colour (walls, fences,
+  containers, vehicles, pylons), or the building colour where a building stands, shading towards
+  a second one with height (reached at 24 m).
+- **Roads** are one colour (a little lighter for sand and slabs than for asphalt).
+- **The colours are a palette** (`settings.ts` `PlanPalette`, **Settings → Plan palette**): six
+  pre-made ones (Paper, Atlas, Mono, and the dark Night, Midnight, Blueprint), and every colour
+  can be changed, which makes it a custom palette, stored with the other settings. The plan style
+  is neither lit nor tone mapped: a level surface has exactly the palette's colour, walls are a
+  little darker (`planShade`). The colour grade and exposure do not apply to it.
+- **Terrain** has two flat colours, grass or bare ground, decided by the hue of the ground image,
+  and only a hint of the relief shading. **Water** is one blue.
+- **Outlines** come from the depth buffer after the map is drawn: a line where the surface steps
+  towards or away from the camera, darker the higher the step. The threshold grows with the ground
+  a pixel covers, so kerbs get a faint line close up and only buildings and walls do from afar.
+  This is the one case where a frame is two passes (the map into a render target, then one
+  full-screen pass); the realistic style renders straight to the screen as before.
+
+"Height above the ground" and "a building stands here" come from the dataset's **ground map**
+(`t3d/ground.py`), on a 1 m grid over the playable area plus 150 m:
+
+1. Per cell, the lowest and highest up-facing surface of the baked map.
+2. Ground seeds: heightmap terrain is ground. Elsewhere (all of Streets) a progressive
+   morphological filter, the method that gets terrain out of LiDAR surfaces, removes what stands
+   out of its surroundings: needed because under a roof the baked map has no floor left.
+3. A surface that continues the ground without a step is ground too: a bridge deck, a ramp.
+   What remains unknown (under buildings and vehicles) is filled in from around it.
+4. Building = more than 2 m above that ground over at least 5 m in both directions.
+
+It is single-valued: under a bridge the ground is the deck. Roofs one can walk onto from a slope
+count as ground. A dataset without a ground map (built before this) shows all structure as
+building in the plan style.
 
 ## Dataset format
 
@@ -120,6 +185,8 @@ Format 2, written by `t3d/dataset.py`, read by `web/src/map3d/dataset.ts`.
   - `mesh_*`: per mesh: vertex/index ranges, parts, local bounds, flags (1 = flat shaded)
   - `part_range`: submesh index ranges (one per material slot)
   - `positions` f32×3, `normals` i8×3, `indices16` / `indices32`, optional `colors` u8×4 (sRGB)
+  - `ground_height` f32 and `ground_building` u8 (0 or 255), optional: the ground map, rows along
+    z; the header's `ground` has its origin (x, z of the corner of cell 0, 0) and cell size
   - `inst_*`: per placed mesh: mesh, scene, world matrix (column-major 3×4)
   - `slot_*`: per (instance, part): category, flags, flat colour, material
   - header: `meshNames`, `meshTextures` (draped images with the local XZ rectangle they cover)
@@ -190,9 +257,24 @@ Frame rates were never measured on a GPU by the harness (the development contain
 11. **One BLAS thread per cell worker** (`hlod.bake` sets `OPENBLAS_NUM_THREADS=1`); otherwise the
     bake takes over ten minutes instead of about one.
 12. **The map must not render on a timer.** `Map3D` renders on request only; anything that needs
-    a frame calls `requestRender()`.
+    a frame calls `requestRender()`. The animations (WASD movement, a flight, turning towards a
+    direction) render per animation frame, but only until they arrive.
+17. **Camera changes made by code go through `Map3D.own`** (or set `expectedTarget` first): the
+    controls' change event cannot tell them from the user's, and "the user moved/turned the map"
+    is what ends following.
 13. **`GROUND_DESATURATION`** exists in `web/src/map3d/stage.ts` and `tools/maps3d/t3d/hlod.py`
     (backdrop terrain colour); keep them equal.
+
+14. **Roads are "decals" by shader name only.** Customs' roads, pavements and concrete slabs are
+    strips laid over the terrain with `Custom/Vert Paint SoftCutout Decal` (106,000 m², all level);
+    the terrain's ground image under them is plain soil. Dropping them with the decals removed
+    every road from the map. The same shader is on some rubble on Streets, hence "up-facing only".
+    The viewer draws them with a polygon offset, since its terrain is coarser than the game's.
+15. **The harness measures the realistic style.** `capture.mjs` renders the scene directly, without
+    the outline pass; `shot.mjs` goes through `Map3D` and shows what the radar shows.
+16. **Plan colours reach the shader as sRGB values** (not `THREE.Color`, which would convert):
+    the plan formulas mix in sRGB. The standard material's lighting still runs and is then
+    overwritten at the end of the fragment shader.
 
 `tools/maps3d/tests/test_build.py` (`ValidationChecksTest`) checks known objects of the real
 Customs cache when it is present (sizes, counts, categories).
@@ -206,6 +288,8 @@ Customs cache when it is present (sizes, counts, categories).
 - Interiors: not needed now. The ideal version has simplified interiors (floors, walls, windows).
   None of the 2D maps in use has more than one floor configured, so nothing is lost meanwhile.
 - No more time on optimization unless it is an easy win.
+- Readability comes from a second style on the same geometry, not from a second (2D) map: what a
+  thing is follows from its height above the ground, so no map needs hand-made data for it.
 
 ## Known limits
 

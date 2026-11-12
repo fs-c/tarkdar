@@ -13,11 +13,12 @@ cache:
 	$(PY) extract_cache.py --map customs --map streets
 
 # cache/ lives in the asset store (assets.json at the repo root; setup: root README, "Data files").
+# assets.py takes paths relative to the current directory (here: tools/maps3d).
 cache-pull:
-	$(REPO)/scripts/assets.py pull tools/maps3d/cache
+	$(REPO)/scripts/assets.py pull cache
 
 cache-push:
-	$(REPO)/scripts/assets.py push tools/maps3d/cache --prune
+	$(REPO)/scripts/assets.py push cache --prune
 
 # Stage 2 - cache/ -> maps/3d/<map>/, served by the backend. No game files needed.
 maps: customs streets
@@ -30,7 +31,7 @@ streets:
 
 # Upload the built maps (so machines without this toolchain can pull them); commit assets.json.
 publish:
-	$(REPO)/scripts/assets.py push maps/3d
+	$(REPO)/scripts/assets.py push $(REPO)/maps/3d
 
 test:
 	$(PY) -m unittest discover -s . -t .
@@ -44,7 +45,7 @@ install-harness:
 harness-serve:
 	cd $(REPO)/web && npx vite --config ../tools/maps3d/harness/vite.config.mjs
 
-# Full-detail datasets the overview is compared against (harness/data/, ~0.5 GB, not served).
+# Full-detail datasets the overview is compared against (harness/data/, ~90 MB, not served).
 reference-data:
 	$(PY) build.py --map customs --profile reference
 	$(PY) build.py --map streets --profile reference --include-indoor --lod 1

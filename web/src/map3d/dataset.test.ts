@@ -1,7 +1,8 @@
 import { decodePack } from "./container";
 import { bytesOf, encodePack } from "./container.test";
 import { srgbBytesToLinear } from "./color";
-import { MapData, worldBox, type ChunkMeta, type DatasetIndex } from "./dataset";
+import { CHUNK_ARRAYS, CHUNK_BASE64, CHUNK_GROUND } from "./chunk.fixture";
+import { MapData, decodeChunk, expandChunk, worldBox, type ChunkMeta, type DatasetIndex } from "./dataset";
 import { groupRuns } from "./instances";
 import { COLOR_SCHEMES, DEFAULT_MAP_SETTINGS, PLAN_PALETTES, paletteOf, schemeOf } from "./settings";
 
@@ -48,7 +49,7 @@ function fixture(ground = false): MapData {
     },
   );
   const index = {
-    format: 2,
+    format: 3,
     map: "test",
     categories: CATEGORIES,
     scenes: [
@@ -88,6 +89,68 @@ describe("ground map", () => {
     expect([ground.columns, ground.rows, ground.cell, ...ground.origin]).toEqual([3, 2, 1, -8, 4]);
     expect(ground.heights[1 * ground.columns + 2]).toBe(5);
     expect(ground.building[1]).toBe(255);
+  });
+});
+
+describe("a chunk file", () => {
+  const file = Uint8Array.from(atob(CHUNK_BASE64), (c) => c.charCodeAt(0)).buffer;
+
+  it("decodes to what the pipeline reads back from it", async () => {
+    const pack = await decodeChunk(file);
+    for (const [name, expected] of Object.entries(CHUNK_ARRAYS)) {
+      expect([...pack.arrays[name]!.data], name).toEqual(expected);
+    }
+    expect(pack.arrays.positions!.data).toBeInstanceOf(Float32Array);
+    expect(pack.arrays.positions!.shape).toEqual([11, 3]);
+    expect(pack.arrays.normals!.shape).toEqual([11, 3]);
+    expect(pack.meta.ground).toEqual(CHUNK_GROUND);
+  });
+
+  it("makes a MapData", async () => {
+    const data = new MapData({ format: 3, categories: CATEGORIES } as unknown as DatasetIndex, await decodeChunk(file));
+    expect(data.meshNames).toEqual(["cell_0_0_structure", "Terrain_slice"]);
+    expect([data.ground!.rows, data.ground!.columns]).toEqual([2, 3]);
+    expect(data.ground!.heights[3]).toBe(70);
+    expect([...data.instBox.subarray(6, 12)]).toEqual([-5, 2, -1, 11, 6, 7]);
+  });
+
+  it("is also read when it is not gzipped", async () => {
+    const plain = await new Response(new Blob([file]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+    expect([...(await decodeChunk(plain)).arrays.indices16!.data]).toEqual(CHUNK_ARRAYS.indices16);
+  });
+});
+
+describe("expandChunk", () => {
+  const u32 = (v: number[]) => ({ data: new Uint32Array(v), shape: [v.length] });
+  const pack = (flags: number[]) => ({
+    meta: { kind: "instanced", meshNames: ["a", "b"], ground: { origin: [0, 0] as [number, number], cell: 1, heightBase: -10, heightStep: 0.5 } },
+    arrays: {
+      mesh_vertex_start: u32([0, 1]),
+      mesh_vertex_count: u32([1, 2]),
+      mesh_bounds: { data: new Float32Array([0, 0, 0, 0, 0, 0, 10, -4, 100, 20, 4, 100]), shape: [2, 6] },
+      mesh_flags: { data: new Uint8Array(flags), shape: [2] },
+      positions: { data: new Uint16Array([7, 7, 7, 0, 0, 0, 0, 0, 65535, 65535, 9, 0]), shape: [3, 4] },
+      normals: { data: new Int8Array([1, 2, 3, 0, 4, 5, 6, 0, -7, -8, -9, 0]), shape: [3, 4] },
+      ground_height: { data: new Uint16Array([20, 1, 65535, 0, 3, 65533]), shape: [2, 3] },
+    },
+  });
+
+  it("places positions within their mesh's bounds", () => {
+    const out = expandChunk(pack([0, 0]));
+    // a mesh without extent: all at its one point; the other from corner to corner (flat in z)
+    expect([...out.arrays.positions!.data]).toEqual([0, 0, 0, 10, -4, 100, 20, 4, 100]);
+    expect(out.arrays.positions!.shape).toEqual([3, 3]);
+  });
+
+  it("drops the padding of normals, and the normals of flat shaded meshes", () => {
+    expect([...expandChunk(pack([0, 0])).arrays.normals!.data]).toEqual([1, 2, 3, 4, 5, 6, -7, -8, -9]);
+    expect([...expandChunk(pack([1, 0])).arrays.normals!.data]).toEqual([0, 0, 0, 4, 5, 6, -7, -8, -9]);
+  });
+
+  it("adds up ground heights along each row", () => {
+    const heights = expandChunk(pack([0, 0])).arrays.ground_height!;
+    expect(heights.data).toBeInstanceOf(Float32Array);
+    expect([...heights.data]).toEqual([0, 0.5, 0, -10, -8.5, -10]); // 20, 21, 20 and 0, 3, 0 steps
   });
 });
 

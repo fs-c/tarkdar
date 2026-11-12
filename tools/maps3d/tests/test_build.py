@@ -196,7 +196,10 @@ class DatasetFormatTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         big = named(quad_mesh(3.0), "big")
-        big.positions = np.concatenate([big.positions, np.zeros((70000, 3), dtype=np.float32)])   # > 65536 vertices
+        # > 65536 vertices in use (69999 more, as 23333 triangles), plus one that nothing uses
+        big.positions = np.concatenate([big.positions, np.linspace(0, 3, 70000 * 3, dtype=np.float32).reshape(-1, 3)])
+        big.indices = np.concatenate([big.indices, np.arange(4, 70003, dtype=np.uint32)])
+        big.submeshes = [[0, len(big.indices), 0]]
         big.hash = "cd" + "0" * 30
         write_cache(self.root / "cache", [
             {"mesh": 0, "matrix": translation(10, 0, 5), "materials": [0, 1], "path": "a"},
@@ -211,26 +214,36 @@ class DatasetFormatTest(unittest.TestCase):
         dataset.write(self.ds, out)
         self.assertEqual(sorted(p.name for p in out.iterdir()), ["chunk-0.t3d", "index.json"])
         index, chunks = dataset.read(out)
-        self.assertEqual(index["format"], 2)
+        self.assertEqual(index["format"], 3)
         self.assertEqual(index["categories"], CATEGORIES)
         self.assertEqual(index["chunks"][0]["byteLength"], (out / "chunk-0.t3d").stat().st_size)
         self.assertEqual(index["stats"]["instanceCount"], 2)
-        self.assertEqual(index["stats"]["uniqueTriangles"], 4)
+        self.assertEqual(index["stats"]["uniqueTriangles"], 4 + 23333)
+        self.assertEqual(index["stats"]["uniqueVertices"], 4 + 4 + 69999)     # the unused vertex is gone
         self.assertEqual(index["stats"]["categories"],
-                         {"structure": {"slots": 2, "triangles": 3}, "decal": {"slots": 1, "triangles": 1}})
+                         {"structure": {"slots": 2, "triangles": 2 + 23333 + 1}, "decal": {"slots": 1, "triangles": 1}})
         self.assertEqual(index["bounds"], {"min": [0.0, 0.0, -5.0], "max": [12.0, 3.0, 0.0]})
 
         meta, a = chunks[0]
         self.assertEqual(meta["kind"], "instanced")
         self.assertEqual(meta["meshNames"], ["wall", "big"])
         np.testing.assert_array_equal(a["mesh_vertex_start"], [0, 4])
+        np.testing.assert_array_equal(a["mesh_vertex_count"], [4, 70003])
         np.testing.assert_array_equal(a["mesh_index_wide"], [0, 1])
         np.testing.assert_array_equal(a["mesh_index_start"], [0, 0])   # separate 16/32-bit index arrays
-        np.testing.assert_array_equal(a["indices16"], [0, 2, 1, 0, 3, 2])
+        self.assertEqual(a["indices16"].dtype, np.dtype("<u2"))
         self.assertEqual(a["indices32"].dtype, np.dtype("<u4"))
+        self.assertEqual(len(a["indices32"]), 6 + 69999)
         np.testing.assert_array_equal(a["mesh_part_start"], [0, 2])
-        np.testing.assert_array_equal(a["part_range"], [[0, 3], [3, 3], [0, 6]])
+        np.testing.assert_array_equal(a["part_range"], [[0, 3], [3, 3], [0, 6 + 69999]])
         np.testing.assert_array_equal(a["mesh_bounds"][0], [0, 0, 0, 2, 2, 0])
+        # The wall's two parts, a triangle each: the same corners in the same winding, whatever the order.
+        wall = a["positions"][a["indices16"]].reshape(2, 3, 3)
+        for triangle, corners in zip(wall, ([[0, 0, 0], [2, 2, 0], [0, 2, 0]], [[0, 0, 0], [2, 0, 0], [2, 2, 0]])):
+            turns = [np.roll(corners, k, axis=0).tolist() for k in range(3)]
+            self.assertIn(triangle.tolist(), turns)
+        self.assertEqual(a["positions"].dtype, np.dtype("<f4"))
+        self.assertEqual(a["normals"].shape, (70007, 3))
         np.testing.assert_array_equal(a["normals"][0], [0, 0, 127])
         np.testing.assert_array_equal(a["inst_slot_start"], [0, 2])
         np.testing.assert_array_equal(a["slot_category"], [0, CATEGORIES.index("decal"), 0])
@@ -238,6 +251,60 @@ class DatasetFormatTest(unittest.TestCase):
         np.testing.assert_array_equal(a["slot_material"], [0, 1, 0])
         # column-major 3x4: translation is the last column
         np.testing.assert_array_equal(a["inst_matrix"][0], [1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0, -5])
+
+    def test_positions_are_stored_to_a_65535th_of_the_mesh(self):
+        dataset.write(self.ds, self.root / "out")
+        _, [(_, a)] = dataset.read(self.root / "out")
+        big = dataset.optimise(self.ds.geoms[1])
+        stored = a["positions"][4:]
+        self.assertEqual(stored.shape, big.positions.shape)
+        self.assertLess(np.abs(stored - big.positions).max(), 3.0 / 65535 / 2 * 1.01)
+        # The index codec may start a triangle at another of its corners.
+        def turned(indices):
+            triangles = indices.reshape(-1, 3)
+            first = np.argmin(triangles, axis=1)[:, None]
+            return np.take_along_axis(triangles, (first + np.arange(3)) % 3, axis=1)
+
+        np.testing.assert_array_equal(turned(a["indices32"]), turned(big.indices))
+
+    def test_optimise_keeps_parts_and_drops_what_is_unused(self):
+        positions = np.arange(21, dtype=np.float32).reshape(7, 3)
+        colors = np.arange(28, dtype=np.uint8).reshape(7, 4)
+        # two parts; the second ends in an incomplete triangle; vertex 5 is unused
+        indices = np.array([4, 6, 0, 0, 6, 1, 2, 3, 4, 1, 2], dtype=np.uint32)
+        g = dataset.optimise(dataset.Geom("m", "mesh", positions, positions.copy(), indices,
+                                          np.array([[0, 6], [6, 5]], dtype=np.uint32), colors))
+        self.assertEqual(g.parts.tolist(), [[0, 6], [6, 3]])
+        self.assertEqual(len(g.positions), 6)
+
+        def triangles(geom, first, count):
+            corners = geom.positions[geom.indices[first:first + count]].reshape(-1, 3, 3)
+            # as a set, each triangle starting at its smallest corner (winding kept)
+            return sorted(np.roll(t, -int(np.argmin(t[:, 0])), axis=0).tolist() for t in corners)
+
+        source = dataset.Geom("m", "mesh", positions, positions, indices, None)
+        self.assertEqual(triangles(g, 0, 6), triangles(source, 0, 6))
+        self.assertEqual(triangles(g, 6, 3), triangles(source, 6, 3))
+        np.testing.assert_array_equal(g.colors[:, 0], (g.positions[:, 0] / 3 * 4).astype(np.uint8))   # moved along
+        empty = dataset.optimise(dataset.Geom("e", "mesh", positions, positions, indices[:2],
+                                              np.array([[0, 2]], dtype=np.uint32)))
+        self.assertEqual((len(empty.positions), len(empty.indices), empty.parts.tolist()), (0, 0, [[0, 0]]))
+        self.assertEqual(np.concatenate(empty.bounds()).tolist(), [0.0] * 6)
+
+    def test_ground_map_round_trip(self):
+        from t3d import ground
+        heights = np.array([[-3.31, 0.0, 12.5], [70.0, 69.99, -3.31]], dtype=np.float32)
+        self.ds.ground = ground.GroundMap((-8.0, 4.0), 1.0, heights, np.array([[0, 1, 0], [0, 0, 1]], dtype=bool))
+        dataset.write(self.ds, self.root / "out")
+        _, [(meta, a)] = dataset.read(self.root / "out")
+        self.assertEqual((meta["ground"]["origin"], meta["ground"]["cell"]), ([-8.0, 4.0], 1.0))
+        self.assertEqual(a["ground_height"].dtype, np.dtype("<f4"))
+        self.assertLessEqual(np.abs(a["ground_height"] - heights).max(), dataset.GROUND_STEP / 2 + 1e-5)
+        np.testing.assert_array_equal(a["ground_building"], [[0, 255, 0], [0, 0, 255]])
+
+    def test_chunk_is_gzipped(self):
+        dataset.write(self.ds, self.root / "out")
+        self.assertEqual((self.root / "out" / "chunk-0.t3d").read_bytes()[:2], b"\x1f\x8b")
 
     def test_slot_count_must_match_parts(self):
         self.ds.instances[0].slots.pop()
@@ -331,6 +398,15 @@ class ValidationChecksTest(unittest.TestCase):
         st = dataset.stats(self.ds)
         self.assertEqual(st["instanceCount"], 141_088)
         self.assertEqual(st["instancedTriangles"], 91_989_746)
+
+
+class WebFixtureTest(unittest.TestCase):
+    def test_the_viewer_tests_decode_what_is_written_today(self):
+        from . import web_fixture
+        if not web_fixture.TARGET.exists():
+            self.skipTest("no web/ next to tools/")
+        self.assertEqual(web_fixture.TARGET.read_text(), web_fixture.render(),
+                         "the format changed: python -m tests.web_fixture, then run the web tests")
 
 
 if __name__ == "__main__":

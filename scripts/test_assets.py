@@ -1,95 +1,32 @@
-"""Tests for scripts/assets.py against an in-process mock of the B2 native API.
+"""Tests for scripts/assets.py, with a local directory as the rclone store.
 
-Run: python3 -m unittest -v scripts/test_assets.py  (also registered in CTest).
+Run: python3 -m unittest -v scripts/test_assets.py  (also registered in CTest; needs rclone, see mise.toml).
 """
-import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
-import threading
 import unittest
-import urllib.parse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().with_name("assets.py")
 
 
-class MockB2(BaseHTTPRequestHandler):
-    """authorize / list_buckets / get_upload_url / upload / download (GET+HEAD) /
-    list_file_names (3 per page) / delete_file_version. Every 5th upload: 503."""
-
-    store: Path
-    uploads = 0
-    lock = threading.Lock()
-
-    def log_message(self, *a):
-        pass
-
-    def reply(self, code, obj=None, body=None):
-        data = body if body is not None else json.dumps(obj or {}).encode()
-        self.send_response(code)
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        if self.command != "HEAD":
-            self.wfile.write(data)
-
-    @property
-    def base(self):
-        return f"http://127.0.0.1:{self.server.server_port}"
-
-    def do_GET(self):
-        if self.path.startswith("/b2api/v3/b2_authorize_account"):
-            if not self.headers.get("Authorization", "").startswith("Basic "):
-                return self.reply(401)
-            return self.reply(200, {"accountId": "acc", "authorizationToken": "tok", "apiInfo": {"storageApi": {
-                "apiUrl": self.base, "downloadUrl": self.base,
-                "allowed": {"buckets": [{"id": "bid", "name": "test-bucket"}]}}}})
-        if self.path.startswith("/file/test-bucket/"):
-            if self.headers.get("Authorization") != "tok":
-                return self.reply(401)
-            p = self.store / urllib.parse.unquote(self.path[len("/file/test-bucket/"):])
-            return self.reply(200, body=p.read_bytes()) if p.is_file() else self.reply(404)
-        self.reply(404)
-
-    do_HEAD = do_GET
-
-    def do_POST(self):
-        body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
-        if self.path == "/upload":
-            with MockB2.lock:
-                MockB2.uploads += 1
-                fail = MockB2.uploads % 5 == 0
-            if self.headers.get("Authorization") != "uptok":
-                return self.reply(401)
-            if fail:
-                return self.reply(503)
-            if hashlib.sha1(body).hexdigest() != self.headers["X-Bz-Content-Sha1"]:
-                return self.reply(400)
-            p = self.store / urllib.parse.unquote(self.headers["X-Bz-File-Name"])
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_bytes(body)
-            return self.reply(200, {})
-        if self.headers.get("Authorization") != "tok":
-            return self.reply(401)
-        req = json.loads(body or b"{}")
-        name = self.path.rsplit("/", 1)[-1]
-        if name == "b2_get_upload_url":
-            return self.reply(200, {"uploadUrl": self.base + "/upload", "authorizationToken": "uptok"})
-        if name == "b2_list_file_names":
-            keys = sorted(q.relative_to(self.store).as_posix() for q in self.store.rglob("*") if q.is_file())
-            keys = [k for k in keys if k.startswith(req.get("prefix", "")) and k >= (req.get("startFileName") or "")]
-            return self.reply(200, {"files": [{"fileName": k, "fileId": k} for k in keys[:3]],
-                                    "nextFileName": keys[3] if len(keys) > 3 else None})
-        if name == "b2_delete_file_version":
-            (self.store / req["fileName"]).unlink()
-            return self.reply(200, {})
-        self.reply(404)
+def find_rclone():
+    """The real binary: a mise shim picks its version from the cwd, and the test repos have no mise.toml."""
+    try:
+        return subprocess.run(["mise", "which", "rclone"], cwd=SCRIPT.parent, capture_output=True, text=True,
+                              check=True).stdout.strip() or None
+    except (OSError, subprocess.CalledProcessError):
+        return shutil.which("rclone")
 
 
+RCLONE = find_rclone()
+
+
+@unittest.skipUnless(RCLONE, "rclone not installed (mise install)")
 class AssetsTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -98,7 +35,7 @@ class AssetsTest(unittest.TestCase):
         shutil.copy(SCRIPT, self.repo / "scripts" / "assets.py")
         subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True)
         (self.repo / "assets.json").write_text(json.dumps({
-            "version": 1, "store": {"provider": "b2", "bucket": "test-bucket", "prefix": "sha256/"},
+            "version": 1, "store": {"prefix": "sha256/"},
             "track": ["data/**", "!data/skip.bin"], "files": {}}))
         (self.repo / "data" / "sub").mkdir(parents=True)
         for i in range(8):
@@ -106,16 +43,12 @@ class AssetsTest(unittest.TestCase):
         (self.repo / "data" / "skip.bin").write_bytes(b"skip")
         (self.repo / "other.txt").write_text("other\n")
 
-        MockB2.store = self.tmp / "remote"
-        MockB2.store.mkdir()
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), MockB2)
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
-        self.env = dict(os.environ, B2_APPLICATION_KEY_ID="kid", B2_APPLICATION_KEY="key",
-                        ASSETS_B2_AUTH_URL=f"http://127.0.0.1:{self.server.server_port}/b2api/v3/b2_authorize_account")
+        self.store = self.tmp / "remote"  # created by the first push
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith("ASSETS_")}
+        self.env["ASSETS_REMOTE"] = str(self.store)
+        self.env["RCLONE"] = RCLONE
 
     def tearDown(self):
-        self.server.shutdown()
-        self.server.server_close()
         shutil.rmtree(self.tmp)
 
     def run_assets(self, *args, cwd=None, env=None, ok=True):
@@ -136,7 +69,7 @@ class AssetsTest(unittest.TestCase):
         self.assertEqual(len(files), 8)
         self.assertNotIn("data/skip.bin", files)
         self.assertIn("nothing to publish", self.run_assets("push").stdout)
-        self.assertEqual(len([p for p in MockB2.store.rglob("*") if p.is_file()]), 8)
+        self.assertEqual(len([p for p in self.store.rglob("*") if p.is_file()]), 8)
         self.assertIn("8 / 8 blobs present", self.run_assets("verify").stdout)
 
         # Delete one, modify another: pull restores the missing one, leaves the modified one.
@@ -167,13 +100,14 @@ class AssetsTest(unittest.TestCase):
     def test_hash_mismatch_is_rejected(self):
         self.run_assets("push")
         sha = self.manifest()["files"]["data/sub/f2.bin"]["sha256"]
-        (MockB2.store / f"sha256/{sha[:2]}/{sha}").write_bytes(b"corrupt")
+        (self.store / f"sha256/{sha[:2]}/{sha}").write_bytes(b"corrupt")
         (self.repo / "data/sub/f2.bin").unlink()
         r = self.run_assets("pull", ok=False)
         self.assertEqual(r.returncode, 1)
         self.assertIn("hash mismatch", r.stderr)
         self.assertFalse((self.repo / "data/sub/f2.bin").exists())
         self.assertEqual([p for p in (self.repo / "data/sub").iterdir() if "assets-tmp" in p.name], [])
+        self.assertFalse((self.repo / ".assets-staging").exists())
 
     def test_prune_and_gc(self):
         self.run_assets("push")
@@ -192,17 +126,38 @@ class AssetsTest(unittest.TestCase):
         self.run_assets("push", "--prune")
         self.assertNotIn("data/sub/f4.bin", self.manifest()["files"])
 
-    def test_missing_credentials(self):
+    def test_push_restores_blobs_missing_from_store(self):
+        self.run_assets("push")
+        shutil.rmtree(self.store)  # e.g. a fresh store seeded from a full checkout
+        self.assertIn("0 / 8 blobs present", self.run_assets("verify", ok=False).stdout)
+        self.assertIn("uploading 8 blobs", self.run_assets("push").stdout)
+        self.assertIn("8 / 8 blobs present", self.run_assets("verify").stdout)
+
+    def test_duplicate_content_and_missing_blob(self):
+        (self.repo / "data/dup.bin").write_bytes((self.repo / "data/sub/f0.bin").read_bytes())
+        self.run_assets("push")
+        self.assertEqual(len([p for p in self.store.rglob("*") if p.is_file()]), 8)
+        (self.repo / "data/dup.bin").unlink()
+        (self.repo / "data/sub/f0.bin").unlink()
+        sha = self.manifest()["files"]["data/sub/f6.bin"]["sha256"]
+        (self.store / f"sha256/{sha[:2]}/{sha}").unlink()
+        (self.repo / "data/sub/f6.bin").unlink()
+        r = self.run_assets("pull", ok=False)
+        self.assertIn("not in store", r.stderr)
+        self.assertEqual((self.repo / "data/dup.bin").read_bytes(), (self.repo / "data/sub/f0.bin").read_bytes())
+
+    def test_store_config(self):
         self.run_assets("push")
         (self.repo / "data/sub/f5.bin").unlink()
-        env = {k: v for k, v in self.env.items() if not k.startswith("B2_")}
+        env = {k: v for k, v in self.env.items() if k != "ASSETS_REMOTE"}
         r = self.run_assets("pull", env=env, ok=False)
         self.assertEqual(r.returncode, 1)
-        self.assertIn("no B2 credentials", r.stderr)
-        (self.repo / ".assets.env").write_text("B2_APPLICATION_KEY_ID=kid\nB2_APPLICATION_KEY='key'\n")
+        self.assertIn("no asset store configured", r.stderr)
+        (self.repo / ".assets.env").write_text(f"# hub\nASSETS_REMOTE='{self.store}'\n")
         self.run_assets("pull", env=env)
         self.assertTrue((self.repo / "data/sub/f5.bin").exists())
-
+        r = self.run_assets("verify", env=dict(env, RCLONE="/nonexistent/rclone"), ok=False)
+        self.assertIn("running rclone", r.stderr)
 
 if __name__ == "__main__":
     unittest.main()

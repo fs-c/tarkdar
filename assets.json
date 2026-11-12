@@ -1,5 +1,5 @@
 {
- "store": {"bucket": "tarkdar-assets", "prefix": "sha256/", "provider": "b2"},
+ "store": {"prefix": "sha256/"},
  "track": ["dumps/il2cpp-dump.json", "recordings/2026-11-10_21-38-06_bigmap.jsonl.gz", "recordings/2026-11-10_22-17-39_bigmap.jsonl.gz", "maps/2d/**", "!maps/2d/demo/**", "maps/3d/**", "tools/maps3d/cache/manifest.json", "tools/maps3d/cache/**/*.pack.zst"],
  "version": 1,
  "files": {

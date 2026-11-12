@@ -12,7 +12,7 @@ install:
 cache:
 	$(PY) extract_cache.py --map customs --map streets
 
-# cache/ lives in Backblaze B2 (assets.json at the repo root; credentials: root README).
+# cache/ lives in the asset store (assets.json at the repo root; setup: root README, "Data files").
 cache-pull:
 	$(REPO)/scripts/assets.py pull tools/maps3d/cache
 

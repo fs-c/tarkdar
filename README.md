@@ -30,14 +30,15 @@ machine's architecture); pass `--build-dir` for a different build directory.
 configures. They're skipped if already applied, so re-running is safe. The patched submodule is
 marked `ignore = dirty`, so it doesn't show as modified.
 
-## Data files (Backblaze B2)
+## Data files (asset store)
 
-Large or copyrighted files are not in git. They live in a private B2 bucket and
-are listed in `assets.json` by path and SHA-256: the il2cpp dump, the 3D maps
+Large or copyrighted files are not in git. They live in a private asset store on
+the local network (plain files, moved by rclone) and are listed in `assets.json`
+by path and SHA-256: the il2cpp dump, the 3D maps
 (`maps/3d`, see `docs/maps3d.md`) and the cache they are built from
 (`tools/maps3d/cache`), the 2D map images and their `map.json` calibrations
 (`maps/2d`, except `maps/2d/demo`) and a couple of sample recordings. `scripts/assets.py` (stdlib
-Python, no install) manages them:
+Python plus `rclone`, which `mise install` provides) manages them:
 
 ```sh
 scripts/assets.py status               # missing / modified / new files
@@ -52,14 +53,26 @@ under their hash and never overwritten, so older commits stay pullable.
 `assets.json` → `track` lists globs whose new files `push` picks up
 automatically.
 
-Credentials: an application key with access to the bucket, as
-`B2_APPLICATION_KEY_ID` / `B2_APPLICATION_KEY` in the environment or in a
-gitignored `.assets.env` at the repo root:
+The store is a directory of blobs on one always-on machine (the hub); every
+other machine reaches it over SFTP. Set `ASSETS_REMOTE` to an rclone path, in
+the environment or in a gitignored `.assets.env` at the repo root:
 
 ```sh
-B2_APPLICATION_KEY_ID=...
-B2_APPLICATION_KEY=...
+# on the hub: the store is just a local directory
+ASSETS_REMOTE=~/.local/share/tarkdar-assets
 ```
+
+```sh
+# elsewhere: define an sftp remote once (uses your ssh keys/agent) ...
+rclone config create tarkdar-hub sftp host=<hub hostname or IP> user=<user>
+# ... and point at the hub's directory (absolute path on the hub)
+ASSETS_REMOTE=tarkdar-hub:/home/<user>/.local/share/tarkdar-assets
+```
+
+Any other rclone backend works the same way. `scripts/assets.py verify` checks the
+store has every blob the manifest needs; `push` uploads any it is missing, so a
+full checkout can re-seed an empty store. The store is the only copy of older
+commits' blobs, so back it up with the hub.
 
 ## Running/Development
 

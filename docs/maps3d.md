@@ -13,7 +13,7 @@ players above the 3D terrain is 5 cm.
 ## Where things are
 
 ```
-maps/3d/<map>/            what the backend serves (build output, in B2, not in git)
+maps/3d/<map>/            what the backend serves (build output, in the asset store, not in git)
   map.json                name + location ids: makes the backend list the folder
   index.json              dataset header
   chunk-0.t3d             geometry
@@ -24,7 +24,7 @@ tools/maps3d/             the pipeline (Python) and the measurement harness
   t3d/                    unity.py (scene walker), cache.py, pack.py (container),
                           classify.py, geometry.py, hlod.py (cells), visibility.py, dataset.py, maps.py
   tests/                  unittest
-  cache/                  extraction cache (0.7 GB, in B2, not in git)
+  cache/                  extraction cache (0.7 GB, in the asset store, not in git)
   harness/                screenshots + image metrics against a full-detail reference
 web/src/map3d/            the renderer (three.js): container, dataset, Map3D, stage, instances, color
 web/src/components/Radar3D.tsx   the map plus the marker overlay
@@ -42,11 +42,11 @@ To rebuild them (Python 3.14+, a C++ compiler for the `meshoptimizer` package):
 
 ```sh
 cd tools/maps3d
-make cache-pull     # the extraction cache from B2
+make cache-pull     # the extraction cache from the asset store
 make install        # .venv
 make maps           # both maps into maps/3d/, about 4 min on 6 cores
 make test
-make publish        # upload maps/3d to B2; commit assets.json
+make publish        # upload maps/3d to the asset store; commit assets.json
 ```
 
 `build.py --map customs --error 0.05` builds a finer map (about 7M triangles instead of 5M);

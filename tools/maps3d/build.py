@@ -20,7 +20,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from t3d import cache, dataset, geometry, hlod  # noqa: E402
+from t3d import cache, dataset, geometry, ground, hlod  # noqa: E402
 from t3d.classify import classify, slot_flags  # noqa: E402
 from t3d.maps import INDOOR_RE, MAPS  # noqa: E402
 
@@ -36,7 +36,7 @@ PROFILES = {
     # full detail, restricted to the categories the overview is judged on.
     "reference": {"lod": 0, "terrain_step": 2},
 }
-REFERENCE_CATEGORIES = {"structure", "terrain", "water", "glass"}
+REFERENCE_CATEGORIES = {"structure", "terrain", "water", "glass", "road"}
 
 # Texture slots that hold the base colour, in order of preference.
 ALBEDO_SLOTS = ("_MainTex", "_Albedo", "_Aldebo", "_MainTex0", "_Splat0")
@@ -311,6 +311,12 @@ def build(root: Path, map_name: str, out_dir: Path, profile: str, *, hlod_option
         ds = hlod.bake(ds, hlod_options)
         ds.build = {"cells": {"size": hlod_options.cell_size, "error": hlod_options.error,
                               "hiddenSurfaceRemoval": hlod_options.hsr}}
+        # After the bake: hidden surfaces are gone, so what is left is what a viewer sees from above.
+        ds.ground = ground.of_dataset(ds, dataset.focus_bounds(ds))
+        if ds.ground is not None:
+            rows, columns = ds.ground.heights.shape
+            print(f"  ground map: {columns} x {rows} cells of {ds.ground.cell:g} m, "
+                  f"{ds.ground.building.mean() * 100:.0f} % under buildings")
     index = dataset.write(ds, out_dir)
     if profile == "overview":
         (out_dir / "map.json").write_text(json.dumps(map_config(map_name, ds.label), indent=2) + "\n")

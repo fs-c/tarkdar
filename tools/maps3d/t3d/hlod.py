@@ -31,16 +31,22 @@ CATEGORY_COLOR = {
     "foliage": (95, 114, 77),
     "water": (90, 127, 144),
     "glass": (159, 196, 216),
+    "road": (150, 150, 150),
 }
 DEFAULT_COLOR = (185, 193, 200)
-GROUND_DESATURATION = 0.4     # keep equal to web/src/map3d/stage.ts
+GROUND_DESATURATION = 0.4     # 1 - the default groundSaturation in web/src/map3d/settings.ts
 
 
 @dataclass
 class Options:
     cell_size: float = 128.0          # metres, grid in the XZ plane
     error: float = 0.10               # metres, absolute simplification error bound
-    merge: tuple = ("structure", "glass")
+    merge: tuple = ("structure", "glass", "road")
+    # Kept as authored: a road lies centimetres above the terrain, and moving its vertices by the
+    # simplification error would sink parts of it. Only what one can stand on is road: the same
+    # shader is used for rubble.
+    surfaces: tuple = ("road",)
+    surface_up: float = 0.7           # normal.y from which a triangle is a surface
     drop: tuple = ("shadow", "decal", "background", "foliage")
     hsr: bool = True                  # remove triangles that are never visible from outside
     hsr_categories: tuple = ("structure",)
@@ -156,9 +162,14 @@ def _process_cell(job):
 
     Runs in a separate process; everything in `job` and in the result is plain
     numpy. Returns None when nothing is left."""
-    positions, colors, indices, opt, do_hsr, occluder = job
+    positions, colors, indices, opt, do_hsr, occluder, surface = job
     stats = {"in": len(indices) // 3}
-    indices = simplify(positions, indices, opt.error)
+    if surface:
+        normals = visibility.face_normals(positions, indices)
+        up = normals[:, 1] > opt.surface_up * np.maximum(np.linalg.norm(normals, axis=1), 1e-12)
+        indices = indices.reshape(-1, 3)[up].reshape(-1)
+    else:
+        indices = simplify(positions, indices, opt.error)
     stats["simplified"] = len(indices) // 3
     if do_hsr and len(indices):
         seen = visibility.visible_triangles(positions, indices, visibility.view_directions(),
@@ -261,7 +272,7 @@ def bake(ds: dataset.Dataset, opt: Options, log=print) -> dataset.Dataset:
         do_hsr = opt.hsr and category in opt.hsr_categories
         occluder = _occluder_for(terrain, lo, hi, opt.occluder_margin, lo) if do_hsr else None
         return lo, ((positions - lo).astype(np.float32), np.concatenate(C), np.concatenate(I), opt, do_hsr,
-                    occluder)
+                    occluder, category in opt.surfaces)
 
     # Cells are independent: process them in parallel, a few in flight at a time
     # (a merged cell is up to a few hundred MB before simplification).
@@ -318,7 +329,7 @@ def bake(ds: dataset.Dataset, opt: Options, log=print) -> dataset.Dataset:
     average_ground = None
     if grounds:
         mean = np.mean(grounds, axis=0)
-        # The renderer mutes ground images (stage.ts GROUND_DESATURATION); match it here.
+        # The renderer mutes ground images (settings.ts groundSaturation); match its default here.
         mean = mean + (mean @ np.array([0.2126, 0.7152, 0.0722]) - mean) * GROUND_DESATURATION
         average_ground = tuple(int(v) for v in np.rint(mean))
 

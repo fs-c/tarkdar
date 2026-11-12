@@ -16,6 +16,10 @@ layout. Today there is one chunk of kind "instanced":
     inst_*   one row per placed renderer: mesh, scene, 3x4 matrix, slots
     slot_*   one row per (instance, part): category, flags, colour, material
     colors   optional: baked per-vertex colour (sRGB), parallel to positions
+    ground_height, ground_building
+             optional (t3d/ground.py): ground height (f32) and "a building stands here"
+             (u8, 0 or 255) on a grid, rows along z; the header's `ground` has the grid's
+             origin (x, z of the corner of cell 0, 0) and cell size
 
 Everything is in three.js space (see geometry.py). Matrices are the first
 three rows of the world matrix, column-major (12 floats).
@@ -87,6 +91,7 @@ class Dataset:
     materials: list = field(default_factory=list)   # [{"name", "shader", "queue"}]
     paths: list = field(default_factory=list)       # hierarchy paths, by Instance.path (diagnostics; not written)
     build: dict = field(default_factory=dict)       # profile-specific parameters, for the record
+    ground: object = None                           # ground.GroundMap: the plan style's ground heights
 
 
 def _round(values, digits=3):
@@ -187,6 +192,11 @@ def _bounds(ds: Dataset):
     return (lo, hi), (focus_lo, focus_hi)
 
 
+def focus_bounds(ds: Dataset):
+    """(min xyz, max xyz) of the playable area."""
+    return _bounds(ds)[1]
+
+
 def stats(ds: Dataset) -> dict:
     tris = [len(g.indices) // 3 for g in ds.geoms]
     by_category = {c: {"slots": 0, "triangles": 0} for c in CATEGORIES}
@@ -242,7 +252,12 @@ def write(ds: Dataset, out_dir: Path) -> dict:
             textures[str(i)] = {"file": name, "rect": _round(g.texture_rect)}
     chunk_meta = {"kind": "instanced", "level": 0, "error": 0, "cell": None,
                   "meshNames": [g.name for g in ds.geoms], "meshTextures": textures}
-    data = pack.encode(chunk_meta, _chunk_arrays(ds))
+    arrays = _chunk_arrays(ds)
+    if ds.ground is not None:
+        chunk_meta["ground"] = {"origin": _round(ds.ground.origin), "cell": ds.ground.cell}
+        arrays["ground_height"] = ds.ground.heights.astype("<f4")
+        arrays["ground_building"] = ds.ground.building.astype(np.uint8) * 255
+    data = pack.encode(chunk_meta, arrays)
     chunk_name = "chunk-0.t3d"
     (out_dir / chunk_name).write_bytes(data)
 

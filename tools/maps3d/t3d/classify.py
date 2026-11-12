@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 
 # Order is the dataset's category id (index into the "categories" header list).
-CATEGORIES = ["structure", "terrain", "foliage", "water", "glass", "shadow", "decal", "background"]
+CATEGORIES = ["structure", "terrain", "foliage", "water", "glass", "shadow", "decal", "background", "road"]
 CATEGORY_ID = {name: i for i, name in enumerate(CATEGORIES)}
 
 # Per-slot flags (bit set).
@@ -42,6 +42,9 @@ HARDWARE_TOKENS = {
 
 # Shader-name rules (lower-cased shader name).
 WATER_DECAL_SHADER = "decal/water deferred decal"
+# Road and pavement strips laid over the terrain (spline-generated on Customs). A decal by its
+# shader's name only: it is the road surface itself, and the terrain under it is plain ground.
+ROAD_SHADER = "custom/vert paint softcutout decal"
 FOLIAGE_SHADER_RE = re.compile(r"speedtree|tree billboard")
 WATER_SHADER_RE = re.compile(r"water")
 GLASS_SHADER_RE = re.compile(r"glass|transparent reflective|depthzwritedithered")
@@ -117,6 +120,8 @@ def category_from_shader(shader: str | None, name: str = "") -> str | None:
     if lower == WATER_DECAL_SHADER:
         # Puddles are drawn as water decals; wet stains on tanks are decals.
         return "water" if is_water(name) else "decal"
+    if lower == ROAD_SHADER:
+        return "road"
     if "decal" in lower:
         return "decal"
     if FOLIAGE_SHADER_RE.search(lower):

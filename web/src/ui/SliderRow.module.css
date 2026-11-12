@@ -1,0 +1,6 @@
+@layer base, ui;
+@layer ui {
+  .row { display: grid; grid-template-columns: 9.5em 1fr 3em; align-items: center; gap: 10px; padding: 4px 0; }
+  .slider { width: 100%; min-width: 0; margin: 0; accent-color: var(--accent); }
+  .value { color: var(--muted); font: var(--fs-sm) var(--mono); text-align: right; }
+}

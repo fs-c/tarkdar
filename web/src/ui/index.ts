@@ -9,6 +9,7 @@ export { cx } from "./cx";
 export { Actions, Note, PanelBody, Section } from "./Panel";
 export { Price } from "./Price";
 export { Segmented, type SegmentedOption } from "./Segmented";
+export { SliderRow } from "./SliderRow";
 export { ToggleRow } from "./ToggleRow";
 
 /** Class for a clickable list row; mark the selected one with data-selected. */

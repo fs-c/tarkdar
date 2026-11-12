@@ -6,7 +6,7 @@ import { Connection, type RadarState } from "./connection";
 import { type Backfill, LiveTimeline } from "./liveTimeline";
 import { fetchRecordings, parseLine, readRecording } from "./recordings";
 import { type ItemCatalog, emptyCatalog } from "./items";
-import { DEFAULT_MAP_SETTINGS, type MapSettings } from "./map3d/settings";
+import { DEFAULT_MAP_SETTINGS, type MapSettings, type PlanPalette } from "./map3d/settings";
 import { type LoadedMap, type Map2DEntry, type MapEntry, fetchMapIndex, loadMap, selectLayer } from "./maps";
 import type { Layers } from "./render";
 
@@ -98,6 +98,8 @@ export function useMap2D(entry: Map2DEntry | null): LoadedMap | null {
 
 /** How the 3D map is shown, and the map debugging tools. */
 export interface MapPrefs extends MapSettings {
+  /** The palette the user made (the last one they edited), kept while a pre-made one is in use. */
+  customPalette: PlanPalette | null;
   /** Use the 2D map where a location has both (until the 2D maps are retired). */
   prefer2d: boolean;
   /** Clicking the 3D map (not a marker) records the world position under the cursor. */
@@ -105,7 +107,7 @@ export interface MapPrefs extends MapSettings {
 }
 
 export function useMapPrefs() {
-  return usePersistentState<MapPrefs>("radar.map", { ...DEFAULT_MAP_SETTINGS, prefer2d: false, coordinatePick: false });
+  return usePersistentState<MapPrefs>("radar.map", { ...DEFAULT_MAP_SETTINGS, customPalette: null, prefer2d: false, coordinatePick: false });
 }
 
 /**

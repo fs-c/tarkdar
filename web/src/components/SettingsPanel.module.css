@@ -3,3 +3,11 @@
   border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--chrome); color: var(--text);
   font: var(--fs-sm) var(--mono);
 }
+.choice { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+.select {
+  padding: 4px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--chrome); color: var(--text);
+  font: inherit;
+}
+.swatches { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 6px 0; }
+.swatch { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.swatch input { width: 28px; height: 22px; padding: 0; border: 1px solid var(--border-strong); border-radius: var(--radius); background: none; cursor: pointer; }

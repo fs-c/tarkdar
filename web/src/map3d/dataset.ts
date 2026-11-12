@@ -38,9 +38,25 @@ export interface MeshTexture {
   rect: [number, number, number, number];
 }
 
+/** Ground height on a grid over the map (tools/maps3d/t3d/ground.py), in the renderer's space. */
+export interface GroundMap {
+  /** x, z of the corner of cell (0, 0). */
+  origin: [number, number];
+  /** Cell size in metres. */
+  cell: number;
+  columns: number;
+  rows: number;
+  /** Height at the cell centres, row by row (a row runs along x). */
+  heights: Float32Array;
+  /** 255 where the cell is under a building (tall and wide), 0 elsewhere. */
+  building: Uint8Array;
+}
+
 export interface ChunkMeta {
   kind: string;
   meshNames: string[];
+  /** Where the `ground_height` and `ground_building` arrays lie. */
+  ground?: { origin: [number, number]; cell: number };
   /** Colour images draped over meshes (terrain), by mesh index. */
   meshTextures?: Record<string, MeshTexture>;
 }
@@ -101,6 +117,8 @@ export class MapData {
   readonly indices32: Uint32Array;
   /** Optional baked vertex colours: sRGB bytes, 4 per vertex. */
   readonly colors: Uint8Array | null;
+  /** Ground heights, for telling floor from obstacle from building; older datasets have none. */
+  readonly ground: GroundMap | null;
 
   readonly instanceCount: number;
   readonly instMesh: Uint32Array;
@@ -140,6 +158,17 @@ export class MapData {
     this.indices16 = typed(pack, "indices16", Uint16Array);
     this.indices32 = typed(pack, "indices32", Uint32Array);
     this.colors = pack.arrays.colors ? typed(pack, "colors", Uint8Array) : null;
+    const ground = pack.arrays.ground_height;
+    this.ground =
+      ground && pack.meta.ground
+        ? {
+            ...pack.meta.ground,
+            rows: ground.shape[0]!,
+            columns: ground.shape[1]!,
+            heights: typed(pack, "ground_height", Float32Array),
+            building: typed(pack, "ground_building", Uint8Array),
+          }
+        : null;
     this.instMesh = typed(pack, "inst_mesh", Uint32Array);
     this.instSlotStart = typed(pack, "inst_slot_start", Uint32Array);
     this.instMatrix = typed(pack, "inst_matrix", Float32Array);

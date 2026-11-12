@@ -1,19 +1,24 @@
 import { decodePack } from "./container";
 import { bytesOf, encodePack } from "./container.test";
-import { desaturate, GAIN, LIFT, liftColor, srgbBytesToLinear } from "./color";
+import { srgbBytesToLinear } from "./color";
 import { MapData, worldBox, type ChunkMeta, type DatasetIndex } from "./dataset";
 import { groupRuns } from "./instances";
+import { COLOR_SCHEMES, DEFAULT_MAP_SETTINGS, PLAN_PALETTES, paletteOf, schemeOf } from "./settings";
 
 const CATEGORIES = ["structure", "terrain", "foliage", "water", "glass", "shadow", "decal", "background"];
 
 // Two meshes: "wall" (2 parts: structure + decal) and "pine01" (1 part).
 // Instances: wall @ x=10 (scene 0), wall scaled x2 @ x=100 (scene 1), pine @ z=-50 (scene 1).
-function fixture(): MapData {
+function fixture(ground = false): MapData {
   const u32 = (v: number[], shape = [v.length]) => ({ dtype: "<u4", shape, bytes: bytesOf(new Uint32Array(v)) });
   const identityAt = (x: number, y: number, z: number, s = 1) => [s, 0, 0, 0, s, 0, 0, 0, s, x, y, z];
   const buffer = encodePack(
-    { kind: "instanced", meshNames: ["wall", "pine01"] } satisfies ChunkMeta,
+    { kind: "instanced", meshNames: ["wall", "pine01"], ...(ground && { ground: { origin: [-8, 4], cell: 1 } }) } satisfies ChunkMeta,
     {
+      ...(ground && {
+        ground_height: { dtype: "<f4", shape: [2, 3], bytes: bytesOf(new Float32Array([0, 1, 2, 3, 4, 5])) },
+        ground_building: { dtype: "|u1", shape: [2, 3], bytes: new Uint8Array([0, 255, 0, 0, 0, 255]) },
+      }),
       mesh_vertex_start: u32([0, 4]),
       mesh_vertex_count: u32([4, 3]),
       mesh_index_start: u32([0, 6]),
@@ -57,6 +62,34 @@ function fixture(): MapData {
   } as unknown as DatasetIndex;
   return new MapData(index, decodePack<ChunkMeta>(buffer));
 }
+
+describe("plan palettes", () => {
+  it("names a pre-made palette and nothing else", () => {
+    expect(paletteOf(DEFAULT_MAP_SETTINGS.palette)).toBe("paper");
+    expect(paletteOf({ ...PLAN_PALETTES.night })).toBe("night");
+    expect(paletteOf({ ...PLAN_PALETTES.night, water: "#123456" })).toBeNull();
+  });
+
+  it("has every colour as #rrggbb", () => {
+    for (const palette of Object.values(PLAN_PALETTES)) {
+      expect(Object.keys(palette)).toEqual(Object.keys(PLAN_PALETTES.paper));
+      for (const colour of Object.values(palette)) expect(colour).toMatch(/^#[0-9a-f]{6}$/);
+    }
+  });
+});
+
+describe("ground map", () => {
+  it("is optional", () => {
+    expect(fixture().ground).toBeNull();
+  });
+
+  it("is a grid of rows along x", () => {
+    const ground = fixture(true).ground!;
+    expect([ground.columns, ground.rows, ground.cell, ...ground.origin]).toEqual([3, 2, 1, -8, 4]);
+    expect(ground.heights[1 * ground.columns + 2]).toBe(5);
+    expect(ground.building[1]).toBe(255);
+  });
+});
 
 describe("worldBox", () => {
   it("transforms a box by a column-major 3x4 matrix", () => {
@@ -144,40 +177,9 @@ describe("colour", () => {
     expect([...srgbBytesToLinear(new Uint8Array([0, 255, 128, 77, 188, 10, 64, 255]))]).toEqual([0, 255, 55, 77, 128, 1, 13, 255]);
   });
 
-  const luma = ([r = 0, g = 0, b = 0]: number[]) => (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-
-  it("lifts luma into a lighter, narrower range and keeps the hue", () => {
-    for (const input of [[40, 40, 40], [128, 128, 128], [230, 230, 230], [120, 60, 30]]) {
-      const c = [...input];
-      liftColor(c);
-      expect(luma(c)).toBeCloseTo(LIFT + GAIN * luma(input), 1);
-    }
-    const brick = [120, 60, 30];
-    liftColor(brick);
-    const [r = 0, g = 0, b = 0] = brick;
-    expect(r).toBeGreaterThan(g);
-    expect(g).toBeGreaterThan(b);
-    expect(g / r).toBeCloseTo(0.5, 1);
-  });
-
-  it("turns near-black into grey rather than amplifying noise", () => {
-    const c = [3, 0, 0];
-    liftColor(c);
-    expect(Math.max(...c) - Math.min(...c)).toBeLessThan(12);
-    expect(luma(c)).toBeCloseTo(LIFT, 1);
-  });
-
-  it("desaturates towards the colour's own grey", () => {
-    const c = [200, 100, 0];
-    desaturate(c, 0.5);
-    expect(c).toEqual([157, 107, 57]);
-    const grey = [80, 80, 80];
-    desaturate(grey, 1);
-    expect(grey).toEqual([80, 80, 80]);
-  });
-
-  it("optionally lifts while converting", () => {
-    const lifted = srgbBytesToLinear(new Uint8Array([40, 40, 40, 255]), true);
-    expect(lifted[0]).toBeGreaterThan(srgbBytesToLinear(new Uint8Array([40, 40, 40, 255]))[0]!);
+  it("names the scheme a grade equals", () => {
+    expect(schemeOf(DEFAULT_MAP_SETTINGS)).toBe("standard");
+    expect(schemeOf({ ...COLOR_SCHEMES.muted })).toBe("muted");
+    expect(schemeOf({ ...COLOR_SCHEMES.standard, lift: 0.37 })).toBeNull();
   });
 });

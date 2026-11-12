@@ -10,11 +10,12 @@ node_modules/
 *.jsonl
 /recordings/
 
-# Large data files live in Backblaze B2, listed in assets.json (scripts/assets.py pull).
+# Large data files live in the asset store, listed in assets.json (scripts/assets.py pull).
 .assets.env
 *.assets-tmp
+.assets-staging/
 .assets-hashes.json
 
-# Maps are derived from copyrighted material, so they live in B2 too: maps/2d (images + their
+# Maps are derived from copyrighted material, so they live in the asset store too: maps/2d (images + their
 # map.json calibration) and maps/3d (built by tools/maps3d). maps/2d/demo is synthetic and committed.
 /maps/

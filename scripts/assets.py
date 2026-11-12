@@ -1,56 +1,54 @@
 #!/usr/bin/env python3
-"""Large/binary repo files, stored in Backblaze B2 instead of git (or git-lfs).
+"""Large/binary repo files, kept in a content-addressed store instead of git (or git-lfs).
 
 `assets.json` (repo root, committed) maps repo-relative paths to content
-hashes. The files themselves are gitignored and live in a B2 bucket under
-their content address, `<prefix><sha[:2]>/<sha256>`. Blobs are immutable and
-never overwritten, so any commit's manifest can be pulled later.
+hashes. The files themselves are gitignored and live in the store under their
+content address, `<prefix><sha[:2]>/<sha256>`. Blobs are immutable and never
+overwritten, so any commit's manifest can be pulled later.
 
     scripts/assets.py status [PATH...]        what is missing / modified / new
     scripts/assets.py pull   [PATH...]        download missing or outdated files
     scripts/assets.py add    PATH...          hash + upload + record files/dirs
     scripts/assets.py push   [PATH...]        re-add every changed tracked file
-                                              (and new files matching "track")
+                                              (and new files matching "track"),
+                                              upload any blob the store lacks
     scripts/assets.py rm     PATH...          stop tracking (keeps local + remote)
-    scripts/assets.py verify                  check the bucket has every blob
+    scripts/assets.py verify                  check the store has every blob
     scripts/assets.py gc     [--delete]       blobs no commit's manifest references
 
 PATH arguments are files, directories or prefixes (relative to the current
 directory); they filter which manifest entries a command touches.
 
-Credentials (needed for every network command): B2_APPLICATION_KEY_ID and
-B2_APPLICATION_KEY in the environment, or in `.assets.env` (KEY=VALUE lines,
-gitignored) at the repo root. A key restricted to the bucket is enough;
-`gc --delete` additionally needs deleteFiles.
+The store (needed for every network command) is ASSETS_REMOTE, an rclone path:
+a local directory on the machine that hosts it, an sftp remote such as
+`hub:/home/me/tarkdar-assets` elsewhere, or any other rclone backend. Set it in
+the environment or in `.assets.env` (KEY=VALUE lines, gitignored) at the repo
+root. rclone comes from mise.toml (override the binary with RCLONE).
 
-Standard library only (Python 3.13+ for PurePath.full_match), so it runs before any venv exists.
+Python standard library + the rclone binary (Python 3.13+ for PurePath.full_match).
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
 import concurrent.futures as cf
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "assets.json"
 ENV_FILE = ROOT / ".assets.env"
 MANIFEST_VERSION = 1
-# Overridable for tests (a local mock of the B2 API).
-AUTH_URL = os.environ.get("ASSETS_B2_AUTH_URL", "https://api.backblazeb2.com/b2api/v3/b2_authorize_account")
 JOBS = 8
 CHUNK = 1 << 20
+STAGING = ROOT / ".assets-staging"  # same filesystem as the work tree, so pulls can rename
 
 
 def die(msg: str) -> None:
@@ -68,6 +66,7 @@ def load_manifest() -> dict:
     m = json.loads(MANIFEST.read_text())
     if m.get("version") != MANIFEST_VERSION:
         die(f"{MANIFEST.name}: unsupported version {m.get('version')}")
+    m.setdefault("store", {"prefix": "sha256/"})
     m.setdefault("track", [])
     m.setdefault("files", {})
     return m
@@ -206,16 +205,14 @@ def track_candidates(m: dict, paths: list[str]) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# B2 native API (minimal)
+# Store: an rclone path (local directory, sftp remote, any rclone backend)
 # ---------------------------------------------------------------------------
 
-class B2Error(Exception):
-    def __init__(self, status: int, body: str):
-        super().__init__(f"HTTP {status}: {body[:300]}")
-        self.status = status
+class StoreError(Exception):
+    pass
 
 
-def _creds() -> tuple[str, str]:
+def _env() -> dict:
     env = dict(os.environ)
     if ENV_FILE.exists():
         for line in ENV_FILE.read_text().splitlines():
@@ -223,160 +220,80 @@ def _creds() -> tuple[str, str]:
             if line and not line.startswith("#") and "=" in line:
                 k, v = line.split("=", 1)
                 env.setdefault(k.strip(), v.strip().strip('"').strip("'"))
-    kid, key = env.get("B2_APPLICATION_KEY_ID"), env.get("B2_APPLICATION_KEY")
-    if not kid or not key:
-        die("no B2 credentials: set B2_APPLICATION_KEY_ID / B2_APPLICATION_KEY "
-            f"(environment or {ENV_FILE.name})")
-    return kid, key
+    return env
 
 
-def _request(url: str, *, method="GET", headers=None, data=None, timeout=300):
-    req = urllib.request.Request(url, data=data, method=method, headers=headers or {})
-    try:
-        return urllib.request.urlopen(req, timeout=timeout)
-    except urllib.error.HTTPError as e:
-        raise B2Error(e.code, e.read().decode(errors="replace")) from None
+class Store:
+    """Blobs under `<ASSETS_REMOTE>/<prefix><sha[:2]>/<sha>`, moved in bulk by rclone."""
 
+    def __init__(self, m: dict):
+        env = _env()
+        loc = env.get("ASSETS_REMOTE")
+        if not loc:
+            die("no asset store configured: set ASSETS_REMOTE to an rclone path, e.g. a local directory "
+                f"or 'hub:/srv/tarkdar-assets' (environment or {ENV_FILE.name}; see README)")
+        self.name = loc
+        self.root = os.path.expanduser(loc) if loc.startswith("~") else loc
+        self.prefix = m["store"].get("prefix", "")
+        self.rclone = env.get("RCLONE") or shutil.which("rclone")
+        if not self.rclone:
+            die("rclone not found (it is in mise.toml: run `mise install`)")
 
-def _retry(fn, what: str, tries: int = 5):
-    for attempt in range(tries):
+    def _path(self, sub: str = "") -> str:
+        sub = sub.strip("/")
+        if not sub:
+            return self.root
+        return self.root + sub if self.root.endswith((":", "/")) else f"{self.root}/{sub}"
+
+    def _run(self, *args: str, stdin: str | None = None, capture: bool = False, progress: bool = False):
+        cmd = [self.rclone, *args]
+        if progress and sys.stdout.isatty():
+            cmd += ["--progress", "--stats-one-line"]
         try:
-            return fn()
-        except B2Error as e:
-            # 401: expired token, 408/429/5xx: transient (B2 asks clients to retry).
-            if e.status not in (401, 408, 429, 500, 503) or attempt == tries - 1:
-                raise
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
-            if attempt == tries - 1:
-                raise B2Error(0, f"{what}: {e}") from None
-        time.sleep(min(2 ** attempt, 16))
+            return subprocess.run(cmd, cwd=ROOT, input=stdin, text=True, stdout=subprocess.PIPE if capture else None,
+                                  stderr=subprocess.PIPE if capture else None)
+        except OSError as e:
+            raise StoreError(f"running rclone: {e}") from None
+
+    def keys(self) -> set[str]:
+        r = self._run("lsf", "-R", "--files-only", self._path(self.prefix), capture=True)
+        if r.returncode == 3:  # directory not found: empty store
+            return set()
+        if r.returncode:
+            raise StoreError(f"listing {self.name}: {r.stderr.strip()}")
+        return {self.prefix + line for line in r.stdout.splitlines() if line}
+
+    def put(self, blobs: dict[str, Path]) -> None:
+        """Upload {key: local file}. Staged as symlinks so one rclone call does it all."""
+        if not blobs:
+            return
+        with tempfile.TemporaryDirectory(prefix="assets-") as stage:
+            for key, src in blobs.items():
+                link = Path(stage) / key
+                link.parent.mkdir(parents=True, exist_ok=True)
+                link.symlink_to(src.resolve())
+            r = self._run("copy", "--copy-links", "--ignore-existing", "--transfers", str(JOBS),
+                          stage, self.root, progress=True)
+        if r.returncode:
+            raise StoreError(f"rclone copy to {self.name} failed (exit {r.returncode})")
+
+    def get(self, keys: list[str], dest: Path) -> None:
+        """Download keys into dest/<key>; missing ones are simply absent afterwards."""
+        r = self._run("copy", "--files-from-raw", "-", "--transfers", str(JOBS), self.root, str(dest),
+                      stdin="\n".join(keys) + "\n", progress=True)
+        if r.returncode:
+            print(f"assets: rclone copy from {self.name} reported errors (exit {r.returncode})", file=sys.stderr)
+
+    def delete(self, keys: list[str]) -> None:
+        if not keys:
+            return
+        r = self._run("delete", "--files-from-raw", "-", self.root, stdin="\n".join(keys) + "\n")
+        if r.returncode:
+            raise StoreError(f"rclone delete in {self.name} failed (exit {r.returncode})")
 
 
-class B2:
-    def __init__(self, bucket: str):
-        self.bucket = bucket
-        self._local = threading.local()
-        self._lock = threading.Lock()
-        self._authorize()
-
-    def _authorize(self):
-        kid, key = _creds()
-        basic = base64.b64encode(f"{kid}:{key}".encode()).decode()
-        with _request(AUTH_URL, headers={"Authorization": f"Basic {basic}"}) as r:
-            a = json.load(r)
-        api = a.get("apiInfo", {}).get("storageApi", a)  # v3, or v2 flat layout
-        self.account = a["accountId"]
-        self.token = a["authorizationToken"]
-        self.api_url = api["apiUrl"]
-        self.download_url = api["downloadUrl"]
-        allowed = api.get("allowed") or {}
-        buckets = allowed.get("buckets") or ([{"id": allowed["bucketId"], "name": allowed.get("bucketName")}]
-                                             if allowed.get("bucketId") else [])
-        bucket_id = next((b["id"] for b in buckets if b.get("name") == self.bucket), None)
-        if bucket_id is None:
-            res = self.call("b2_list_buckets", {"accountId": self.account, "bucketName": self.bucket})
-            if not res.get("buckets"):
-                die(f"bucket {self.bucket!r} not found or not accessible with this key")
-            bucket_id = res["buckets"][0]["bucketId"]
-        self.bucket_id = bucket_id
-
-    def call(self, name: str, body: dict) -> dict:
-        def go():
-            with _request(f"{self.api_url}/b2api/v3/{name}", method="POST",
-                          headers={"Authorization": self.token, "Content-Type": "application/json"},
-                          data=json.dumps(body).encode()) as r:
-                return json.load(r)
-        try:
-            return _retry(go, name)
-        except B2Error as e:
-            if e.status == 401:
-                with self._lock:
-                    self._authorize()
-                return _retry(go, name)
-            raise
-
-    def _file_url(self, key: str) -> str:
-        return f"{self.download_url}/file/{urllib.parse.quote(self.bucket)}/{urllib.parse.quote(key)}"
-
-    def exists(self, key: str) -> bool:
-        def go():
-            try:
-                with _request(self._file_url(key), method="HEAD", headers={"Authorization": self.token}):
-                    return True
-            except B2Error as e:
-                if e.status == 404:
-                    return False
-                raise
-        return _retry(go, f"HEAD {key}")
-
-    def upload(self, key: str, path: Path, sha1: str, size: int) -> None:
-        if size > 5_000_000_000:
-            die(f"{path}: larger than 5 GB (large-file upload is not implemented)")
-
-        def go():
-            up = getattr(self._local, "upload", None)
-            if up is None:
-                up = self._local.upload = self.call("b2_get_upload_url", {"bucketId": self.bucket_id})
-            try:
-                with open(path, "rb") as f:
-                    with _request(up["uploadUrl"], method="POST", data=f, headers={
-                        "Authorization": up["authorizationToken"],
-                        "X-Bz-File-Name": urllib.parse.quote(key),
-                        "Content-Type": "application/octet-stream",
-                        "Content-Length": str(size),
-                        "X-Bz-Content-Sha1": sha1,
-                    }):
-                        return
-            except (B2Error, OSError):
-                self._local.upload = None  # B2: get a fresh upload URL after any failure
-                raise
-        _retry(go, f"upload {key}")
-
-    def download(self, key: str, dest: Path) -> None:
-        def go():
-            with _request(self._file_url(key), headers={"Authorization": self.token}) as r, open(dest, "wb") as f:
-                while chunk := r.read(CHUNK):
-                    f.write(chunk)
-        _retry(go, f"download {key}")
-
-    def list_keys(self, prefix: str):
-        start = None
-        while True:
-            body = {"bucketId": self.bucket_id, "prefix": prefix, "maxFileCount": 10000}
-            if start:
-                body["startFileName"] = start
-            res = self.call("b2_list_file_names", body)
-            for f in res["files"]:
-                yield f["fileName"], f.get("fileId")
-            start = res.get("nextFileName")
-            if not start:
-                return
-
-
-def connect(m: dict) -> B2:
-    store = m.get("store", {})
-    if store.get("provider") != "b2":
-        die(f"unsupported store provider {store.get('provider')!r}")
-    return B2(os.environ.get("ASSETS_B2_BUCKET", store["bucket"]))
-
-
-def parallel(fn, items, label: str):
-    items = list(items)
-    done = 0
-    errors = []
-    with cf.ThreadPoolExecutor(JOBS) as ex:
-        futs = {ex.submit(fn, it): it for it in items}
-        for fut in cf.as_completed(futs):
-            done += 1
-            try:
-                fut.result()
-            except (B2Error, OSError) as e:
-                errors.append((futs[fut], e))
-            if sys.stderr.isatty():
-                print(f"\r{label} {done}/{len(items)}", end="", file=sys.stderr, flush=True)
-    if sys.stderr.isatty() and items:
-        print(file=sys.stderr)
-    return errors
+def connect(m: dict) -> Store:
+    return Store(m)
 
 
 def fmt_size(n: float) -> str:
@@ -457,80 +374,101 @@ def cmd_pull(args) -> int:
         return 0
     total = sum(e["size"] for _, e in todo)
     print(f"downloading {len(todo)} files, {fmt_size(total)}")
-    b2 = connect(m)
-
-    def fetch(item):
-        rel, e = item
-        dest = ROOT / rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        tmp = dest.with_name(dest.name + ".assets-tmp")
-        try:
-            b2.download(blob_key(m, e["sha256"]), tmp)
+    store = connect(m)
+    by_sha: dict[str, list[str]] = {}
+    for rel, e in todo:
+        by_sha.setdefault(e["sha256"], []).append(rel)
+    shutil.rmtree(STAGING, ignore_errors=True)
+    STAGING.mkdir()
+    errors: list[tuple[str, str]] = []
+    try:
+        store.get([blob_key(m, sha) for sha in by_sha], STAGING)
+        for sha, rels in by_sha.items():
+            staged = STAGING / blob_key(m, sha)
+            if not staged.is_file():
+                errors += [(rel, f"blob {sha[:12]} not in store") for rel in rels]
+                continue
             h = hashlib.sha256()
-            with open(tmp, "rb") as f:
+            with open(staged, "rb") as f:
                 while chunk := f.read(CHUNK):
                     h.update(chunk)
-            if h.hexdigest() != e["sha256"]:
-                raise OSError(f"hash mismatch after download of {rel}")
-            tmp.replace(dest)
-        finally:
-            tmp.unlink(missing_ok=True)
-
-    errors = parallel(fetch, todo, "pull")
-    for (rel, _), e in errors:
+            if h.hexdigest() != sha:
+                errors += [(rel, "hash mismatch after download") for rel in rels]
+                continue
+            for i, rel in enumerate(rels):  # several paths may share a blob: copy, then move the last
+                dest = ROOT / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                if i < len(rels) - 1:
+                    tmp = dest.with_name(dest.name + ".assets-tmp")
+                    shutil.copyfile(staged, tmp)
+                    tmp.replace(dest)
+                else:
+                    staged.replace(dest)
+    except StoreError as e:
+        die(str(e))
+    finally:
+        shutil.rmtree(STAGING, ignore_errors=True)
+    for rel, e in errors:
         print(f"error: {rel}: {e}", file=sys.stderr)
     print(f"downloaded {len(todo) - len(errors)} files" + (f", {len(errors)} failed" if errors else ""))
     return 1 if errors else 0
 
 
 def _publish(m: dict, rels: list[str], dry_run: bool) -> int:
-    """Hash, upload what the bucket lacks, record in the manifest."""
+    """Hash, upload whatever blobs the store lacks, record changes in the manifest."""
     hc = HashCache()
-    changed = []
+    hashed = []
     for rel in rels:
         sha, size = hc.sha256(rel)
-        e = m["files"].get(rel)
-        if e is None or e["sha256"] != sha:
-            changed.append((rel, sha, size))
+        hashed.append((rel, sha, size))
     hc.save()
-    if not changed:
-        print("nothing to publish")
-        return 0
-    print(f"{len(changed)} files to record, {fmt_size(sum(s for _, _, s in changed))}")
+    changed = [(rel, sha, size) for rel, sha, size in hashed
+               if (e := m["files"].get(rel)) is None or e["sha256"] != sha]
     if dry_run:
+        print(f"{len(changed)} files to record, {fmt_size(sum(s for _, _, s in changed))}")
         for rel, _, size in changed:
             print(f"  {rel} ({fmt_size(size)})")
         return 0
-    b2 = connect(m)
-    uploaded = []
-
-    def put(item):
-        rel, sha, size = item
-        key = blob_key(m, sha)
-        if b2.exists(key):
-            return
-        h1 = hashlib.sha1()
-        with open(ROOT / rel, "rb") as f:
-            while chunk := f.read(CHUNK):
-                h1.update(chunk)
-        b2.upload(key, ROOT / rel, h1.hexdigest(), size)
-        uploaded.append(size)
-
-    errors = parallel(put, changed, "push")
-    failed = {item[0] for item, _ in errors}
-    for (rel, _, _), e in errors:
-        print(f"error: {rel}: {e}", file=sys.stderr)
+    if not hashed:
+        print("nothing to publish")
+        return 0
+    store = connect(m)
+    try:
+        present = store.keys()
+        todo = {}
+        for rel, sha, size in hashed:
+            key = blob_key(m, sha)
+            if key not in present and key not in todo:
+                todo[key] = (ROOT / rel, size)
+        if not changed and not todo:
+            print("nothing to publish")
+            return 0
+        print(f"{len(changed)} files to record; uploading {len(todo)} blobs, "
+              f"{fmt_size(sum(s for _, s in todo.values()))}")
+        failure = None
+        try:
+            store.put({k: p for k, (p, _) in todo.items()})
+        except StoreError as e:
+            failure = e
+        present = store.keys() if todo else present
+    except StoreError as e:
+        die(str(e))
+    failed = [rel for rel, sha, _ in changed if blob_key(m, sha) not in present]
     for rel, sha, size in changed:
         if rel not in failed:
             m["files"][rel] = {"sha256": sha, "size": size}
     save_manifest(m)
-    print(f"uploaded {len(uploaded)} blobs ({fmt_size(sum(uploaded))}), "
-          f"{len(changed) - len(failed) - len(uploaded)} already present; manifest updated"
-          + (f"; {len(failed)} failed" if failed else ""))
+    uploaded = [s for k, (_, s) in todo.items() if k in present]
+    print(f"uploaded {len(uploaded)} blobs ({fmt_size(sum(uploaded))}); manifest updated"
+          + (f"; {len(failed)} files not recorded (upload failed)" if failed else ""))
+    if failure:
+        print(f"error: {failure}", file=sys.stderr)
+    for rel in failed:
+        print(f"error: {rel}: blob not in store", file=sys.stderr)
     leaked = git_tracked([r for r, _, _ in changed])
     if leaked:
         print(f"note: {len(leaked)} of these are tracked by git; `git rm --cached` them and gitignore the paths")
-    return 1 if errors else 0
+    return 1 if failure or failed or len(uploaded) < len(todo) else 0
 
 
 def cmd_add(args) -> int:
@@ -576,10 +514,13 @@ def cmd_rm(args) -> int:
 
 def cmd_verify(args) -> int:
     m = load_manifest()
-    b2 = connect(m)
-    present = {k for k, _ in b2.list_keys(m["store"].get("prefix", ""))}
+    store = connect(m)
+    try:
+        present = store.keys()
+    except StoreError as e:
+        die(str(e))
     missing = sorted(r for r, e in m["files"].items() if blob_key(m, e["sha256"]) not in present)
-    print(f"{len(m['files']) - len(missing)} / {len(m['files'])} blobs present in {b2.bucket}")
+    print(f"{len(m['files']) - len(missing)} / {len(m['files'])} blobs present in {store.name}")
     for r in missing:
         print(f"  missing: {r}")
     return 1 if missing else 0
@@ -597,18 +538,20 @@ def cmd_gc(args) -> int:
             referenced.update(blob_key(m, e["sha256"]) for e in old.get("files", {}).values())
         except (subprocess.CalledProcessError, ValueError):
             continue
-    b2 = connect(m)
-    orphans = [(k, fid) for k, fid in b2.list_keys(m["store"].get("prefix", "")) if k not in referenced]
-    print(f"{len(orphans)} blobs not referenced by any of {len(revs)} commits' manifests (or the working copy)")
-    if args.delete:
-        for k, fid in orphans:
-            b2.call("b2_delete_file_version", {"fileName": k, "fileId": fid})
-        print(f"deleted {len(orphans)}")
-    else:
-        for k, _ in orphans[:20]:
-            print(f"  {k}")
-        if orphans:
-            print("re-run with --delete to remove them (unpushed branches elsewhere may still need them)")
+    store = connect(m)
+    try:
+        orphans = sorted(store.keys() - referenced)
+        print(f"{len(orphans)} blobs not referenced by any of {len(revs)} commits' manifests (or the working copy)")
+        if args.delete:
+            store.delete(orphans)
+            print(f"deleted {len(orphans)}")
+            return 0
+    except StoreError as e:
+        die(str(e))
+    for k in orphans[:20]:
+        print(f"  {k}")
+    if orphans:
+        print("re-run with --delete to remove them (unpushed branches elsewhere may still need them)")
     return 0
 
 
@@ -636,7 +579,7 @@ def main() -> int:
     p = sub.add_parser("rm", help="remove entries from the manifest")
     p.add_argument("paths", nargs="+")
     p.set_defaults(fn=cmd_rm)
-    p = sub.add_parser("verify", help="check every manifest blob exists in the bucket")
+    p = sub.add_parser("verify", help="check every manifest blob exists in the store")
     p.set_defaults(fn=cmd_verify)
     p = sub.add_parser("gc", help="list (or --delete) blobs no commit references")
     p.add_argument("--delete", action="store_true")

@@ -10,7 +10,7 @@ frontend picks the folder whose `ids` contain the raid's location id, the 3D one
 (Settings has a switch for the 2D one).
 
 Map images aren't committed (except `maps/2d/demo`). The ones in use, with their `map.json`, are
-in B2: `scripts/assets.py pull maps/2d` (see the README, "Data files"). For a new map, bring your
+in the asset store: `scripts/assets.py pull maps/2d` (see the README, "Data files"). For a new map, bring your
 own image, calibrate it, then `scripts/assets.py push maps/2d` and commit `assets.json`.
 
 ## `map.json`

@@ -126,6 +126,8 @@ the count of each object type (`typeCounts`). Scenes do not reference NavMesh da
    `Decal/*`, SpeedTree, water, glass); mesh-name tokens cover the rest.
 4. **Cells** (`hlod.py`): structure, glass and road are merged per 128 m grid cell into world
    space; shadow, decal, background and foliage are dropped; terrain and water stay as they are.
+   Scenery goes as well: objects wider than 800 m, and objects more than 150 m outside the
+   playable area (the heightmap terrain, or what the map's `*_LevelBorders` scene encloses).
    Roads keep their up-facing triangles as authored (no simplification, no hidden-surface
    removal): they lie centimetres above the terrain.
 5. **Simplify**: each cell with meshoptimizer to an absolute error of **10 cm**, with pruning:
@@ -341,6 +343,14 @@ Frame rates were never measured on a GPU by the harness (the development contain
     `factory4_day`), and the Customs bundle has an editor preset that says `Lighthouse`.
 24. **`ServerName` is not always the location id**: Ground Zero's start variant is `Sandbox_SL`,
     its location id `sandbox_start`. Presets name their game preset (`game`).
+
+25. **Anything that samples surfaces must clip them to its area first** (`geometry.clip_to_rect`).
+    Sea floors and water are planes with triangles of 700 m and more; sampled whole at 0.5 m or
+    less they take gigabytes (Lighthouse's ground map: 10 GB).
+26. **The sea floor is "terrain" by its mesh name** (`Plane`) but not ground: with it as the lowest
+    surface the ground map makes a port one building (`ground.SEA_FLOOR`).
+27. **Some albedo slots have no thumbnail in cache v4**: the rock shaders' (`_Aldebo`,
+    `_BaseAlbedoASmoothness`). Such a material's colour is its tint alone, i.e. white.
 
 `tools/maps3d/tests/test_build.py` (`ValidationChecksTest`) checks known objects of the real
 Customs cache when it is present (sizes, counts, categories).

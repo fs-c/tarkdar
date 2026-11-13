@@ -27,7 +27,7 @@ COLLIDER_KIND = {"BoxCollider": 0, "SphereCollider": 1, "CapsuleCollider": 2, "M
 # Material texture slots that get a downsampled RGBA thumbnail in the texture
 # store (colour sources). Other slots (normal/spec/cube maps) only record
 # name + dimensions.
-ALBEDO_SLOT_RE = re.compile(r"^_(MainTex|BaseMap|BaseColorMap|Albedo|AlbedoMap|Diffuse|DiffuseMap|Color|ColorMap|TintMask)\d*$", re.I)
+ALBEDO_SLOT_RE = re.compile(r"^_(MainTex|BaseMap|BaseColorMap|Albedo|AlbedoMap|Diffuse|DiffuseMap|Color|ColorMap|TintMask|BaseAlbedoASmoothness|Aldebo)\d*$", re.I)
 THUMB_MAX = 128          # material albedo / terrain layer thumbnails
 SPLAT_MAX = 1024         # terrain splat (alpha) maps, stored per scene
 

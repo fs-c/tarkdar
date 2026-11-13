@@ -48,6 +48,16 @@ class Options:
     surfaces: tuple = ("road",)
     surface_up: float = 0.7           # normal.y from which a triangle is a surface
     drop: tuple = ("shadow", "decal", "background", "foliage")
+    # Wider than this (metres, either horizontal axis) is scenery beyond the playable area whatever
+    # its name says: distant mountains, a city silhouette, a 12 km bridge. Dropped like background:
+    # such an object would stretch its cell over kilometres, which hidden-surface removal samples
+    # at 20 cm. The widest real objects are ground slabs and roads of 600 to 700 m (Terminal, Woods).
+    backdrop_size: float = 800.0
+    # The playable area is the game's heightmap terrain, or what its level borders enclose
+    # (Dataset.playable). What stands wholly further outside it than this (metres) is scenery too:
+    # the port seen from Shoreline, the skyline around Ground Zero. The ground map ends at the same
+    # distance. A map with neither keeps everything.
+    backdrop_margin: float = 150.0
     hsr: bool = True                  # remove triangles that are never visible from outside
     hsr_categories: tuple = ("structure",)
     hsr_pixel: float = 0.20           # metres, sampling step of the visibility bake
@@ -206,14 +216,9 @@ def _occluder_for(terrain, lo, hi, margin: float, origin):
     positions, indices = terrain
     if not len(indices):
         return None
-    tri = indices.reshape(-1, 3)
-    corners = positions[tri]
-    tmin, tmax = corners.min(axis=1), corners.max(axis=1)
-    inside = ((tmax[:, 0] >= lo[0] - margin) & (tmin[:, 0] <= hi[0] + margin) &
-              (tmax[:, 2] >= lo[2] - margin) & (tmin[:, 2] <= hi[2] + margin))
-    if not inside.any():
+    pos, idx = geometry.clip_to_rect(positions, indices, lo[[0, 2]] - margin, hi[[0, 2]] + margin)
+    if not len(idx):
         return None
-    idx, (pos,) = compact(tri[inside].reshape(-1), positions)
     return (pos - origin).astype(np.float32), idx
 
 
@@ -226,6 +231,10 @@ def bake(ds: dataset.Dataset, opt: Options, log=print) -> dataset.Dataset:
     passthrough: list[dataset.Instance] = []
     foliage_boxes: list[tuple] = []
     dropped = 0
+    backdrop: dict[str, list] = defaultdict(list)      # name -> widths of the oversized objects dropped
+    outside = 0
+    known = ds.playable is not None or any(g.kind == "terrain" for g in ds.geoms)
+    play_lo, play_hi = dataset.focus_bounds(ds) if known else (None, None)
     for inst in ds.instances:
         geom = ds.geoms[inst.geom]
         by_category: dict[str, list] = defaultdict(list)
@@ -241,6 +250,17 @@ def bake(ds: dataset.Dataset, opt: Options, log=print) -> dataset.Dataset:
                 passthrough.append(inst)     # terrain, water: kept as instances (noise parts included)
             continue
         wa = geometry.world_aabb(*bounds[inst.geom], inst.matrix)
+        width = float((wa.max(axis=0) - wa.min(axis=0))[[0, 2]].max())
+        if width > opt.backdrop_size:
+            dropped += 1
+            path = ds.paths[inst.path] if 0 <= inst.path < len(ds.paths) else ""
+            backdrop[path.rsplit("/", 1)[-1] or geom.name].append(width)
+            continue
+        if play_lo is not None and ((wa.max(axis=0) < play_lo - opt.backdrop_margin)[[0, 2]].any() or
+                                    (wa.min(axis=0) > play_hi + opt.backdrop_margin)[[0, 2]].any()):
+            dropped += 1
+            outside += 1
+            continue
         cell = cell_of((wa.min(axis=0) + wa.max(axis=0)) / 2, opt.cell_size)
         for category, parts in by_category.items():
             if category in merge:
@@ -372,5 +392,12 @@ def bake(ds: dataset.Dataset, opt: Options, log=print) -> dataset.Dataset:
         f"-> {totals['simplified']:,} simplified -> {totals['out']:,} visible ({vertices:,} vertices) in "
         f"{cell_meshes:,} cell meshes; {len(passthrough):,} instances kept as they are, {dropped:,} dropped, "
         f"{len(trees):,} tree markers")
+    if backdrop:
+        log(f"  dropped as backdrop (wider than {opt.backdrop_size:g} m): "
+            + ", ".join(f"{name} ({max(widths):,.0f} m{f', {len(widths)}x' if len(widths) > 1 else ''})"
+                        for name, widths in sorted(backdrop.items(), key=lambda kv: -max(kv[1]))))
+    if outside:
+        log(f"  dropped as backdrop (more than {opt.backdrop_margin:g} m outside the playable area): {outside:,} objects")
     return dataset.Dataset(name=ds.name, label=ds.label, tag=ds.tag, profile=ds.profile, scenes=scenes,
-                           geoms=out_geoms, instances=out_instances, materials=ds.materials, paths=ds.paths)
+                           geoms=out_geoms, instances=out_instances, materials=ds.materials, paths=ds.paths,
+                           playable=ds.playable)

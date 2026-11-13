@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .geometry import clip_to_rect
 from .visibility import face_normals, sample_triangles
 
 UP = 0.7            # normal.y of a surface one can stand on (about 45 degrees)
@@ -32,6 +33,7 @@ STEP = 0.35         # metres per cell that still count as continuous ground (abo
 TALL = 2.0          # metres above the ground from which something is taller than a person
 WIDE = 2            # cells around a cell that must all be tall for it to be part of a building (5 m across)
 MARGIN = 8          # cells around the surfaces
+SEA_FLOOR = 2000.0  # metres: a wider plane called terrain is the sea floor (Terminal: 5.9 km), not ground
 AROUND_FOCUS = 150  # metres around the playable area that are covered
 
 
@@ -141,6 +143,8 @@ def height_map(surfaces: list[tuple[np.ndarray, np.ndarray, bool]], bounds_xz, c
     top = np.full(rows * cols, -np.inf, dtype=np.float32)
     terrain = np.full(rows * cols, -np.inf, dtype=np.float32)
     for positions, indices, is_terrain in surfaces:
+        # Only what lies over the grid (a sea floor plane has triangles of 700 m).
+        positions, indices = clip_to_rect(positions, indices, (x0, z0), (x0 + cols * cell, z0 + rows * cell), 64.0)
         tri = indices.reshape(-1, 3)
         for start in range(0, len(tri), 400_000):
             points = _up_samples(positions, tri[start:start + 400_000].reshape(-1), cell * 0.5)
@@ -195,6 +199,8 @@ def of_dataset(ds, focus_bounds, cell: float = 1.0) -> GroundMap | None:
             continue
         geom = ds.geoms[inst.geom]
         positions = geom.positions.astype(np.float64) @ inst.matrix[:3, :3].T + inst.matrix[:3, 3]
+        if category == "terrain" and geom.kind != "terrain" and np.ptp(positions[:, [0, 2]], axis=0).max() > SEA_FLOOR:
+            continue      # with it as the lowest surface, a whole port is "a building" on the sea floor
         # Only a heightmap terrain is ground by definition: a plane classified as terrain by
         # its name may lie anywhere.
         surfaces.append((positions, geom.indices.astype(np.uint32), geom.kind == "terrain"))

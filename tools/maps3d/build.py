@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 import time
 from collections import Counter
@@ -39,7 +40,11 @@ PROFILES = {
 REFERENCE_CATEGORIES = {"structure", "terrain", "water", "glass", "road"}
 
 # Texture slots that hold the base colour, in order of preference.
-ALBEDO_SLOTS = ("_MainTex", "_Albedo", "_Aldebo", "_MainTex0", "_Splat0")
+ALBEDO_SLOTS = ("_MainTex", "_Albedo", "_Aldebo", "_MainTex0", "_Splat0", "_BaseAlbedoASmoothness")
+# The rock shaders (every outdoor map) keep their albedo in a slot that caches
+# before extractor version 5 have no thumbnail of: a typical rock colour stands in for it.
+ROCK_SHADER_RE = re.compile(r"^(ANGRYMESH/PBR Rocks/|MK4/Rock)", re.I)
+ROCK_COLOR = (112.0, 108.0, 100.0)
 
 
 def _digest(p: np.ndarray, idx: np.ndarray, parts: np.ndarray) -> bytes:
@@ -62,6 +67,9 @@ def material_color(mat: dict, textures: list) -> tuple:
         if ti is not None and 0 <= ti < len(textures) and textures[ti].get("mean"):
             mean = textures[ti]["mean"]
             break
+    if mean is None and ROCK_SHADER_RE.match(mat.get("shader") or ""):
+        mean = ROCK_COLOR
+        tint = tint or (mat.get("colors") or {}).get("_BaseColor")
     if mean is None and tint is None:
         return dataset.NO_COLOR
     rgb = np.array(mean[:3] if mean else [255.0, 255.0, 255.0])
@@ -242,6 +250,30 @@ def select_scenes(manifest: dict, map_name: str, include_indoor: bool) -> list[s
     return [key_of[p] for p in paths]
 
 
+BORDERS_RE = re.compile(r"levelborders$", re.I)
+BOX_CORNERS = np.array([[x, y, z] for x in (-0.5, 0.5) for y in (-0.5, 0.5) for z in (-0.5, 0.5)])
+
+
+def level_borders(root: Path, manifest: dict, map_name: str):
+    """(min xyz, max xyz), in the renderer's space, of the boxes of the map's *_LevelBorders
+    scene: the walls the game puts around the playable area. None if the map has no such scene."""
+    lo, hi = np.full(3, np.inf), np.full(3, -np.inf)
+    for key in manifest["maps"][map_name]["scenes"]:
+        path = manifest["scenes"].get(key, {}).get("path", "")
+        if not BORDERS_RE.search(path.removesuffix(".unity")):
+            continue
+        _, a = cache.read_scene(root, key)
+        on = np.asarray(a["c_enabled"], dtype=bool) & np.asarray(a["c_active"], dtype=bool) & (np.asarray(a["c_kind"]) == 0)
+        if not on.any():
+            continue
+        m = np.asarray(a["c_matrix"], dtype=np.float64)[on]
+        local = np.asarray(a["c_center"])[on, None, :] + np.asarray(a["c_size"])[on, None, :] * BOX_CORNERS
+        world = (np.einsum("nij,nkj->nki", m[:, :3, :3], local) + m[:, None, :3, 3]).reshape(-1, 3)
+        world[:, 2] *= -1.0
+        lo, hi = np.minimum(lo, world.min(axis=0)), np.maximum(hi, world.max(axis=0))
+    return (lo, hi) if np.isfinite(lo).all() else None
+
+
 def assemble(root: Path, map_name: str, profile: str, *, lod: int, terrain_step: int, include_indoor: bool,
              categories: set[str] | None = None, log=print) -> dataset.Dataset:
     """cache -> in-memory Dataset (LOD choice, classification, conversion).
@@ -313,8 +345,12 @@ def assemble(root: Path, map_name: str, profile: str, *, lod: int, terrain_step:
         for inst in instances:
             inst.geom = remap[inst.geom]
 
+    playable = level_borders(root, manifest, map_name) if MAPS.get(map_name, {}).get("borders") else None
+    if playable is not None:
+        log("  level borders: x {:.0f}..{:.0f}, z {:.0f}..{:.0f}".format(*np.array(playable)[:, [0, 2]].T.reshape(-1)))
     return dataset.Dataset(name=map_name, label=mp["label"], tag=mp["tag"], profile=profile, scenes=scenes,
-                           geoms=geoms, instances=instances, materials=tables.materials, paths=tables.paths)
+                           geoms=geoms, instances=instances, materials=tables.materials, paths=tables.paths,
+                           playable=playable)
 
 
 def map_config(map_name: str, label: str) -> dict:

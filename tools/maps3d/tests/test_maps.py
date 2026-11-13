@@ -127,6 +127,16 @@ class GamePresetTest(unittest.TestCase):
         for name, mp in maps.MAPS.items():
             self.assertIn("game", mp, name)
 
+    def test_indoor_maps(self):
+        indoor = {name for name, mp in maps.MAPS.items() if mp.get("interior")}
+        self.assertEqual(indoor, {"factory", "factory-event", "labs", "labs-event", "labyrinth", "icebreaker"})
+
+    def test_terminal_leaves_the_story_cutscenes_out(self):
+        scenes = [LOC + "Terminal/Terminal_Area_01_CutScene.unity",
+                  "Assets/CutscenesSources/Scenes/Terminal_area_PortCutscene_00_Intro.unity"]
+        presets = {"terminal": {"scenes": [{"path": p} for p in scenes]}}
+        self.assertEqual(maps.MAPS["terminal"]["select"](scenes, presets), scenes[:1])
+
 
 if __name__ == "__main__":
     unittest.main()

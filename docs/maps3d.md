@@ -112,6 +112,28 @@ the count of each object type (`typeCounts`). Scenes do not reference NavMesh da
 - three.js is loaded only when a 3D map is shown (a separate chunk, ~155 kB gzipped,
   including the decoder for the map files).
 
+## Indoor maps
+
+Factory, Labs, Labyrinth and Icebreaker (preset key `interior` in `t3d/maps.py`) are built with
+everything kept: no hidden-surface removal, indoor scenes included (`index.json`:
+`build.interior`). Such a map is readable one floor at a time, so the viewer **cuts it open**:
+
+- `Map3D.setFloor(y)`: `y` is where someone stands (world height). Nothing from 2.3 m above it
+  upwards is drawn (`stage.ts`: `uCut`, a `discard` in every material; ceilings face down and
+  are culled anyway, what the cut removes is the floors and roofs above).
+- The floor shown is the local player's: it follows once they are 0.4 m off it. The control
+  above the follow button (or Page Up / Page Down) picks a height by hand in steps of 1 m;
+  clicking the height goes back to automatic. Without a local player and without a pick the
+  whole map is shown (the roof).
+- The plan style measures heights from that floor instead of the ground map (`uFloor`): floor
+  colour at the floor, cover up to 2 m, obstacle above. A part of the floor raised by half a
+  metre or more (Labs has several) therefore shows as cover; what lies below is darker.
+- There is no floor detection and no per-floor data: the cut height does all the work.
+- The camera frames where nearly all objects are plus 25 m (`build.INTERIOR_MARGIN`).
+
+Not yet: interiors of the buildings on outdoor maps (the mall on Interchange, Reserve's
+bunkers, Streets): those maps are built from outside as before.
+
 ## How a map is built
 
 1. **Cache** (`extract_cache.py`): every MeshRenderer of the map's scenes with its mesh (all LOD
@@ -361,8 +383,8 @@ Customs cache when it is present (sizes, counts, categories).
   thin things (wires, ladders) are fine. 10 cm stays.
 - Colour on by default, lighter and more even than the raw material colours.
 - Trees as markers only: "there is a tree there", not in the way.
-- Interiors: not needed now. The ideal version has simplified interiors (floors, walls, windows).
-  None of the 2D maps in use has more than one floor configured, so nothing is lost meanwhile.
+- Interiors of indoor maps: everything kept, cut open at one floor in the viewer (see "Indoor
+  maps"). Interiors of buildings on outdoor maps: not yet.
 - No more time on optimization unless it is an easy win.
 - Readability comes from a second style on the same geometry, not from a second (2D) map: what a
   thing is follows from its height above the ground, so no map needs hand-made data for it.
@@ -371,8 +393,8 @@ Customs cache when it is present (sizes, counts, categories).
 
 - Built and checked: Customs and Streets; Factory is a first version. Every other location is
   extracted (cache v4) but not yet tuned: see `docs/maps3d-handoff.md`.
-- No interiors: Streets is built from its exterior scenes, and hidden-surface removal strips what
-  is under roofs. Glass is drawn solid for that reason.
+- No interiors on outdoor maps: Streets is built from its exterior scenes, and hidden-surface
+  removal strips what is under roofs. Glass is drawn solid for that reason.
 - One level of detail; curved objects are faceted close up, thin objects are gone.
 - The viewer still holds a map as plain arrays (148 MB and 217 MB in the browser, about 125 MB
   and 190 MB of that on the GPU); only the file is compact.

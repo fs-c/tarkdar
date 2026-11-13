@@ -27,7 +27,11 @@ export interface DatasetIndex {
   label: string;
   profile: string;
   /** Profile-specific build parameters. */
-  build?: { cells?: { size: number; error: number; hiddenSurfaceRemoval: boolean } };
+  build?: {
+    cells?: { size: number; error: number; hiddenSurfaceRemoval: boolean };
+    /** An indoor map, built with everything kept: to be looked at one floor at a time (Map3D.setFloor). */
+    interior?: boolean;
+  };
   categories: string[];
   bounds: Bounds;
   /** The playable area: what the camera frames. */

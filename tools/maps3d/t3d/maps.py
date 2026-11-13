@@ -136,11 +136,11 @@ def _geometry_scenes(game: str, exclude: str | None = None):
 
 
 def _untuned(label: str, ids: list[str], folders: list[str], *, game: str | None = None,
-             indoor_optional: bool = True, exclude: str | None = None) -> dict:
+             indoor_optional: bool = True, exclude: str | None = None, interior: bool = False) -> dict:
     game = game or ids[0]
     return {"label": label, "tag": ids[0].upper(), "ids": ids, "indoorOptional": indoor_optional,
             "folders": folders, "game": game, "select": _geometry_scenes(game, exclude), "tuned": False,
-            "borders": True}
+            "borders": True, "interior": interior}
 
 
 # ids: the game's location ids this map is used for (matched case-insensitively
@@ -148,6 +148,9 @@ def _untuned(label: str, ids: list[str], folders: list[str], *, game: str | None
 # folders: Assets/Content/Locations/<folder>/ scenes to extract.
 # select: the scenes a build uses, from the cached ones.
 # indoorOptional: the build drops *indoor* scenes unless --include-indoor.
+# interior: the map is (mostly) indoors: the build keeps everything (no hidden-surface removal,
+#          indoor scenes included) and the viewer cuts the map open above the floor being
+#          looked at (web/src/map3d: Map3D.setCut).
 # borders: the map's *_LevelBorders scene (boxes around the playable area: the maps without
 #          heightmap terrain have one) says what the camera frames and where scenery begins.
 MAPS = {
@@ -156,7 +159,8 @@ MAPS = {
     "streets": {"label": "Streets", "tag": "TARKOVSTREETS", "ids": ["TarkovStreets"], "indoorOptional": True,
                 "folders": ["City"], "game": "TarkovStreets", "select": _streets},
     "factory": {"label": "Factory", "tag": "FACTORY4", "ids": ["factory4_day", "factory4_night"], "indoorOptional": False,
-                "folders": ["Factory_Rework"], "game": "factory4_day", "select": _listed(FACTORY_SCENES)},
+                "folders": ["Factory_Rework"], "game": "factory4_day", "select": _listed(FACTORY_SCENES),
+                "interior": True},
     # Extracted, selection not tuned yet (`tuned: False`). Variants of a location (event, dark,
     # start) are their own presets until a build shows whether they differ from the main one.
     "woods": _untuned("Woods", ["woods"], ["Woods"], indoor_optional=False),
@@ -167,14 +171,14 @@ MAPS = {
     "ground-zero": _untuned("Ground Zero", ["Sandbox", "Sandbox_high"], ["Sandbox"]),
     "ground-zero-start": _untuned("Ground Zero (start)", ["Sandbox_start"], ["Sandbox_StartLocation"],
                                   game="Sandbox_SL"),
-    "labs": _untuned("Labs", ["laboratory", "laboratory_dark"], ["Laboratory"], indoor_optional=False),
-    "labs-event": _untuned("Labs (event)", ["laboratory_event"], ["Laboratory_Event"], indoor_optional=False),
-    "labyrinth": _untuned("Labyrinth", ["labyrinth"], ["Labyrinth"], indoor_optional=False),
+    "labs": _untuned("Labs", ["laboratory", "laboratory_dark"], ["Laboratory"], indoor_optional=False, interior=True),
+    "labs-event": _untuned("Labs (event)", ["laboratory_event"], ["Laboratory_Event"], indoor_optional=False, interior=True),
+    "labyrinth": _untuned("Labyrinth", ["labyrinth"], ["Labyrinth"], indoor_optional=False, interior=True),
     # The PortCutscene_* scenes (Assets/CutscenesSources) stage the story cutscenes on top of the
     # map: not part of a raid. Terminal_Area_01_CutScene* is an ordinary area of the map.
     "terminal": _untuned("Terminal", ["terminal"], ["Terminal"], exclude=r"PortCutscene"),
-    "icebreaker": _untuned("Icebreaker", ["icebreaker"], ["Icebreaker"], exclude=r"cutscene"),
-    "factory-event": _untuned("Factory (event)", ["factory_event"], ["Factory_event"], indoor_optional=False),
+    "icebreaker": _untuned("Icebreaker", ["icebreaker"], ["Icebreaker"], exclude=r"cutscene", interior=True),
+    "factory-event": _untuned("Factory (event)", ["factory_event"], ["Factory_event"], indoor_optional=False, interior=True),
 }
 
 

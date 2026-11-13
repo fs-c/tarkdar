@@ -2,6 +2,7 @@
 // The two are redrawn independently: the map only when its camera or settings change, the markers
 // whenever the scene does. A camera that stands still costs the GPU nothing.
 
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { type Ref, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { isTyping } from "../hooks";
 import { Map3D, type MapStats } from "../map3d/Map3D";
@@ -45,6 +46,11 @@ interface Props {
 /** Metres of ground across the view when a map opens while following the local player. */
 const FOLLOW_SPAN = 350;
 
+/** Indoor maps: the floor shown follows the local player once they are this far (metres) above or below it. */
+const FLOOR_FOLLOW = 0.4;
+/** ... and the buttons move it by this much. */
+const FLOOR_STEP = 1;
+
 const MOVE_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD"]);
 
 /** While following, the map is re-rendered at most this often (ms); markers update on every scene. */
@@ -60,6 +66,10 @@ export function Radar3D({ url, scene, settings, follow, heading, onPan, onTurn, 
   const latest = useRef({ scene, follow, heading, onPan, onTurn, onTap, onStats, settings });
   const drawRequested = useRef(0);
   const [status, setStatus] = useState<{ progress: number | null; error: string | null }>({ progress: 0, error: null });
+  // Indoor maps are cut open at one floor: the local player's, or one picked by hand (a height).
+  const [interior, setInterior] = useState(false);
+  const [pickedFloor, setPickedFloor] = useState<number | null>(null);
+  const playerFloor = useRef<number | null>(null);
 
   /** Markers onto the overlay, through the map's current camera. */
   const draw = () => {
@@ -102,11 +112,15 @@ export function Radar3D({ url, scene, settings, follow, heading, onPan, onTurn, 
     map.onUserTurn = () => latest.current.onTurn();
     let live = true;
     setStatus({ progress: 0, error: null });
+    setInterior(false);
+    setPickedFloor(null);
+    playerFloor.current = null;
     map.load(url, (progress) => live && setStatus({ progress, error: null })).then(
       () => {
         if (!live) return;
         // Following someone: start close enough to read the surroundings, not on the whole map.
         if (latest.current.follow) map.setViewSpan(FOLLOW_SPAN);
+        setInterior(map.interior);
         setStatus({ progress: null, error: null });
       },
       (e: unknown) => live && setStatus({ progress: null, error: e instanceof Error ? e.message : String(e) }),
@@ -155,9 +169,37 @@ export function Radar3D({ url, scene, settings, follow, heading, onPan, onTurn, 
       if (wait <= 0) recenter();
       else followTimer.current = window.setTimeout(recenter, wait);
     }
+    if (map?.loaded && interior) {
+      // Not every step of a staircase: only once they have left the floor shown.
+      const y = scene.players.find((p) => p.local && p.pos)?.pos?.[1];
+      if (y === undefined) playerFloor.current = null;
+      else if (playerFloor.current === null || Math.abs(y - playerFloor.current) > FLOOR_FOLLOW) playerFloor.current = y;
+      map.setFloor(pickedFloor ?? playerFloor.current);
+    }
     requestDraw();
   });
   useEffect(() => () => window.clearTimeout(followTimer.current), []);
+
+  /** One step up or down from the floor shown; from the whole map, down from its top. */
+  const stepFloor = (direction: 1 | -1) => {
+    const range = mapRef.current?.heights();
+    if (!range) return;
+    setPickedFloor((picked) => {
+      const from = picked ?? playerFloor.current ?? range[1];
+      return Math.min(range[1], Math.max(range[0], Math.round(from) + direction * FLOOR_STEP));
+    });
+  };
+  useEffect(() => {
+    if (!interior) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (isTyping(e) || (e.key !== "PageUp" && e.key !== "PageDown")) return;
+      e.preventDefault();
+      stepFloor(e.key === "PageUp" ? 1 : -1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stepFloor only reads refs
+  }, [interior]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -228,6 +270,24 @@ export function Radar3D({ url, scene, settings, follow, heading, onPan, onTurn, 
       onContextMenu={(e) => e.preventDefault()}
     >
       <canvas className={s.markers} ref={overlayRef} />
+      {interior && (
+        <div className={s.floor} onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
+          <button title="Show a higher floor (Page Up)" onClick={() => stepFloor(1)}>
+            <ChevronUp size={18} />
+          </button>
+          <button
+            className={s.floorLevel}
+            disabled={pickedFloor === null}
+            title={pickedFloor === null ? "The map is cut open at your floor" : "Showing the floor at this height: click to follow your floor again"}
+            onClick={() => setPickedFloor(null)}
+          >
+            {pickedFloor === null ? "Auto" : `${pickedFloor} m`}
+          </button>
+          <button title="Show a lower floor (Page Down)" onClick={() => stepFloor(-1)}>
+            <ChevronDown size={18} />
+          </button>
+        </div>
+      )}
       {status.progress !== null && <p className={s.status}>Loading the map… {Math.round(status.progress * 100)} %</p>}
       {status.error && <p className={s.status} data-tone="error">Couldn't load the 3D map: {status.error}</p>}
     </div>

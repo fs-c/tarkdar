@@ -71,6 +71,7 @@ export class Map3D {
   private byCode = false;
   private readonly turn = { goal: 0, frame: 0, time: 0 };
   private flight: { frame: number; start: number; duration: number; from: THREE.Vector3; fromSpan: number; span: number | null; to: () => WorldPos | null } | null = null;
+  private floor: number | null = null;
   private readonly scratch = new THREE.Vector3();
   private readonly scratch2 = new THREE.Vector3();
 
@@ -84,6 +85,28 @@ export class Map3D {
 
   get loaded(): boolean {
     return this.data !== null;
+  }
+
+  /** An indoor map: only readable one floor at a time (setFloor). */
+  get interior(): boolean {
+    return this.data?.index.build?.interior === true;
+  }
+
+  /** Lowest and highest point of the map (world y), or null before it is loaded. */
+  heights(): [number, number] | null {
+    const b = this.data?.index.bounds;
+    return b ? [b.min[1], b.max[1]] : null;
+  }
+
+  /**
+   * Cuts the map open to show a floor: `floor` is the height someone stands at there (world y).
+   * Everything from a little over their head upwards is hidden. null shows the whole map.
+   */
+  setFloor(floor: number | null): void {
+    if (!this.stage || this.floor === floor) return;
+    this.floor = floor;
+    this.stage.setFloor(floor);
+    this.requestRender();
   }
 
   /** Loads a dataset folder (e.g. /maps/3d/customs), replacing the current map. */
@@ -148,6 +171,7 @@ export class Map3D {
     this.instances = null;
     this.stage = null;
     this.data = null;
+    this.floor = null;
   }
 
   dispose(): void {
@@ -442,7 +466,8 @@ export class Map3D {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(new THREE.Vector2((x / stage.width) * 2 - 1, -(y / stage.height) * 2 + 1), stage.camera);
     // Tree markers are see-through reference symbols: pick what is behind them.
-    const hit = raycaster.intersectObjects(stage.groups, true).find((h) => h.object.name !== "tree_marker");
+    // ... and what the cut hides is not there.
+    const hit = raycaster.intersectObjects(stage.groups, true).find((h) => h.object.name !== "tree_marker" && h.point.y <= stage.cut);
     return hit ? { pos: [hit.point.x, hit.point.y, -hit.point.z], mesh: hit.object.name } : null;
   }
 

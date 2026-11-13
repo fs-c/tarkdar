@@ -50,12 +50,20 @@ interface Uniforms {
   groundRect: { value: THREE.Vector3 };
   /** 1 where a building stands (GroundMap.building), on the same grid. */
   building: { value: THREE.Texture };
+  /** Nothing is drawn above this height (Stage.setFloor); very high: no cut. */
+  cut: { value: number };
+  /** The floor being looked at: the plan style's ground on an interior map; very low: the ground map. */
+  floor: { value: number };
   /** PALETTE_KEYS colours, sRGB. */
   palette: { value: THREE.Vector3[] };
 }
 
 /** What a surface is in the plan style. */
 type PlanKind = "structure" | "terrain" | "water" | "tree" | "road";
+
+const NO_CUT = 1e9;
+/** The cut lies this far above the floor being looked at: over heads and door frames, under the ceiling. */
+export const CUT_ABOVE_FLOOR = 2.3;
 
 interface ShaderOptions {
   /** Game colours -> map colours (ColorGrade). */
@@ -119,6 +127,7 @@ const PAL = Object.fromEntries(PALETTE_KEYS.map((key, i) => [key, `uPalette[${i}
 
 const PLAN_PARS = `
 uniform float uPlan;
+uniform float uFloor;
 uniform sampler2D uGround;
 uniform sampler2D uBuilding;
 uniform vec3 uGroundRect;
@@ -139,13 +148,17 @@ float mapGround(vec2 xz) {
   return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
 }
 vec3 planStructure(vec3 graded) {
-  float h = vMapWorld.y - mapGround(vMapWorld.xz);
+  // Looking at a floor of a cut-open map: heights count from that floor, and nothing is a roof.
+  bool inside = uFloor > -1e4;
+  float h = vMapWorld.y - (inside ? uFloor : mapGround(vMapWorld.xz));
   vec2 cell = (vMapWorld.xz - uGroundRect.xy) * uGroundRect.z;
-  float building = smoothstep(0.3, 0.6, texture2D(uBuilding, cell / vec2(textureSize(uBuilding, 0))).r);
+  float building = inside ? 0.0 : smoothstep(0.3, 0.6, texture2D(uBuilding, cell / vec2(textureSize(uBuilding, 0))).r);
   float luma = dot(mapToSrgb(graded), PLAN_W);
   vec3 roof = mix(${PAL.building}, ${PAL.buildingTall}, smoothstep(3.0, 24.0, h));
   vec3 c = mix(${PAL.floor} + 0.3 * (luma - 0.6), ${PAL.cover}, smoothstep(0.3, 0.5, h));
   c = mix(c, mix(${PAL.obstacle}, roof, building), smoothstep(1.8, 2.2, h));
+  // What lies below the floor (seen through a stairwell, from a gallery) recedes.
+  if (inside) c *= mix(0.72, 1.0, smoothstep(-1.2, -0.6, h));
   return mapToLinear(clamp(c, 0.0, 1.0));
 }
 vec3 planRoad(vec3 graded) {
@@ -189,8 +202,9 @@ const PLAN_OUTPUT: Record<PlanKind, string> = {
  */
 function customize(material: THREE.MeshStandardMaterial, uniforms: Uniforms, options: ShaderOptions): void {
   const { grade = false, ground = false, relief = false, plan } = options;
-  if (!grade && !relief && !plan) return;
   material.onBeforeCompile = (shader) => {
+    shader.uniforms.uCut = uniforms.cut;
+    shader.uniforms.uFloor = uniforms.floor;
     shader.uniforms.uHeights = uniforms.heights;
     shader.uniforms.uContours = uniforms.contours;
     shader.uniforms.uGrade = uniforms.grade;
@@ -212,8 +226,11 @@ function customize(material: THREE.MeshStandardMaterial, uniforms: Uniforms, opt
         vMapUp = normal.y;`,
       );
     const pars =
-      "\nvarying vec3 vMapWorld;\nvarying float vMapUp;\nuniform vec2 uHeights;\nuniform float uContours;" + GRADE_PARS + PLAN_PARS;
+      "\nvarying vec3 vMapWorld;\nvarying float vMapUp;\nuniform vec2 uHeights;\nuniform float uContours;\nuniform float uCut;" +
+      GRADE_PARS +
+      PLAN_PARS;
     const steps =
+      "\nif (vMapWorld.y > uCut) discard;" +
       "\nvec3 mapRaw = diffuseColor.rgb;" +
       (grade ? `\ndiffuseColor.rgb = mapGrade(diffuseColor.rgb, uGrade.z${ground ? " * uGrade.w" : ""});` : "") +
       (plan ? PLAN_STEPS[plan] : "") +
@@ -326,6 +343,8 @@ export class Stage {
     contours: { value: 1 },
     grade: { value: new THREE.Vector4() },
     plan: { value: 0 },
+    cut: { value: NO_CUT },
+    floor: { value: -NO_CUT },
     ground: { value: groundTexture(new Float32Array([-1e5]), 1, 1) },
     groundRect: { value: new THREE.Vector3(0, 0, 1) },
     building: { value: buildingTexture(new Uint8Array([255]), 1, 1) },
@@ -491,6 +510,20 @@ export class Stage {
     this.uniforms.building.value = ground
       ? buildingTexture(ground.building, ground.columns, ground.rows)
       : buildingTexture(new Uint8Array([255]), 1, 1);
+  }
+
+  /**
+   * Cuts the map open to look at a floor (a height, where someone's feet are): nothing above
+   * head height over it is drawn, and the plan style measures heights from it. null: the whole map.
+   */
+  setFloor(floor: number | null): void {
+    this.uniforms.cut.value = floor === null ? NO_CUT : floor + CUT_ABOVE_FLOOR;
+    this.uniforms.floor.value = floor === null ? -NO_CUT : floor;
+  }
+
+  /** The height above which nothing is drawn; Infinity without a cut. */
+  get cut(): number {
+    return this.uniforms.cut.value === NO_CUT ? Infinity : this.uniforms.cut.value;
   }
 
   /** Plan style: flat colours by kind and height, with outlines. Otherwise the material colours. */

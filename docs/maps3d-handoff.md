@@ -71,10 +71,12 @@ make harness-serve    # then: cd harness && node shot.mjs --data shoreline-smoke
 4. **Variants:** Labs event, Factory event and Ground Zero start are separate presets for now.
    Decide per variant: an extra location id on the main map, or a map of its own.
    (`laboratory_dark` and `Sandbox_high` are already ids of Labs and Ground Zero.)
-5. **Interiors** (roadmap item 4 in `docs/maps3d.md`): Factory, Interchange, Labs, Labyrinth,
-   Icebreaker and Reserve's bunkers are roof-only until then. The cache already has what this
-   needs (all LOD levels, colliders including triggers, the culling and portal scenes). There
-   is no NavMesh to use: scenes do not reference one.
+5. **Interiors**: the indoor maps (Factory, Labs, Labyrinth, Icebreaker) are done as a first
+   version: built with everything kept and cut open at one floor in the viewer (`docs/maps3d.md`,
+   "Indoor maps"). Built into `maps/3d/` locally, not published; checked with a synthetic Labs
+   recording only, never with a real indoor raid. Left: the interiors on outdoor maps
+   (Interchange's mall, Reserve's bunkers, Streets) with the same cut; the event variants
+   (item 4). The culling scenes are scripts only: no rooms or portals to use.
 6. **Housekeeping:** the published Customs and Streets builds predate the "optimize map size"
    commit (rebuild + `make publish`). `maps/3d/factory` has never been published.
    When every location is covered, remove the 2D maps (see `docs/maps3d.md`).

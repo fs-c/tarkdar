@@ -1,18 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
-import { SlimCatalog, loadCatalog, slimItems } from "./catalog";
+import { SlimCatalog, loadCatalog, slimCategories, slimItems } from "./catalog";
 import { totalValue } from "./items";
 
 const itemsFeed = {
   data: {
     items: {
-      a: { id: "a", name: "a Name", shortName: "a ShortName", avg24hPrice: 1200 },
+      a: { id: "a", name: "a Name", shortName: "a ShortName", avg24hPrice: 1200, handbookCategories: ["elec", "barter"] },
       b: { id: "b", name: "b Name", shortName: "b ShortName", avg24hPrice: null, basePrice: 120 },
       c: { id: "c", name: "c Name", shortName: "c ShortName" },
       d: { id: "d", name: "d Name", shortName: "d ShortName", avg24hPrice: 900, basePrice: 500 },
     },
+    handbookCategories: {
+      barter: { id: "barter", name: "barter", normalizedName: "barter-items", parent: null },
+      elec: { id: "elec", name: "elec", normalizedName: "electronics", parent: "barter" },
+    },
   },
 };
-const enFeed = { data: { "a Name": "Alpha thing", "a ShortName": "Alpha", "b Name": "Bravo" } };
+const enFeed = { data: { "a Name": "Alpha thing", "a ShortName": "Alpha", "b Name": "Bravo", barter: "Barter items" } };
 
 class MemoryStorage {
   data = new Map<string, string>();
@@ -30,7 +34,7 @@ const okFetch = () =>
 describe("slimItems", () => {
   it("resolves translations and keeps only name, short name and price", () => {
     const slim = slimItems(itemsFeed, enFeed);
-    expect(slim.a).toEqual(["Alpha thing", "Alpha", 1200, 0]);
+    expect(slim.a).toEqual(["Alpha thing", "Alpha", 1200, 0, ["elec", "barter"]]);
     expect(slim.b).toEqual(["Bravo", "b ShortName", 120, 1]); // missing translation → key; base price
     expect(slim.c![2]).toBe(0); // no price at all
     expect(slim.d![2]).toBe(900); // flea price preferred over base price
@@ -40,6 +44,17 @@ describe("slimItems", () => {
     expect(cat.lookup("c")?.price).toBeUndefined();
     expect(cat.lookup("zzz")).toBeUndefined();
     expect(cat.lookup("constructor")).toBeUndefined();
+  });
+  it("keeps the handbook categories, with names and parents", () => {
+    const cat = new SlimCatalog(slimItems(itemsFeed, enFeed), slimCategories(itemsFeed, enFeed));
+    expect(cat.lookup("a")?.categories).toEqual(["elec", "barter"]);
+    expect(cat.lookup("b")?.categories).toBeUndefined();
+    expect(cat.categories()).toEqual([
+      { id: "barter", name: "Barter items", parent: null, path: "" },
+      { id: "elec", name: "electronics", parent: "barter", path: "Barter items" }, // untranslated: normalized name
+    ]);
+    expect([...cat.items()].map(([id]) => id)).toEqual(["a", "b", "c", "d"]);
+    expect(slimCategories({ data: {} }, enFeed)).toEqual({});
   });
   it("rejects an unexpected format", () => {
     expect(() => slimItems({ nope: 1 }, enFeed)).toThrow();

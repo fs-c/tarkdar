@@ -27,6 +27,12 @@
 .row {
   position: absolute; top: 0; left: 0; right: 0;
   &[data-dim="true"] > div { opacity: 0.5; }
+  /* Highlighted: a bar in its colour on the right (the selection's is on the left), fading into the row. */
+  &[data-hl="true"] {
+    background-image:
+      linear-gradient(to left, var(--hl) 0 3px, transparent 3px),
+      linear-gradient(to left, color-mix(in srgb, var(--hl) 18%, transparent), transparent 70%);
+  }
 }
 .empty { padding: 12px; text-align: center; }
 

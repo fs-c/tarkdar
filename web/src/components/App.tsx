@@ -1,13 +1,15 @@
 import { Locate, LocateFixed, Navigation } from "lucide-react";
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type ControlPoint, formatCalibration, worldToPixel } from "../calibration";
 import type { RadarState } from "../connection";
 import { isTyping, useAutoLayer, useCatalog, useConnection, useLayers, useLootPrefs, useMap2D, useMapIndex, useMapPrefs, usePersistentState, useTrailPrefs } from "../hooks";
 import { describeEvent } from "../events";
 import type { MapStats } from "../map3d/Map3D";
 import { type LoadedMap, findMap, map3dUrl, selectLayer } from "../maps";
+import { type Highlight, type Match, allRows } from "../highlight/match";
+import { useHighlights } from "../highlight/useHighlights";
 import { isFiltered, rowKeys } from "../list/rows";
-import { DEFAULT_PREFS, type ListPrefs, useListRows } from "../list/useListRows";
+import { useListPrefs, useListRows } from "../list/useListRows";
 import { type Selection, pick, selectedPosition, selectionKey } from "../pick";
 import { usePlayback } from "../playback";
 import { flatProjector } from "../projector";
@@ -17,6 +19,7 @@ import type { Timeline, TimelineEvent } from "../timeline";
 import { NO_MAP_TRANSFORM, type Scene } from "../render";
 import { View } from "../view";
 import { DetailsPanel } from "./DetailsPanel";
+import { Highlights } from "./Highlights";
 import { ListPanel } from "./ListPanel";
 import { MapPanel } from "./MapPanel";
 import { RaidsPanel } from "./RaidsPanel";
@@ -107,8 +110,15 @@ export function App() {
   }, [follow]);
   const [camera] = useState(() => Object.assign(new View(), { zoom: 0.75 }));
   const [hovered, setHovered] = useState<Selection | null>(null);
-  const [listPrefs, setListPrefs] = usePersistentState<ListPrefs>("radar.list", DEFAULT_PREFS);
+  const [listPrefs, setListPrefs] = useListPrefs();
   const list = useListRows(state, catalog, listPrefs.filters);
+  const focusListSearch = useRef<() => void>(undefined);
+
+  // Highlights (the global search): kept for the session. The search's preview counts as one.
+  const [highlights, setHighlights] = useState<Highlight[]>([]);
+  const [preview, setPreview] = useState<Match | null>(null);
+  const highlighted = useHighlights(list.all, highlights, preview, catalog);
+  const everything = useMemo(() => allRows(list.all), [list.all]);
 
   // Side panel: open or collapsed, and which section it shows (for "list", the list tab in listPrefs).
   // The Raids view has two levels: the list of raids, and the shown raid's timeline.
@@ -131,6 +141,23 @@ export function App() {
   const view: ViewId = ui.section === "list" ? listPrefs.tab : ui.section;
   const listShown = ui.open && ui.section === "list";
   const togglePanel = () => setUi((u) => ({ ...u, open: !u.open }));
+  const uiRef = useRef(ui);
+  uiRef.current = ui;
+  /** L: opens the list with its search focused; closes it when it's open. */
+  const toggleList = () => {
+    const u = uiRef.current;
+    if (u.open && u.section === "list") return setUi((x) => ({ ...x, open: false }));
+    wantListFocus.current = true;
+    setUi((x) => ({ ...x, open: true, section: "list" }));
+  };
+  // In the commit that shows the list (the panel's own layout effects ran first), so keys typed right
+  // after L land in the search rather than in the map's shortcuts.
+  const wantListFocus = useRef(false);
+  useLayoutEffect(() => {
+    if (!listShown || !wantListFocus.current) return;
+    wantListFocus.current = false;
+    focusListSearch.current?.();
+  }, [listShown]);
   const pickView = (v: ViewId) => {
     if (ui.open && v === view) return setUi((u) => ({ ...u, open: false }));
     if (v === "map" || v === "raids" || v === "settings") return setUi((u) => ({ ...u, open: true, section: v }));
@@ -138,12 +165,16 @@ export function App() {
     setUi((u) => ({ ...u, open: true, section: "list" }));
   };
 
-  // While the list is filtered, the map shows only what the filters let through (and us), panel open or not.
+  // While the list is filtered, the map shows only what the filters let through (and us), panel open or
+  // not. Each tab's filters only concern its own kind of thing; highlighted things always show.
   const filtered = isFiltered(listPrefs.filters);
   const shown = useMemo(() => {
     if (!filtered) return state;
     const keys = rowKeys(list.rows);
-    const has = (kind: Selection["kind"], id: number) => keys.has(selectionKey({ kind, id }));
+    const has = (kind: Selection["kind"], id: number) => {
+      const key = selectionKey({ kind, id });
+      return keys.has(key) || highlighted.colors.has(key);
+    };
     return {
       players: state.players.filter((p) => p.local || has("player", p.id)),
       loot: state.loot.filter((l) => has("loot", l.id)),
@@ -153,7 +184,7 @@ export function App() {
         tripwires: state.explosives.tripwires.filter((w) => has("tripwire", w.id)),
       },
     };
-  }, [state, filtered, list.rows]);
+  }, [state, filtered, list.rows, highlighted.colors]);
 
   // Floor picked by hand, per map: a new map starts on auto.
   const [floorPick, setFloorPick] = useState<{ map: LoadedMap | null; layer: number | null }>({ map: null, layer: null });
@@ -214,7 +245,7 @@ export function App() {
 
   const onTap = (x: number, y: number, view: View) => {
     if (calibrating) addCalibrationPoint(x, y, view);
-    else select(pick(flatProjector(view, map?.transform ?? NO_MAP_TRANSFORM), shown, layers, x, y));
+    else select(pick(flatProjector(view, map?.transform ?? NO_MAP_TRANSFORM), shown, layers, x, y, highlighted.colors));
   };
 
   // 3D map debugging: with the coordinate pick on, a click that hits no marker records the world
@@ -223,7 +254,7 @@ export function App() {
   const onTap3d = (x: number, y: number) => {
     const radar = radar3d.current;
     if (!radar) return;
-    const hit = pick(radar.projector(), shown, layers, x, y);
+    const hit = pick(radar.projector(), shown, layers, x, y, highlighted.colors);
     const surface = !hit && mapPrefs.coordinatePick ? radar.pickSurface(x, y) : null;
     if (surface) setDebugPicks((picks) => [...picks, surface]);
     else select(hit);
@@ -259,7 +290,10 @@ export function App() {
       const pb = playbackRef.current, r = rangeRef.current;
       if (e.key === "Escape") setPicked((p) => ({ ...p, sel: null }));
       else if (e.key === "f") setFollow((f) => !f);
-      else if (e.key === "l") togglePanel();
+      else if (e.key === "l") {
+        e.preventDefault(); // the search it focuses mustn't get the "l"
+        toggleList();
+      }
       else if (e.key === "m") setMapPrefs((p) => ({ ...p, style: p.style === "plan" ? "realistic" : "plan" }));
       else if (e.key === " " && (e.target === document.body || e.target instanceof HTMLCanvasElement)) {
         e.preventDefault();
@@ -297,6 +331,7 @@ export function App() {
     minLabelPrice: lootPrefs.minLabelPrice,
     selected: selectedPosition(selection, state),
     hovered: listShown ? selectedPosition(hovered, state) : null,
+    highlights: highlighted.colors,
     calibrationPixels: calibPoints.map((p) => p.pixel),
     debugPoints: map3d && mapPrefs.coordinatePick ? debugPicks.map((p) => p.pos) : [],
     trails: trailScene(),
@@ -320,6 +355,8 @@ export function App() {
             selection={selection}
             onActivate={showOnMap}
             onHover={setHovered}
+            highlights={highlighted.colors}
+            focusRef={focusListSearch}
           />
         );
       case "map":
@@ -410,7 +447,7 @@ export function App() {
             {panelBody()}
           </SidePanel>
         )}
-        <main className={s.main} data-style-switch={!!map3d}>
+        <main className={s.main} data-style-switch={!!map3d} data-details={!!selection}>
           {map3d ? (
             <Suspense fallback={null}>
               <Radar3D
@@ -470,6 +507,16 @@ export function App() {
           >
             {heading ? <Navigation size={20} /> : follow ? <LocateFixed size={20} /> : <Locate size={20} />}
           </button>
+          <Highlights
+            highlights={highlights}
+            setHighlights={setHighlights}
+            matched={highlighted.matched}
+            rows={everything}
+            catalog={catalog}
+            local={local?.pos ?? null}
+            onPreview={setPreview}
+            onShow={showOnMap}
+          />
           {selection && (
             <DetailsPanel
               selection={selection}

@@ -1,14 +1,14 @@
 // List views: everything the radar knows, in sortable, filterable tables (one per category, picked
-// from the activity bar).
-// Hovering a row highlights it on the map; clicking (or ↑/↓) selects it and centres the map on it.
+// from the activity bar). Each tab has its own filters, and the map follows them (for that tab's kind
+// of thing). Highlighted rows (highlight/, the global search) are marked in their colour.
+// Hovering a row marks it on the map; clicking (or ↑/↓) selects it and centres the map on it.
 
 import { type OnChangeFn, type SortingState, useTable } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { RadarState } from "../connection";
-import { isTyping } from "../hooks";
 import { type TabDef, TABS, features } from "../list/columns";
-import { DEFAULT_FILTERS, type ListFilters, type RowBase, type TabRows, isFiltered, selectionKey, tabOf, withDistances } from "../list/rows";
+import { DEFAULT_FILTERS, type RowBase, type TabFilter, type TabRows, isTabFiltered, selectionKey, tabOf, withDistances } from "../list/rows";
 import type { ListPrefs, ListRows } from "../list/useListRows";
 import type { Selection } from "../pick";
 import { Button, Chip, cx, selectableRow } from "../ui";
@@ -28,10 +28,15 @@ interface Props {
   /** Row clicked or stepped to: select it and bring it into view on the map. */
   onActivate: (sel: Selection) => void;
   onHover: (sel: Selection | null) => void;
+  /** Row key → highlight colour. */
+  highlights: ReadonlyMap<string, string>;
+  /** Set by the panel: focuses its search (the L key). */
+  focusRef: React.RefObject<(() => void) | undefined>;
 }
 
-export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate, onHover }: Props) {
-  const { tab, filters } = prefs;
+export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate, onHover, highlights, focusRef }: Props) {
+  const { tab } = prefs;
+  const filter = prefs.filters[tab];
   const { totals } = list;
   const filterRef = useRef<HTMLInputElement>(null);
   const stepRef = useRef<(dir: 1 | -1) => void>(undefined);
@@ -48,7 +53,8 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
     [list.rows, local],
   );
 
-  const setFilters = (patch: Partial<ListFilters>) => setPrefs((p) => ({ ...p, filters: { ...p.filters, ...patch } }));
+  const setFilter = (patch: Partial<TabFilter>) =>
+    setPrefs((p) => ({ ...p, filters: { ...p.filters, [p.tab]: { ...p.filters[p.tab], ...patch } } }));
   const onSortingChange: OnChangeFn<SortingState> = (update) =>
     setPrefs((p) => ({
       ...p,
@@ -63,23 +69,21 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
     // Only on selection changes, not on every data update.
   }, [selKey]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "/" && !isTyping(e)) {
-        e.preventDefault();
-        filterRef.current?.focus();
-        filterRef.current?.select();
-      }
+  useLayoutEffect(() => {
+    focusRef.current = () => {
+      filterRef.current?.focus();
+      filterRef.current?.select();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+    return () => {
+      focusRef.current = undefined;
+    };
+  }, [focusRef]);
 
   useEffect(() => () => onHover(null), []); // closing the list ends any hover
 
   const empty = totals[tab] === 0 ? "nothing here (yet)" : "no matches";
-  const common = { empty, sorting: prefs.sorting[tab], onSortingChange, selectedKey: selKey, onActivate, onHover, stepRef };
-  const filtered = isFiltered(filters);
+  const common = { empty, sorting: prefs.sorting[tab], onSortingChange, selectedKey: selKey, onActivate, onHover, stepRef, highlights };
+  const filtered = isTabFiltered(filter);
 
   return (
     <div className={s.list}>
@@ -88,12 +92,12 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
           ref={filterRef}
           className={s.search}
           type="search"
-          placeholder="filter all tabs  ( / )"
-          value={filters.text}
-          onChange={(e) => setFilters({ text: e.target.value })}
+          placeholder={`filter ${TABS[tab].label.toLowerCase()}  ( L )`}
+          value={filter.text}
+          onChange={(e) => setFilter({ text: e.target.value })}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
-              if (filters.text) setFilters({ text: "" });
+              if (filter.text) setFilter({ text: "" });
               else e.currentTarget.blur();
             } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
               e.preventDefault();
@@ -103,24 +107,17 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
         />
         {tab === "players" && (
           <>
-            <Chip on={filters.aliveOnly} onClick={() => setFilters({ aliveOnly: !filters.aliveOnly })}>alive</Chip>
-            <Chip on={filters.humansOnly} onClick={() => setFilters({ humansOnly: !filters.humansOnly })}>humans</Chip>
-            <Chip on={filters.specialOnly} onClick={() => setFilters({ specialOnly: !filters.specialOnly })}>special</Chip>
+            <Chip on={!!filter.alive} onClick={() => setFilter({ alive: !filter.alive })}>alive</Chip>
+            <Chip on={!!filter.humans} onClick={() => setFilter({ humans: !filter.humans })}>humans</Chip>
+            <Chip on={!!filter.special} onClick={() => setFilter({ special: !filter.special })}>special</Chip>
           </>
         )}
-        {(tab === "items" || tab === "containers") && (
-          <select
-            value={filters.minValue}
-            title={tab === "items" ? "Minimum price" : "Minimum total value"}
-            onChange={(e) => setFilters({ minValue: Number(e.target.value) })}
-          >
+        {tab === "items" && (
+          <select value={filter.minValue ?? 0} title="Minimum price (per unit)" onChange={(e) => setFilter({ minValue: Number(e.target.value) })}>
             {MIN_VALUES.map((v) => (
               <option key={v} value={v}>{v === 0 ? "any ₽" : `≥ ${v / 1000}k ₽`}</option>
             ))}
           </select>
-        )}
-        {tab === "containers" && (
-          <Chip on={filters.hideEmpty} onClick={() => setFilters({ hideEmpty: !filters.hideEmpty })}>non-empty</Chip>
         )}
       </div>
       {tab === "players" && <TabTable key={tab} def={TABS.players} rows={rows.players} {...common} />}
@@ -132,10 +129,10 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
         <span>
           {filtered ? `${rows[tab].length} of ${totals[tab]}` : `${totals[tab]}`}
           {filtered && (
-            <Button variant="link" className={s.clear} onClick={() => setFilters(DEFAULT_FILTERS)}>clear filters</Button>
+            <Button variant="link" className={s.clear} onClick={() => setFilter(DEFAULT_FILTERS[tab])}>clear filter</Button>
           )}
         </span>
-        <span className="muted">{filtered && "map shows matches only · "}click: show on map · ↑↓ step · / filter · L close</span>
+        <span className="muted">{filtered && "map shows matches only · "}click: show on map · ↑↓ step · L close</span>
       </div>
     </div>
   );
@@ -153,9 +150,10 @@ interface TableProps<R extends RowBase> {
   onHover: (sel: Selection | null) => void;
   /** Set by the table: step the selection through its (sorted) rows. */
   stepRef: React.RefObject<((dir: 1 | -1) => void) | undefined>;
+  highlights: ReadonlyMap<string, string>;
 }
 
-function TabTable<R extends RowBase>({ def, rows, empty, sorting, onSortingChange, selectedKey, onActivate, onHover, stepRef }: TableProps<R>) {
+function TabTable<R extends RowBase>({ def, rows, empty, sorting, onSortingChange, selectedKey, onActivate, onHover, stepRef, highlights }: TableProps<R>) {
   const table = useTable({
     features,
     columns: def.columns,
@@ -234,6 +232,7 @@ function TabTable<R extends RowBase>({ def, rows, empty, sorting, onSortingChang
       <div style={{ height: virtualizer.getTotalSize() - HEADER_HEIGHT, position: "relative" }}>
         {virtualizer.getVirtualItems().map((item) => {
           const row = sorted[item.index]!;
+          const hl = highlights.get(row.id);
           return (
             <div
               key={row.id}
@@ -241,8 +240,9 @@ function TabTable<R extends RowBase>({ def, rows, empty, sorting, onSortingChang
               aria-selected={row.id === selectedKey}
               data-selected={row.id === selectedKey}
               data-dim={!!row.original.dim}
+              data-hl={!!hl}
               className={cx(s.grid, s.row, selectableRow)}
-              style={{ ...grid, height: ROW_HEIGHT, transform: `translateY(${item.start - HEADER_HEIGHT}px)` }}
+              style={{ ...grid, height: ROW_HEIGHT, transform: `translateY(${item.start - HEADER_HEIGHT}px)`, ...(hl && { "--hl": hl }) }}
               onClick={() => onActivate(row.original.sel)}
               onMouseEnter={() => onHover(row.original.sel)}
             >

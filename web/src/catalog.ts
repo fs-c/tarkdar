@@ -1,23 +1,29 @@
 // Item data from tarkov.dev's JSON API, cached in the browser.
 //
 // Two feeds: `items` (all item data; names are translation keys like "<id> Name") and `items_en`
-// (key → English text). Only id → name, short name and a price are kept: avg24hPrice (flea average),
-// or basePrice (the game's base value) for items without flea data, e.g. currencies. The slim catalogue is
+// (key → English text). Only id → name, short name, a price and handbook categories are kept: avg24hPrice
+// (flea average), or basePrice (the game's base value) for items without flea data, e.g. currencies; the
+// handbook categories (the game's handbook / flea market tree) with their names. The slim catalogue is
 // cached in localStorage and refreshed when older than MAX_AGE_MS, so the large download happens at
 // most once a day. If the download fails, a stale cache is better than nothing.
 
-import type { ItemCatalog, ItemInfo } from "./items";
+import type { ItemCatalog, ItemCategory, ItemInfo } from "./items";
 
 export const FEED_BASE = "https://json.tarkov.dev/pvp-season";
-const STORAGE_KEY = "radar.items.v2";
+const STORAGE_KEY = "radar.items.v3";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-/** id → [name, shortName, price (0 = unknown), price is basePrice (1) or avg24hPrice (0)] */
-export type SlimItems = Record<string, [string, string, number, 0 | 1]>;
+/** id → [name, shortName, price (0 = unknown), price is basePrice (1) or avg24hPrice (0), handbook
+ *  category ids (the item's own and those above it; left out when there are none)] */
+export type SlimItems = Record<string, [string, string, number, 0 | 1, string[]?]>;
+
+/** Handbook category id → [name, parent id (null at the top)] */
+export type SlimCategories = Record<string, [string, string | null]>;
 
 export interface CachedCatalog {
   fetchedAt: number; // ms since epoch
   items: SlimItems;
+  categories: SlimCategories;
 }
 
 export interface CatalogStatus {
@@ -39,23 +45,65 @@ export function slimItems(itemsFeed: unknown, translationsFeed: unknown): SlimIt
     const positive = (v: unknown) => (typeof v === "number" && v > 0 ? v : 0);
     const flea = positive(item.avg24hPrice);
     const base = positive(item.basePrice);
-    out[id] = [en[nameKey] ?? nameKey, en[shortKey] ?? shortKey, flea || base, flea ? 0 : base ? 1 : 0];
+    const entry: SlimItems[string] = [en[nameKey] ?? nameKey, en[shortKey] ?? shortKey, flea || base, flea ? 0 : base ? 1 : 0];
+    const cats = Array.isArray(item.handbookCategories) ? item.handbookCategories.filter((c): c is string => typeof c === "string") : [];
+    if (cats.length) entry.push(cats);
+    out[id] = entry;
+  }
+  return out;
+}
+
+/** The handbook category tree. Names are translation keys too (the bare id); a missing translation
+ *  falls back to the normalized name. An unexpected format gives no categories, not an error. */
+export function slimCategories(itemsFeed: unknown, translationsFeed: unknown): SlimCategories {
+  const cats = (itemsFeed as { data?: { handbookCategories?: Record<string, Record<string, unknown>> } })?.data?.handbookCategories;
+  const en = (translationsFeed as { data?: Record<string, string> })?.data ?? {};
+  const out: SlimCategories = {};
+  if (!cats || typeof cats !== "object") return out;
+  for (const [id, c] of Object.entries(cats)) {
+    const key = String(c.name ?? id);
+    const parent = typeof c.parent === "string" ? c.parent : null;
+    out[id] = [en[key] ?? String(c.normalizedName ?? key), parent];
   }
   return out;
 }
 
 export class SlimCatalog implements ItemCatalog {
-  constructor(private readonly items: SlimItems) {}
+  private readonly cats: ItemCategory[];
+  constructor(
+    private readonly slim: SlimItems,
+    categories: SlimCategories = {},
+  ) {
+    const name = (id: string | null) => (id && Object.hasOwn(categories, id) ? categories[id]![0] : null);
+    const path = (id: string | null, depth = 0): string[] => {
+      if (!id || depth > 16 || !Object.hasOwn(categories, id)) return [];
+      return [...path(categories[id]![1], depth + 1), categories[id]![0]];
+    };
+    this.cats = Object.entries(categories).map(([id, [n, parent]]) => ({
+      id, name: n, parent: name(parent) === null ? null : parent, path: path(parent).join(" › "),
+    }));
+  }
   get size(): number {
-    return Object.keys(this.items).length;
+    return Object.keys(this.slim).length;
   }
   lookup(templateId: string): ItemInfo | undefined {
-    if (!Object.hasOwn(this.items, templateId)) return undefined;
-    const e = this.items[templateId];
-    if (!e) return undefined;
-    if (e[2] <= 0) return { name: e[0], shortName: e[1] };
-    return { name: e[0], shortName: e[1], price: e[2], priceSource: e[3] === 1 ? "base" : "flea" };
+    if (!Object.hasOwn(this.slim, templateId)) return undefined;
+    const e = this.slim[templateId];
+    return e ? toInfo(e) : undefined;
   }
+  *items(): Iterable<[string, ItemInfo]> {
+    for (const [id, e] of Object.entries(this.slim)) yield [id, toInfo(e)];
+  }
+  categories(): readonly ItemCategory[] {
+    return this.cats;
+  }
+}
+
+function toInfo(e: SlimItems[string]): ItemInfo {
+  const info: ItemInfo = { name: e[0], shortName: e[1] };
+  if (e[2] > 0) Object.assign(info, { price: e[2], priceSource: e[3] === 1 ? "base" : "flea" });
+  if (e[4]?.length) info.categories = e[4];
+  return info;
 }
 
 interface StorageLike {
@@ -66,7 +114,7 @@ interface StorageLike {
 export function readCache(storage: StorageLike): CachedCatalog | null {
   try {
     const c = JSON.parse(storage.getItem(STORAGE_KEY) ?? "null") as CachedCatalog | null;
-    return c && typeof c.fetchedAt === "number" && c.items ? c : null;
+    return c && typeof c.fetchedAt === "number" && c.items ? { ...c, categories: c.categories ?? {} } : null;
   } catch {
     return null;
   }
@@ -85,7 +133,7 @@ export async function loadCatalog(
   const cached = readCache(storage);
   const age = cached ? now - cached.fetchedAt : Infinity;
   if (cached && !opts.force && age >= 0 && age < MAX_AGE_MS) {  // a future timestamp (clock change) is stale
-    const catalog = new SlimCatalog(cached.items);
+    const catalog = new SlimCatalog(cached.items, cached.categories);
     return { catalog, status: { state: "ready", count: catalog.size, fetchedAt: cached.fetchedAt } };
   }
   try {
@@ -96,17 +144,18 @@ export async function loadCatalog(
     };
     const [items, en] = await Promise.all([get("items"), get("items_en")]);
     const slim = slimItems(items, en);
+    const categories = slimCategories(items, en);
     try {
-      storage.setItem(STORAGE_KEY, JSON.stringify({ fetchedAt: now, items: slim } satisfies CachedCatalog));
+      storage.setItem(STORAGE_KEY, JSON.stringify({ fetchedAt: now, items: slim, categories } satisfies CachedCatalog));
     } catch (e) {
       console.warn("couldn't cache item data", e);
     }
-    const catalog = new SlimCatalog(slim);
+    const catalog = new SlimCatalog(slim, categories);
     return { catalog, status: { state: "ready", count: catalog.size, fetchedAt: now } };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
     if (cached) {
-      const catalog = new SlimCatalog(cached.items);
+      const catalog = new SlimCatalog(cached.items, cached.categories);
       return { catalog, status: { state: "stale", count: catalog.size, fetchedAt: cached.fetchedAt, error } };
     }
     return { catalog: null, status: { state: "unavailable", count: 0, fetchedAt: null, error } };

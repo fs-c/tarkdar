@@ -9,10 +9,24 @@ export interface ItemInfo {
    *  flea data (e.g. currencies). Undefined if neither is known. */
   price?: number;
   priceSource?: "flea" | "base";
+  /** Handbook category ids, the item's own and all above it ("Electronics", "Barter items"). */
+  categories?: readonly string[];
+}
+
+/** A handbook category: the tree the game's handbook and the flea market sort items into. */
+export interface ItemCategory {
+  id: string;
+  name: string;
+  parent: string | null;
+  /** Names from the top down to this one's parent: "Barter items" for Electronics; "" at the top. */
+  path: string;
 }
 
 export interface ItemCatalog {
   lookup(templateId: string): ItemInfo | undefined;
+  /** Every item, for search. */
+  items(): Iterable<[templateId: string, info: ItemInfo]>;
+  categories(): readonly ItemCategory[];
 }
 
 /** Total value of items and their contents (price × stack count, recursively). */
@@ -51,7 +65,7 @@ export function valueTier(price: number | undefined): ValueTier {
 }
 
 /** No item data loaded: every lookup misses. */
-export const emptyCatalog: ItemCatalog = { lookup: () => undefined };
+export const emptyCatalog: ItemCatalog = { lookup: () => undefined, items: () => [], categories: () => [] };
 
 /** Container template ids → display name. */
 const CONTAINERS: Record<string, string> = {

@@ -1,9 +1,10 @@
 import { contentsDelta, describeEvent, eventConcerns, eventGroup, playerName } from "./events";
-import type { ItemCatalog, ItemInfo } from "./items";
+import { type ItemCatalog, type ItemInfo, emptyCatalog } from "./items";
 import type { LootEntry, Player, RecordedMessage } from "./protocol";
 import { Timeline } from "./timeline";
 
 const catalog: ItemCatalog = {
+  ...emptyCatalog,
   lookup: (tpl) => (({ a: { shortName: "LEDX" }, b: { shortName: "M4A1" }, c: { shortName: "PACA" } }) as Record<string, Partial<ItemInfo>>)[tpl] as ItemInfo | undefined,
 };
 

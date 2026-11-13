@@ -25,8 +25,8 @@ const LABEL_PRICES = [0, 10_000, 25_000, 50_000, 100_000];
 const TRAIL_LENGTHS: (number | null)[] = [0.5, 1, 2, 5, 10, 15, 30, null];
 
 const LAYERS: { key: keyof Layers; label: string; hint: string }[] = [
-  { key: "loot", label: "Loot", hint: "Loose items, quest items, corpses" },
-  { key: "containers", label: "Containers", hint: "Containers and airdrops" },
+  { key: "loot", label: "Loot", hint: "Loose items and quest items" },
+  { key: "containers", label: "Containers", hint: "Containers, airdrops and corpses" },
   { key: "exfils", label: "Exfils", hint: "Extraction points and their status" },
   { key: "explosives", label: "Explosives", hint: "Grenades and tripwires" },
 ];

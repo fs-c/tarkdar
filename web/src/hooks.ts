@@ -8,6 +8,7 @@ import { fetchRecordings, parseLine, readRecording } from "./recordings";
 import { type ItemCatalog, emptyCatalog } from "./items";
 import { DEFAULT_MAP_SETTINGS, type MapSettings, type PlanPalette } from "./map3d/settings";
 import { type LoadedMap, type Map2DEntry, type MapEntry, fetchMapIndex, loadMap, selectLayer } from "./maps";
+import { DEFAULT_LOOT_DENSITY, type LootDensity } from "./declutter";
 import type { Layers } from "./render";
 
 export interface LiveState {
@@ -160,10 +161,12 @@ export function useTrailPrefs() {
 export interface LootPrefs {
   /** Items worth less than this (₽, per unit) never get a map label; unpriced items count as 0. */
   minLabelPrice: number;
+  /** Which loose item markers drop out as you zoom out (declutter.ts). */
+  density: LootDensity;
 }
 
 export function useLootPrefs() {
-  return usePersistentState<LootPrefs>("radar.loot", { minLabelPrice: 0 });
+  return usePersistentState<LootPrefs>("radar.loot", { minLabelPrice: 0, density: DEFAULT_LOOT_DENSITY });
 }
 
 const DEFAULT_LAYERS: Layers = { loot: false, containers: false, exfils: true, explosives: true };

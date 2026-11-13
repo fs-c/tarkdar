@@ -1,12 +1,13 @@
 // Draws the radar: map layer (or a world grid when there's no map), players, calibration markers.
 
 import { type Affine, pixelsPerMetre, worldToPixel } from "./calibration";
-import { LabelPlacer, candidatesAround } from "./labels";
+import { LabelPlacer, type Rect, candidatesAround } from "./labels";
 import { type LoadedMap, selectLayer } from "./maps";
 import { type ItemCatalog, containerName, exfilStatus, formatPrice, valueTier } from "./items";
 import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type WorldPos } from "./protocol";
 import { type PlayerTypeInfo, bossGroups, playerType } from "./roles";
 import { COLORS, ITEM_LOOK, LOOT_LOOK, type PlayerLook, exfilColor, playerLook } from "./style";
+import { EXFIL_STATUS_DETAIL, LABEL_DETAIL, LABEL_RANK, type LootDensity, itemMarkerShown } from "./declutter";
 import type { Timeline } from "./timeline";
 import { type Projector, flatProjector } from "./projector";
 import { midpoint } from "./pick";
@@ -14,9 +15,6 @@ import type { View } from "./view";
 
 /** Used when there's no map for the location: 2 px per metre, north up, world origin at (0, 0). */
 export const NO_MAP_TRANSFORM: Affine = { a: 2, b: 0, c: 0, d: 0, e: -2, f: 0 };
-
-/** Item labels show from this level of detail on (and then only where they fit). */
-const ITEM_LABEL_ZOOM = 2.5;
 
 export interface Layers {
   loot: boolean;
@@ -36,6 +34,8 @@ export interface Scene {
   layers: Layers;
   /** Items worth less than this (₽) get no label. */
   minLabelPrice: number;
+  /** Which loose item markers drop out as you zoom out (declutter.ts). */
+  lootDensity: LootDensity;
   selected: [number, number, number] | null;
   /** Hovered in the list view: drawn as a soft highlight. */
   hovered: [number, number, number] | null;
@@ -95,8 +95,10 @@ export function render(ctx: CanvasRenderingContext2D, view: View, scene: Scene):
  */
 export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene): void {
   const hl = scene.highlights;
-  if (scene.layers.loot || scene.layers.containers || hl.size) drawLoot(ctx, pr, scene);
-  for (const e of scene.exfils) if (scene.layers.exfils || hl.has(`exfil:${e.id}`)) drawExfil(ctx, pr, e);
+  // Markers draw as they go; their labels are collected and placed at the end, all together.
+  const labels: LabelRequest[] = [];
+  if (scene.layers.loot || scene.layers.containers || hl.size) drawLoot(ctx, pr, scene, labels);
+  for (const e of scene.exfils) if (scene.layers.exfils || hl.has(`exfil:${e.id}`)) drawExfil(ctx, pr, e, labels);
   drawExplosives(ctx, pr, scene.layers.explosives ? scene.explosives : {
     grenades: scene.explosives.grenades.filter((g) => hl.has(`grenade:${g.id}`)),
     tripwires: scene.explosives.tripwires.filter((w) => hl.has(`tripwire:${w.id}`)),
@@ -112,9 +114,10 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
   });
   // Drawn bottom to top (style.ts: minor, the dead, normal, special, us).
   typed.sort((a, b) => a.order - b.order);
-  for (const { p, info } of typed) drawPlayer(ctx, pr, p, info, local?.pos?.[1] ?? null, scene.bodies);
+  for (const { p, info } of typed) drawPlayer(ctx, pr, p, info, local?.pos?.[1] ?? null, scene.bodies, labels);
 
   if (hl.size) drawHighlights(ctx, pr, scene);
+  drawLabels(ctx, labels);
 
   if (scene.hovered) {
     const [x, y] = pr.toScreen(scene.hovered);
@@ -251,6 +254,7 @@ function drawPlayer(
   info: PlayerTypeInfo,
   localY: number | null,
   bodies: boolean,
+  labels: LabelRequest[],
 ): void {
   if (!p.pos) return;
   let [x, y] = pr.toScreen(p.pos);
@@ -320,9 +324,10 @@ function drawPlayer(
       const dy = p.pos[1] - localY;
       if (Math.abs(dy) >= 2) label += dy > 0 ? ` ▲${Math.round(dy)}` : ` ▼${Math.round(-dy)}`;
     }
-    ctx.fillStyle = look.labelColor;
-    ctx.font = look.labelFont;
-    haloText(ctx, label, x + r + (look.halo ? 7 : 3), y + 4);
+    labels.push({
+      x, y, texts: [label], font: look.labelFont, color: look.labelColor, alpha: look.alpha,
+      gap: r + (look.halo ? 7 : 3), rank: LABEL_RANK.player, priority: look.order, forced: true, fixed: true,
+    });
   }
   ctx.globalAlpha = 1;
 }
@@ -442,70 +447,76 @@ export function darken(color: string, amount: number): string {
   return `rgb(${c(1)}, ${c(3)}, ${c(5)})`;
 }
 
-/** Text with a dark outline, so it reads on the dark 2D background and on the light 3D map alike. */
-function haloText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number): void {
-  ctx.lineJoin = "round";
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = COLORS.labelHalo;
-  ctx.strokeText(text, x, y);
-  ctx.fillText(text, x, y);
-  ctx.lineJoin = "miter";
-}
-
 /** False for positions off the canvas, and for NaN (not projectable, see Projector). */
 function onScreen(pr: Projector, x: number, y: number, margin = 50): boolean {
   return x >= -margin && y >= -margin && x <= pr.width + margin && y <= pr.height + margin;
 }
 
-/** A loot label waiting for placement: `texts` from most to least detailed, tried in that order. */
+/** A label waiting for placement: `texts` from most to least detailed, tried in that order. */
 interface LabelRequest {
+  /** The marker it belongs to. */
   x: number;
   y: number;
   texts: string[];
-  /** Always drawn (quest items, airdrops, containers), placed before everything else. */
-  forced: boolean;
-  /** Higher places first. */
+  font: string;
+  color: string;
+  alpha?: number;
+  /** Distance from the marker's centre. */
+  gap: number;
+  /** Placement order (declutter.ts LABEL_RANK), then higher `priority` first. */
+  rank: number;
   priority: number;
-  /** Text colour (highlighted things); the usual label colour otherwise. */
-  color?: string;
+  /** Always drawn: when no spot is free, its shortest text goes to its first spot anyway. */
+  forced: boolean;
+  /** Only the spot right of the marker (players, exfils: a label that doesn't jump about). */
+  fixed?: boolean;
 }
 
 const LOOT_FONT = "10px sans-serif";
-const LABEL_HEIGHT = 12;
 const LABEL_GAP = 6;
 const textWidths = new Map<string, number>();
 
-function textWidth(ctx: CanvasRenderingContext2D, text: string): number {
-  let w = textWidths.get(text);
+function textWidth(ctx: CanvasRenderingContext2D, font: string, text: string): number {
+  const key = `${font}|${text}`;
+  let w = textWidths.get(key);
   if (w === undefined) {
+    ctx.font = font;
     w = ctx.measureText(text).width;
-    textWidths.set(text, w);
+    textWidths.set(key, w);
   }
   return w;
 }
 
-function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, { loot, layers, catalog, minLabelPrice, highlights }: Scene): void {
-  const containerLabels = pr.detail >= 1.5;
-  const itemLabels = pr.detail >= ITEM_LABEL_ZOOM;
-  const requests: LabelRequest[] = [];
+/** Box height for a font: its size in px, plus a little. */
+const labelHeight = (font: string) => Number(/(\d+)px/.exec(font)?.[1] ?? 10) + 2;
+
+function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene, labels: LabelRequest[]): void {
+  const { loot, layers, catalog, minLabelPrice, highlights, lootDensity } = scene;
+  const containerLabels = pr.detail >= LABEL_DETAIL.containers;
+  const itemLabels = pr.detail >= LABEL_DETAIL.items;
+  const label = (x: number, y: number, texts: string[], rank: number, priority: number, forced: boolean, color: string = COLORS.label) =>
+    labels.push({ x, y, texts, font: LOOT_FONT, color, gap: LABEL_GAP, rank, priority, forced });
   for (const l of loot) {
     const isContainer = l.kind === "container" || l.kind === "airdrop" || l.kind === "corpse";
     const highlight = highlights.get(`loot:${l.id}`);
     if (!highlight && (isContainer ? !layers.containers : !layers.loot)) continue;
     const [x, y] = pr.toScreen(l.pos);
     if (!onScreen(pr, x, y, 10)) continue;
-    // Highlighted: labelled at any zoom, before everything else (but only where there's room).
-    if (highlight) requests.push({ x, y, texts: highlightTexts(l, catalog), forced: false, priority: Infinity, color: highlight });
+    // Highlighted: labelled at any zoom, before the rest of the loot (but only where there's room).
+    if (highlight) label(x, y, highlightTexts(l, catalog), LABEL_RANK.highlighted, 0, false, highlight);
     switch (l.kind) {
       case "item": {
         const info = catalog.lookup(l.tpl);
         const price = info?.price;
-        const marker = ITEM_LOOK[valueTier(price)];
+        const tier = valueTier(price);
+        // Zoomed out, cheap items drop out (the loot density setting).
+        if (!highlight && !itemMarkerShown(tier, pr.detail, lootDensity)) break;
+        const marker = ITEM_LOOK[tier];
         ctx.fillStyle = marker.color;
         ctx.fillRect(x - marker.size / 2, y - marker.size / 2, marker.size, marker.size);
         if (info && itemLabels && !highlight && (price ?? 0) >= minLabelPrice) {
           const texts = info.price ? [`${info.shortName} ${formatPrice(info.price)}`, formatPrice(info.price)] : [info.shortName];
-          requests.push({ x, y, texts, forced: false, priority: info.price ?? 0 });
+          label(x, y, texts, LABEL_RANK.item, info.price ?? 0, false);
         }
         break;
       }
@@ -518,7 +529,7 @@ function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, { loot, layers, 
         ctx.lineTo(x, y + size);
         ctx.lineTo(x - size, y);
         ctx.fill();
-        if (!highlight) requests.push({ x, y, texts: ["quest item"], forced: true, priority: 2 });
+        if (!highlight) label(x, y, ["quest item"], LABEL_RANK.questOrAirdrop, 2, false);
         break;
       }
       case "container": {
@@ -527,14 +538,14 @@ function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, { loot, layers, 
         ctx.lineWidth = 1.5;
         ctx.strokeRect(x - size, y - size, size * 2, size * 2);
         const name = containerName(l.tpl);
-        if (name && containerLabels && !highlight) requests.push({ x, y, texts: [name], forced: true, priority: 0 });
+        if (name && containerLabels && !highlight) label(x, y, [name], LABEL_RANK.container, 0, false);
         break;
       }
       case "airdrop": {
         const { color, size } = LOOT_LOOK.airdrop;
         ctx.fillStyle = color;
         ctx.fillRect(x - size, y - size, size * 2, size * 2);
-        if (!highlight) requests.push({ x, y, texts: ["airdrop"], forced: true, priority: 1 });
+        if (!highlight) label(x, y, ["airdrop"], LABEL_RANK.questOrAirdrop, 1, true);
         break;
       }
       case "corpse": {
@@ -551,33 +562,48 @@ function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, { loot, layers, 
       }
     }
   }
+}
 
-  // Labels go on top of all markers, most important first; items whose label doesn't fit anywhere
-  // keep just their marker.
-  requests.sort((a, b) => (b.priority === Infinity ? 1 : 0) - (a.priority === Infinity ? 1 : 0) || Number(b.forced) - Number(a.forced) || b.priority - a.priority);
-  ctx.font = LOOT_FONT;
+/**
+ * Places and draws all labels, on top of all markers: by rank and priority (declutter.ts), each in
+ * the first free spot around its marker, dropped when there's none (unless forced).
+ */
+function drawLabels(ctx: CanvasRenderingContext2D, labels: LabelRequest[]): void {
+  labels.sort((a, b) => a.rank - b.rank || b.priority - a.priority);
   ctx.textBaseline = "middle";
   ctx.lineJoin = "round";
   ctx.lineWidth = 3;
   ctx.strokeStyle = COLORS.labelHalo;
-  ctx.fillStyle = COLORS.label;
   const placer = new LabelPlacer();
-  for (const req of requests) {
+  const draw = (req: LabelRequest, text: string, rect: Rect) => {
+    ctx.font = req.font;
+    ctx.globalAlpha = req.alpha ?? 1;
+    ctx.fillStyle = req.color;
+    ctx.strokeText(text, rect.x, rect.y + rect.h / 2);
+    ctx.fillText(text, rect.x, rect.y + rect.h / 2);
+  };
+  const spots = (req: LabelRequest, text: string) => {
+    const all = candidatesAround(req.x, req.y, textWidth(ctx, req.font, text), labelHeight(req.font), req.gap);
+    return req.fixed ? [all[0]] : all;
+  };
+  for (const req of labels) {
+    let placed = false;
     for (const text of req.texts) {
-      const candidates = candidatesAround(req.x, req.y, textWidth(ctx, text), LABEL_HEIGHT, LABEL_GAP);
-      let rect = placer.place(candidates);
-      if (!rect && req.forced) {
-        rect = candidates[0];
-        placer.reserve(rect);
-      }
+      const rect = placer.place(spots(req, text));
       if (rect) {
-        ctx.fillStyle = req.color ?? COLORS.label;
-        ctx.strokeText(text, rect.x, rect.y + rect.h / 2);
-        ctx.fillText(text, rect.x, rect.y + rect.h / 2);
+        draw(req, text, rect);
+        placed = true;
         break;
       }
     }
+    if (!placed && req.forced) {
+      const text = req.texts.at(-1)!;
+      const rect = spots(req, text)[0]!;
+      placer.reserve(rect);
+      draw(req, text, rect);
+    }
   }
+  ctx.globalAlpha = 1;
   ctx.textBaseline = "alphabetic";
   ctx.lineJoin = "miter";
 }
@@ -620,7 +646,7 @@ function drawHighlights(ctx: CanvasRenderingContext2D, pr: Projector, scene: Sce
   for (const p of scene.players) ring(p.pos, hl.get(`player:${p.id}`), 12);
 }
 
-function drawExfil(ctx: CanvasRenderingContext2D, pr: Projector, e: Exfil): void {
+function drawExfil(ctx: CanvasRenderingContext2D, pr: Projector, e: Exfil, labels: LabelRequest[]): void {
   if (!e.pos) return;
   const [x, y] = pr.toScreen(e.pos);
   if (!onScreen(pr, x, y, 150)) return;
@@ -635,9 +661,10 @@ function drawExfil(ctx: CanvasRenderingContext2D, pr: Projector, e: Exfil): void
   ctx.beginPath();
   ctx.arc(x, y, 2.5, 0, Math.PI * 2);
   ctx.fill();
-  ctx.font = "11px sans-serif";
-  ctx.fillStyle = color;
-  haloText(ctx, `${e.name}${e.kind === "secret" ? " (secret)" : ` · ${status.label}`}`, x + 10, y + 4);
+  // Zoomed out: just the name (the colour still tells the status).
+  const full = `${e.name}${e.kind === "secret" ? " (secret)" : ` · ${status.label}`}`;
+  const texts = pr.detail >= EXFIL_STATUS_DETAIL ? [full, e.name] : [e.name];
+  labels.push({ x, y, texts, font: "11px sans-serif", color, gap: 10, rank: LABEL_RANK.exfil, priority: 0, forced: true, fixed: true });
 }
 
 function drawExplosives(ctx: CanvasRenderingContext2D, pr: Projector, ex: ExplosivesData): void {

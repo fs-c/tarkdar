@@ -18,3 +18,5 @@
 }
 /* The style switcher takes the top right corner: what else floats there starts below it. */
 .main[data-style-switch="true"] { --top-right-inset: 50px; }
+/* The details panel takes the right side: the highlight pills (top left) stop short of it. */
+.main[data-details="true"] { --details-w: 380px; }

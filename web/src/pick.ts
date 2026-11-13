@@ -20,10 +20,14 @@ export interface Pickable {
   explosives: ExplosivesData;
 }
 
-export const isContainerLoot = (l: LootEntry): boolean => l.kind === "container" || l.kind === "airdrop";
+/** Loot on the map's containers layer (the list's containers tab): containers, airdrops, corpses. */
+export const isContainerLoot = (l: LootEntry): boolean => l.kind === "container" || l.kind === "airdrop" || l.kind === "corpse";
 
-/** The nearest visible player, exfil or loot marker within a few pixels of screen position (x, y). */
-export function pick(pr: Projector, src: Pickable, layers: Layers, x: number, y: number): Selection | null {
+/**
+ * The nearest visible player, exfil or loot marker within a few pixels of screen position (x, y).
+ * Highlighted things (`always`, by selection key) are visible whatever the layers say.
+ */
+export function pick(pr: Projector, src: Pickable, layers: Layers, x: number, y: number, always: ReadonlyMap<string, unknown> = new Map()): Selection | null {
   let best: { sel: Selection; d: number } | null = null;
   const consider = (sel: Selection, pos: WorldPos | null | undefined, radius: number) => {
     if (!pos) return;
@@ -40,12 +44,23 @@ export function pick(pr: Projector, src: Pickable, layers: Layers, x: number, y:
         consider({ kind: "player", id: p.id }, [p.pos[0] + p.joints[o]!, p.pos[1] + p.joints[o + 1]!, p.pos[2] + p.joints[o + 2]!], 12);
       }
   }
-  if (layers.exfils) for (const e of src.exfils) consider({ kind: "exfil", id: e.id }, e.pos, 12);
-  if (layers.explosives) {
-    for (const g of src.explosives.grenades) consider({ kind: "grenade", id: g.id }, g.pos, 10);
-    for (const w of src.explosives.tripwires) consider({ kind: "tripwire", id: w.id }, midpoint(w.from, w.to), 10);
+  const shown = (sel: Selection, layer: boolean) => layer || always.has(selectionKey(sel));
+  for (const e of src.exfils) {
+    const sel: Selection = { kind: "exfil", id: e.id };
+    if (shown(sel, layers.exfils)) consider(sel, e.pos, 12);
   }
-  for (const l of src.loot) if (isContainerLoot(l) ? layers.containers : layers.loot) consider({ kind: "loot", id: l.id }, l.pos, 8);
+  for (const g of src.explosives.grenades) {
+    const sel: Selection = { kind: "grenade", id: g.id };
+    if (shown(sel, layers.explosives)) consider(sel, g.pos, 10);
+  }
+  for (const w of src.explosives.tripwires) {
+    const sel: Selection = { kind: "tripwire", id: w.id };
+    if (shown(sel, layers.explosives)) consider(sel, midpoint(w.from, w.to), 10);
+  }
+  for (const l of src.loot) {
+    const sel: Selection = { kind: "loot", id: l.id };
+    if (shown(sel, isContainerLoot(l) ? layers.containers : layers.loot)) consider(sel, l.pos, 8);
+  }
   return (best as { sel: Selection } | null)?.sel ?? null;
 }
 

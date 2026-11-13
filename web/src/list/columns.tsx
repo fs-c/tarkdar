@@ -94,7 +94,7 @@ const players: TabDef<PlayerRow> = {
       },
     }),
     p.accessor("state", { header: "state", sortFn: "text" }),
-    p.accessor("value", { header: "gear ₽", cell: (c) => <Price>{price(c.getValue())}</Price>, sortUndefined: "last", sortDescFirst: true }),
+    p.accessor((r) => r.value, { id: "value", header: "gear ₽", cell: (c) => <Price>{price(c.getValue())}</Price>, sortUndefined: "last", sortDescFirst: true }),
     ...distanceColumns<PlayerRow>(),
   ],
   defaultSort: [{ id: "dist", desc: false }],
@@ -117,7 +117,8 @@ const items: TabDef<ItemRow> = {
       ),
     }),
     i.accessor("kind", { header: "kind", sortFn: "text" }),
-    i.accessor("price", {
+    i.accessor((r) => r.value, {
+      id: "price",
       header: "₽",
       sortUndefined: "last",
       sortDescFirst: true,
@@ -135,15 +136,21 @@ const k = createColumnHelper<Features, ContainerRow>();
 const containers: TabDef<ContainerRow> = {
   id: "containers",
   label: "Containers",
-  template: "minmax(90px, 1fr) 40px 56px 52px 40px",
+  template: "minmax(90px, 1fr) 56px 52px 40px",
   columns: [
     k.accessor("name", { header: "container", sortFn: "text", cell: (c) => <span title={`${c.getValue()} (${c.row.original.kind})`}>{c.getValue()}</span> }),
-    k.accessor("count", { header: "#", sortDescFirst: true }),
-    k.accessor("value", { header: "₽", sortUndefined: "last", sortDescFirst: true, cell: (c) => <Price>{price(c.getValue())}</Price> }),
+    // Corpses: their equipment. Container contents can't be read.
+    k.accessor((r) => r.value, {
+      id: "value",
+      header: "₽",
+      sortUndefined: "last",
+      sortDescFirst: true,
+      cell: (c) => <span title={c.row.original.kind === "corpse" ? "Equipment value" : undefined}><Price>{price(c.getValue())}</Price></span>,
+    }),
     ...distanceColumns<ContainerRow>(),
   ],
-  defaultSort: [{ id: "value", desc: true }],
-  numeric: ["count", "value", "dist", "dh"],
+  defaultSort: [{ id: "dist", desc: false }],
+  numeric: ["value", "dist", "dh"],
 };
 
 const e = createColumnHelper<Features, ExfilRow>();
@@ -193,4 +200,12 @@ const explosives: TabDef<ExplosiveRow> = {
 };
 
 export const TABS = { players, items, containers, exfils, explosives } as const;
+
+/** Ids of a tab's columns (to drop stored sorting by columns that no longer exist). */
+export function columnIds(def: TabDef<any>): Set<string> {
+  return new Set(def.columns.map((c) => {
+    const col = c as { id?: string; accessorKey?: string };
+    return col.id ?? col.accessorKey ?? "";
+  }));
+}
 export const TAB_ORDER: TabId[] = ["players", "items", "containers", "exfils", "explosives"];

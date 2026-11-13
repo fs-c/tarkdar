@@ -32,7 +32,7 @@ from t3d.maps import MAPS, extract_scenes, location_folder  # noqa: E402
 
 # Bump when the extractor records something new/different.
 # 4: whole location folders; per-scene object type counts (`typeCounts`).
-EXTRACTOR_VERSION = 4
+EXTRACTOR_VERSION = 5     # 5: albedo thumbnails of the rock shaders (_BaseAlbedoASmoothness, _Aldebo)
 DEFAULT_GAME_DIR = "/mnt/win/Battlestate Games/Escape from Tarkov/EscapeFromTarkov_Data"
 
 

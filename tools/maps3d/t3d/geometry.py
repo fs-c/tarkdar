@@ -182,3 +182,48 @@ def terrain_colors(splat_maps: list, layer_colors: list) -> np.ndarray | None:
     out[covered] = total[covered] / weight[covered, None]
     out[~covered] = total[covered].sum(axis=0) / weight[covered].sum()     # uncovered: the average ground
     return np.clip(np.rint(out), 0, 255).astype(np.uint8)
+
+
+CLIP_SLACK = 8.0     # metres a triangle may reach beyond the rectangle before it is cut
+
+
+def _clip_polygon_xz(polygon: np.ndarray, lo, hi) -> np.ndarray:
+    """A convex polygon (N, 3) cut to the rectangle lo..hi in x and z (Sutherland-Hodgman)."""
+    for axis, k in ((0, 0), (2, 1)):
+        for bound, sign in ((lo[k], 1.0), (hi[k], -1.0)):
+            if not len(polygon):
+                return polygon
+            d = (polygon[:, axis] - bound) * sign             # >= 0: inside
+            out = []
+            for p, q, dp, dq in zip(polygon, np.roll(polygon, -1, axis=0), d, np.roll(d, -1)):
+                if dp >= 0:
+                    out.append(p)
+                if (dp >= 0) != (dq >= 0):
+                    out.append(p + (q - p) * (dp / (dp - dq)))
+            polygon = np.array(out).reshape(-1, 3)
+    return polygon
+
+
+def clip_to_rect(positions: np.ndarray, indices: np.ndarray, lo_xz, hi_xz, slack: float = CLIP_SLACK):
+    """The triangles that touch the rectangle lo..hi (x, z), as (positions, indices) with only
+    the vertices they use. Triangles reaching more than `slack` beyond it are cut to it: one
+    quad of a sea floor plane is 700 m wide (Lighthouse), and whoever samples surfaces
+    (visibility bake, ground map) samples all of what it is given."""
+    lo_xz, hi_xz = np.asarray(lo_xz, dtype=np.float64), np.asarray(hi_xz, dtype=np.float64)
+    tri = np.asarray(indices).reshape(-1, 3)
+    if not len(tri):
+        return positions[:0], tri.reshape(-1).astype(np.uint32)
+    corners = positions[tri][:, :, [0, 2]]
+    tmin, tmax = corners.min(axis=1), corners.max(axis=1)
+    inside = ((tmax >= lo_xz) & (tmin <= hi_xz)).all(axis=1)
+    large = inside & ((tmin < lo_xz - slack) | (tmax > hi_xz + slack)).any(axis=1)
+    used, inverse = np.unique(tri[inside & ~large].reshape(-1), return_inverse=True)
+    P, I, offset = [positions[used]], [inverse.astype(np.uint32)], len(used)
+    for polygon in np.asarray(positions, dtype=np.float64)[tri[large]]:
+        cut = _clip_polygon_xz(polygon, lo_xz, hi_xz)
+        if len(cut) >= 3:
+            fan = np.arange(1, len(cut) - 1, dtype=np.uint32)
+            P.append(cut.astype(positions.dtype))
+            I.append((np.stack([np.zeros_like(fan), fan, fan + 1], axis=1) + offset).reshape(-1).astype(np.uint32))
+            offset += len(cut)
+    return np.concatenate(P), np.concatenate(I)

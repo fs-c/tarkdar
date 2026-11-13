@@ -214,7 +214,9 @@ class BakeTest(unittest.TestCase):
                                geoms, instances, [], ["a", "b", "c", "d", "e"])
 
     def bake(self, **options):
-        return hlod.bake(self.dataset(), hlod.Options(workers=2, **options), log=lambda *_: None)
+        # the far shed is beyond the default backdrop margin around the terrain patch
+        return hlod.bake(self.dataset(), hlod.Options(workers=2, **{"backdrop_margin": 1000.0, **options}),
+                         log=lambda *_: None)
 
     def test_cells_categories_and_passthrough(self):
         out = self.bake(hsr=False)
@@ -242,6 +244,44 @@ class BakeTest(unittest.TestCase):
         self.assertEqual([len(g.indices) // 3 for g in cells], [2, 10, 2, 10])
         self.assertEqual(out.paths, ["a", "b", "c", "d", "e"])
         self.assertEqual(out.instances[4].path, 4)
+
+    def test_oversized_objects_are_backdrop(self):
+        ds = self.dataset()
+        ds.instances[1].matrix[:3, :3] *= 400          # the shed, now 1.6 km wide
+        lines = []
+        out = hlod.bake(ds, hlod.Options(workers=1, backdrop_margin=1e6), log=lines.append)
+        self.assertEqual([g.name for g in out.geoms if g.name.startswith("cell")],
+                         ["cell_0_0_glass", "cell_0_0_structure"])
+        self.assertIn("dropped as backdrop (wider than 800 m): b (1,600 m)", "\n".join(lines))
+        kept = hlod.bake(ds, hlod.Options(workers=1, hsr=False, backdrop_size=2000, backdrop_margin=1e6), log=lambda *_: None)
+        self.assertEqual(sum(g.name.startswith("cell") for g in kept.geoms), 4)
+
+    def test_objects_far_outside_the_terrain_are_backdrop(self):
+        # the terrain patch covers -46..74 m; the shed stands at x = 300
+        lines = []
+        out = hlod.bake(self.dataset(), hlod.Options(workers=1, hsr=False, backdrop_margin=100), log=lines.append)
+        self.assertEqual([g.name for g in out.geoms if g.name.startswith("cell")],
+                         ["cell_0_0_glass", "cell_0_0_structure"])
+        self.assertIn("outside the playable area): 1 objects", "\n".join(lines))
+        ds = self.dataset()
+        ds.instances.pop()                             # no heightmap terrain: nothing is outside
+        out = hlod.bake(ds, hlod.Options(workers=1, hsr=False, backdrop_margin=100), log=lines.append)
+        self.assertEqual(sum(g.name.startswith("cell") for g in out.geoms), 4)
+
+    def test_huge_ground_triangles_are_cut_to_the_cell(self):
+        p, i = plane(5.0, 5000.0)                       # a 10 km sea floor quad
+        lo, hi = np.array([0.0, 0, 0]), np.array([100.0, 30, 50])
+        pos, idx = hlod._occluder_for((p.astype(np.float64), i), lo, hi, 16.0, lo)
+        np.testing.assert_allclose(pos.min(axis=0), [-16, 5, -16], atol=1e-3)
+        np.testing.assert_allclose(pos.max(axis=0), [116, 5, 66], atol=1e-3)
+        normals = visibility.face_normals(pos, idx)
+        self.assertTrue((normals[:, 1] >= 0).all())     # still facing up (a cut can leave a sliver)
+        self.assertAlmostEqual(float(np.linalg.norm(normals, axis=1).sum()) / 2, 132 * 82, delta=1)
+        # ordinary terrain triangles are left as they are
+        p, i = plane(0.0, 60.0)
+        pos, idx = hlod._occluder_for((p.astype(np.float64) + [50, 0, 25], i), lo, hi, 60.0, lo)
+        self.assertEqual((len(pos), len(idx)), (4, 6))
+        self.assertIsNone(hlod._occluder_for((p.astype(np.float64) + [900, 0, 0], i), lo, hi, 16.0, lo))
 
     def test_tree_markers(self):
         out = self.bake(hsr=False)

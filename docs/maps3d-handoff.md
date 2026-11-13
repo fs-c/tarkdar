@@ -1,6 +1,6 @@
 # Handoff: every location as a 3D map
 
-State on 2026-11-13. Background and pipeline: `docs/maps3d.md`.
+State on 2026-11-13 (Phase B started the same day: items 1 and 2 below). Background and pipeline: `docs/maps3d.md`.
 
 The work is split in two. **Phase A** needed the game files and is done. **Phase B** needs only
 the extraction cache from the asset store, and can run on any machine.
@@ -43,17 +43,29 @@ make harness-serve    # then: cd harness && node shot.mjs --data shoreline-smoke
 
 ## Left to do (Phase B, no game needed)
 
-1. **Huge backdrop objects.** Shoreline's full build was OOM-killed (25 GB): a 12 km bridge
-   (`Tarkov_city_background`) and 1.7 km `Mount_01` meshes are classified as structure, so their
-   cell spans kilometres and hidden-surface removal rasterises that at 20 cm. Lighthouse and
-   Terminal have the same kind of backdrop (Terminal: 4.2 × 2.2 km ground map). Options: treat
-   oversized or far-outside-the-playable-area objects as background (pass through or drop),
-   or split or cap a cell's extent before HSR. Until then, run builds under a memory cap
-   (`systemd-run --user --scope -p MemoryMax=32G …`).
+1. ~~Huge backdrop objects~~ **done** (2026-11-13). All seven outdoor maps build in full on an
+   18 GB machine (1.5 to 8 min each, at least 4 GB left free). What it took:
+   - objects wider than 800 m are scenery and dropped (`hlod.Options.backdrop_size`): mountains,
+     the city silhouette, the 12 km bridge. The build log names them;
+   - objects more than 150 m outside the playable area are dropped too (`backdrop_margin`). The
+     playable area is the heightmap terrain, or, on Ground Zero and Terminal, what the boxes of
+     the `*_LevelBorders` scene enclose (`build.level_borders`, preset key `borders`), which also
+     frames the camera there;
+   - whoever samples surfaces gets large triangles cut to its area first
+     (`geometry.clip_to_rect`): Lighthouse's sea floor is a plane of 700 m quads, which the
+     ground map sampled whole (10 GB);
+   - the sea floor is not ground for the ground map (`ground.SEA_FLOOR`): Terminal's whole port
+     counted as one building standing on it.
 2. **Tune each outdoor map**: Woods, Shoreline, Interchange, Reserve, Lighthouse, Ground Zero,
-   Terminal. Check scene choice and categories (sea water, new shaders), `make_views.py` +
-   reference + `make measure`, look at it in the radar, then build into `maps/3d/<map>`,
-   `make publish`, and drop its 2D map. Set `tuned` once a map has been looked at.
+   Terminal are built into `maps/3d/<map>` (local, not published) and have been looked at top-down
+   only. Left per map: look at it in the radar, `make_views.py` + reference + `make measure`,
+   `make publish`, drop its 2D map, set `tuned`. Known so far:
+   - rocks have a stand-in colour (`build.ROCK_COLOR`): cache v4 has no thumbnail of the rock
+     shaders' albedo slots. The extractor is fixed (version 5) for the next extraction;
+   - Terminal builds without the `PortCutscene_*` scenes (story cutscenes staged on the map);
+   - combined scenery meshes that straddle the 150 m line stay (Shoreline: port buildings in the
+     sea to the west), and so do the level-of-detail terrain slices of neighbouring locations;
+   - Streets has level borders too but does not use them (unchanged build).
 3. **Customs:** the game also loads `custom_city` and `custom_background`, which the hand list
    leaves out. Check whether they add anything worth showing.
 4. **Variants:** Labs event, Factory event and Ground Zero start are separate presets for now.

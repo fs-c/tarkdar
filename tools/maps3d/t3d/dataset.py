@@ -114,6 +114,9 @@ class Dataset:
     paths: list = field(default_factory=list)       # hierarchy paths, by Instance.path (diagnostics; not written)
     build: dict = field(default_factory=dict)       # profile-specific parameters, for the record
     ground: object = None                           # ground.GroundMap: the plan style's ground heights
+    # (min xyz, max xyz) the game's level borders enclose, where a map has them (build.level_borders):
+    # the playable area of a map without heightmap terrain.
+    playable: tuple | None = None
 
 
 def _round(values, digits=3):
@@ -295,6 +298,8 @@ def _bounds(ds: Dataset):
         if ds.geoms[inst.geom].kind == "terrain":
             focus_lo = np.minimum(focus_lo, wmin)
             focus_hi = np.maximum(focus_hi, wmax)
+    if ds.playable is not None and not np.isfinite(focus_lo).all():
+        focus_lo, focus_hi = (np.array(b, dtype=np.float64) for b in ds.playable)
     if not np.isfinite(focus_lo).all() and ds.instances:
         # No Unity Terrain (e.g. Streets): robust instance-center bounds so a
         # few huge water/border planes do not dominate the initial camera.

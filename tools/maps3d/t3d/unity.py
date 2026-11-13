@@ -40,6 +40,66 @@ def build_settings_scenes(game_dir: Path) -> list[str]:
     return []
 
 
+PRESET_BUNDLES = "StreamingAssets/Windows/maps"
+
+
+def location_presets(game_dir: Path) -> dict:
+    """The game's scene lists per location: {location id: {"name", "bundle", "activeScene",
+    "scenes": [{"path", "onlyOffline"}]}}.
+
+    They are `ScenesPreset` MonoBehaviours in StreamingAssets/Windows/maps/*.bundle: a preset
+    named after its location id (`ServerName`) lists scenes and child presets (Streets: one per
+    block; Factory day/night: a shared base). Children are flattened in order. A preset that
+    is another's child is not a location of its own even when it has a `ServerName` (the
+    Factory night culling preset says `factory4_day`), and neither is anything not named
+    `*.ScenesPreset` (an editor preset in the Customs bundle says `Lighthouse`)."""
+    folder = Path(game_dir) / PRESET_BUNDLES
+    bundles = sorted(folder.glob("*.bundle"))
+    if not bundles:
+        return {}
+    env = UnityPy.load(*map(str, bundles))
+    presets: dict[int, tuple[str, dict]] = {}
+    for o in env.objects:
+        if o.type.name != "MonoBehaviour":
+            continue
+        d = o.read_typetree()
+        if "_scenesResourceKeys" in d:
+            bundle = Path(getattr(o.assets_file, "parent", None) and o.assets_file.parent.name or "").name
+            presets.setdefault(o.path_id, (bundle, d))
+    return flatten_presets(presets)
+
+
+def flatten_presets(presets: dict[int, tuple[str, dict]]) -> dict:
+    """{path id: (bundle name, ScenesPreset typetree)} -> location_presets' result."""
+    # Only a real preset's children: the Customs bundle's editor preset has Lighthouse's as a child.
+    children = {c["m_PathID"] for pid, (_, d) in presets.items() for c in d.get("ChildPresets", [])
+                if c["m_PathID"] != pid and d.get("m_Name", "").endswith(".ScenesPreset")}
+
+    def scenes_of(pid, seen):
+        if pid in seen or pid not in presets:
+            return []
+        seen.add(pid)
+        d = presets[pid][1]
+        out = [{"path": k["path"], "onlyOffline": bool(k.get("_onlyOffline"))} for k in d["_scenesResourceKeys"]]
+        for c in d.get("ChildPresets", []):
+            out += scenes_of(c["m_PathID"], seen)
+        return out
+
+    out = {}
+    for pid, (bundle, d) in presets.items():
+        server = d.get("ServerName") or ""
+        if not server or pid in children or not d.get("m_Name", "").endswith(".ScenesPreset"):
+            continue
+        scenes, have = [], set()
+        for s in scenes_of(pid, set()):
+            if s["path"] not in have:
+                have.add(s["path"])
+                scenes.append(s)
+        out.setdefault(server, {"name": d["m_Name"], "bundle": bundle,
+                                "activeScene": d.get("_activeSceneName", ""), "scenes": scenes})
+    return dict(sorted(out.items(), key=lambda kv: kv[0].lower()))
+
+
 def unity_version(game_dir: Path) -> str:
     env = UnityPy.load(str(Path(game_dir) / "globalgamemanagers"))
     for f in env.files.values():
@@ -666,6 +726,7 @@ class Extractor:
             "strings": strings.values,
             "colliderKinds": {v: k for k, v in COLLIDER_KIND.items()},
             "stats": dict(sorted(stats.items())),
+            "typeCounts": {k: len(v) for k, v in sorted(by_type.items())},
             "badMeshRefs": dict(bad),
         }
         elapsed = time.time() - t0

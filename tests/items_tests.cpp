@@ -213,7 +213,7 @@ TEST_CASE("Players reads observed players' equipment through their controller") 
     checkLoadout(snap->players[0].slots);
 }
 
-TEST_CASE("Loot reads container contents and corpse equipment") {
+TEST_CASE("Loot reads corpse equipment, not container contents") {
     FakeWorld w;
     w.newWorld(u"bigmap", 1);
     ItemClasses c(w);
@@ -263,15 +263,14 @@ TEST_CASE("Loot reads container contents and corpse equipment") {
     REQUIRE(snap->loot.size() == 2);
     const auto& box = snap->loot[0].kind == eft::LootEntry::Kind::Container ? snap->loot[0] : snap->loot[1];
     const auto& body = snap->loot[0].kind == eft::LootEntry::Kind::Corpse ? snap->loot[0] : snap->loot[1];
-    REQUIRE(box.contents.size() == 1);
-    CHECK(box.contents[0].tpl == "roubles");
-    CHECK(box.contents[0].count == 5000);
+    CHECK(box.templateId == "578f8782245977354405a1e3");
+    CHECK(box.contents.empty());
     checkLoadout(body.contents);
 
-    // Looted: the next scans refresh contents.
-    h.put<Address>(root + off::LootItemMod::Slots, makeSlots(w, {{u"main", 0}}));
+    // Looted: the next scans refresh the equipment.
+    h.put<Address>(equipment + off::LootItemMod::Slots, makeSlots(w, {{u"FirstPrimaryWeapon", 0}}));
     loot.scan(t + std::chrono::seconds(3));
     const auto after = world.loot.get();
     for (const auto& l : after->loot)
-        if (l.kind == eft::LootEntry::Kind::Container) CHECK(l.contents.empty());
+        if (l.kind == eft::LootEntry::Kind::Corpse) CHECK(l.contents.empty());
 }

@@ -424,7 +424,8 @@ export class Timeline {
       const l = this.lootHead.get(id);
       if (l) this.events.push({ t, kind: "lootRemoved", loot: l });
     }
-    // Only contents changes are events: positions shift (falling airdrops, physics) without anything happening.
+    // Only contents changes (corpses' equipment) are events: positions shift (falling airdrops, physics)
+    // without anything happening.
     for (const l of diff.changed) {
       const before = this.lootHead.get(l.id);
       if (before && !sameContents(before, l)) this.events.push({ t, kind: "lootChanged", loot: l, before });

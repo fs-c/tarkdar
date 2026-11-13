@@ -130,7 +130,6 @@ std::optional<Loot::Resolved> Loot::resolveOne(Address instance, bool& permanent
                 return std::nullopt;
             }
             loot.templateId = std::move(*id);
-            r.entry.contentsRoot = root;
         }
     } else if (game_.managed.isInstanceOf(instance, kLootClassItem)) {
         const Address item = readPointer(game_, instance + off::InteractiveLootItem::Item);

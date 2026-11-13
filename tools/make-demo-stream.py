@@ -70,11 +70,12 @@ def main():
         loot.append({"id": 300 + i, "kind": "container", "tpl": rng.choice(containers), "obj": "container",
                      "pos": [round(rng.uniform(-220, 220), 2), 0.0, round(rng.uniform(-220, 220), 2)]})
     loot.append({"id": 400, "kind": "quest", "tpl": "questtpl", "obj": "quest_item", "pos": [-30.0, 0.0, 80.0]})
-    # On the local player's loop: a LEDX it passes at 10 s, a container it passes at 20 s.
+    # On the local player's loop: a LEDX it passes (and takes) at 10 s, a container it passes at 20 s.
+    # Container contents aren't read (the backend sends none).
     LEDX, GPU = "5c0530ee86f774697952d952", "57347ca924597744596b4e71"
     loot.append({"id": 450, "kind": "item", "tpl": LEDX, "obj": "item_ledx", "pos": [0.5, 0.0, 60.0]})
     loot.append({"id": 460, "kind": "container", "tpl": "5909d89086f77472591234a0", "obj": "container_pc",
-                 "pos": [-60.5, 0.0, 0.5], "contents": [{"tpl": GPU}, {"tpl": "5734758f24597738025ee253"}]})
+                 "pos": [-60.5, 0.0, 0.5]})
     exfils_closed = [{"id": 1, "kind": "regular", "name": "ZB-1011", "status": 1, "pos": [180.0, 0.0, 150.0]},
                      {"id": 2, "kind": "regular", "name": "Crossroads", "status": 4, "pos": [-200.0, 0.0, -120.0]},
                      {"id": 3, "kind": "secret", "name": "Smugglers' Basement", "status": 1, "pos": [90.0, 0.0, -190.0]}]
@@ -92,10 +93,6 @@ def main():
                           "items": [{"tpl": "5449016a4bdc2d6f028b456f", "count": r.randint(1000, 50000)}]})
         return slots
 
-    for entry in loot:
-        if entry["kind"] == "container" and entry["id"] != 460:
-            entry["contents"] = [{"tpl": "5449016a4bdc2d6f028b456f", "count": rng.randint(500, 20000)},
-                                 {"tpl": "5734758f24597738025ee253"}] if rng.random() < 0.7 else []
     equipment = {"players": [{"id": 1, "slots": loadout(rng)}] + [{"id": b["id"], "slots": loadout(rng)} for b in bots]}
     tripwire = {"id": 1, "from": [-60.0, 0.2, -10.0], "to": [-52.0, 0.2, -4.0]}
     rev = {"exfils": 0, "explosives": 0, "loot": 0, "equipment": 0}
@@ -154,12 +151,12 @@ def main():
         if step % (RATE_HZ * 3) == 0:  # loot scans every 3 s
             drop_y = max(0.0, 150.0 - 10.0 * secs)
             entries = [l for l in loot if not (l["id"] == 450 and secs > 10.5)]
-            if secs > 20.5:
-                entries = [dict(l, contents=[c for c in l["contents"] if c["tpl"] != GPU]) if l["id"] == 460 else l for l in entries]
             entries = entries + [{"id": 500, "kind": "airdrop", "tpl": "", "obj": "loot_collider", "pos": [20.0, round(drop_y, 2), -60.0]}]
             dead = next(b for b in bots if b["id"] == 3)
             if secs > 20:
                 corpse_eq = next(p["slots"] for p in equipment["players"] if p["id"] == 3)
+                if secs > 26:  # someone takes the weapon
+                    corpse_eq = [s for s in corpse_eq if s["slot"] != "FirstPrimaryWeapon"]
                 entries.append({"id": 501, "kind": "corpse", "tpl": "", "obj": "corpse",
                                 "pos": [round(dead["x"], 2), 0.0, round(dead["z"], 2)], "contents": corpse_eq})
             emit("loot", t, {"loot": entries})

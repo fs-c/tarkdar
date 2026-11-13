@@ -1,6 +1,6 @@
 // Raid recordings from the backend (GET /api/recordings): listing them and loading one into a Timeline.
 
-import type { RecordedMessage, RecordingInfo } from "./protocol";
+import { type RecordedMessage, type RecordingInfo, withoutContainerContents } from "./protocol";
 import { Timeline } from "./timeline";
 
 export async function fetchRecordings(): Promise<RecordingInfo[]> {
@@ -40,7 +40,7 @@ export function parseLine(line: string): RecordedMessage | null {
   try {
     const m = JSON.parse(line) as Partial<RecordedMessage> | null;
     if (!m || typeof m !== "object" || typeof m.type !== "string" || typeof m.t !== "number") return null;
-    return m as RecordedMessage;
+    return withoutContainerContents(m as RecordedMessage);
   } catch {
     return null;
   }

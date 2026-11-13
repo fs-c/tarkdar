@@ -13,10 +13,11 @@
   &:hover .preview, &[aria-expanded="true"] .preview { outline: 1px solid var(--border-hover); }
 }
 .preview { display: block; width: 44px; height: 44px; border-radius: var(--radius); }
+/* Closed, the options take no room at all (not even height), so the button alone is square. */
 .options {
-  display: flex; gap: 2px; min-width: 0; overflow: hidden; max-width: 0; opacity: 0;
-  transition: max-width 0.18s ease, opacity 0.18s ease, margin 0.18s ease;
-  .switch[data-open="true"] > & { max-width: 640px; opacity: 1; margin-right: 6px; overflow-x: auto; }
+  display: flex; gap: 2px; min-width: 0; overflow: hidden; max-width: 0; max-height: 0; opacity: 0;
+  transition: max-width 0.18s ease, max-height 0.18s ease, opacity 0.18s ease, margin 0.18s ease;
+  .switch[data-open="true"] > & { max-width: 640px; max-height: 80px; opacity: 1; margin-right: 6px; overflow-x: auto; }
 }
 .option {
   flex: none; display: grid; justify-items: center; gap: 3px; padding: 4px 4px 3px; border: 0; border-radius: var(--radius);

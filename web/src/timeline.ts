@@ -141,11 +141,14 @@ export class Track {
     return this.kept;
   }
 
-  /** Horizontal distance travelled up to time t (m). */
+  /** Horizontal distance travelled up to time t (m), not counting jumps (see isJump). */
   distanceUntil(t: number): number {
     const end = this.indexAt(t);
     let d = 0;
-    for (let i = 1; i <= end; i++) d += Math.hypot(this.x[i]! - this.x[i - 1]!, this.z[i]! - this.z[i - 1]!);
+    for (let i = 1; i <= end; i++) {
+      const step = Math.hypot(this.x[i]! - this.x[i - 1]!, this.z[i]! - this.z[i - 1]!);
+      if (!isJump(step, this.t[i]! - this.t[i - 1]!)) d += step;
+    }
     return d;
   }
 
@@ -244,6 +247,19 @@ const EXTRACT_RADIUS_M = 50;
 function nearExfil(pos: WorldPos | null, exfils: Exfil[]): boolean {
   if (!pos) return false;
   return exfils.some((e) => e.pos && !isSentinelPos(e.pos) && Math.hypot(e.pos[0] - pos[0], e.pos[2] - pos[2]) <= EXTRACT_RADIUS_M);
+}
+
+/** Faster than anyone moves (m/s; sprinting is ~7, riding the BTR ~15). */
+const MAX_SPEED_MS = 25;
+/** Steps shorter than this (m) are never jumps: timestamps are too coarse to judge them. */
+const MIN_JUMP_M = 5;
+
+/**
+ * A step of `metres` in `ms` that nobody can make: the game moved the entity (spawn, teleport,
+ * a stale position read for a frame). Trails break there and distances skip it.
+ */
+export function isJump(metres: number, ms: number): boolean {
+  return metres >= MIN_JUMP_M && metres > (MAX_SPEED_MS * Math.max(ms, 0)) / 1000;
 }
 
 /** Trails keep a point per this much movement (m). */

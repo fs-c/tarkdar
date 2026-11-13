@@ -124,7 +124,6 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
       {tab === "items" && <TabTable key={tab} def={TABS.items} rows={rows.items} {...common} />}
       {tab === "containers" && <TabTable key={tab} def={TABS.containers} rows={rows.containers} {...common} />}
       {tab === "exfils" && <TabTable key={tab} def={TABS.exfils} rows={rows.exfils} {...common} />}
-      {tab === "explosives" && <TabTable key={tab} def={TABS.explosives} rows={rows.explosives} {...common} />}
       <div className={s.footer}>
         <span>
           {filtered ? `${rows[tab].length} of ${totals[tab]}` : `${totals[tab]}`}

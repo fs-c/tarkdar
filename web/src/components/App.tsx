@@ -438,7 +438,6 @@ export function App() {
             items: list.rows.items.length,
             containers: list.rows.containers.length,
             exfils: list.rows.exfils.length,
-            explosives: list.rows.explosives.length,
             raids: !!review,
             settings: calibrating,
           }}

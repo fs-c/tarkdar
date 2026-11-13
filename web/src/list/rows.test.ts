@@ -101,7 +101,7 @@ describe("tabOf", () => {
     expect(tabOf({ kind: "loot", id: 20 }, s)).toBe("containers");
     expect(tabOf({ kind: "loot", id: 10 }, s)).toBe("items");
     expect(tabOf({ kind: "loot", id: 99 }, s)).toBeUndefined();
-    expect(tabOf({ kind: "tripwire", id: 1 }, s)).toBe("explosives");
+    expect(tabOf({ kind: "tripwire", id: 1 }, s)).toBeUndefined(); // no explosives tab
   });
 });
 

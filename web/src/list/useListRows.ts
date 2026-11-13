@@ -34,7 +34,6 @@ export const DEFAULT_PREFS: ListPrefs = {
     items: TABS.items.defaultSort,
     containers: TABS.containers.defaultSort,
     exfils: TABS.exfils.defaultSort,
-    explosives: TABS.explosives.defaultSort,
   },
   filters: DEFAULT_FILTERS,
 };
@@ -82,14 +81,13 @@ export function useListRows(state: RadarState, catalog: ItemCatalog, filters: Li
         items: filterRows("items", loot.items, filters.items),
         containers: filterRows("containers", loot.containers, filters.containers),
         exfils: filterRows("exfils", exfils, filters.exfils),
-        explosives: filterRows("explosives", explosives, filters.explosives),
+        explosives,
       },
       totals: {
         players: players.length,
         items: loot.items.length,
         containers: loot.containers.length,
         exfils: exfils.length,
-        explosives: explosives.length,
       },
     };
   }, [players, loot, exfils, explosives, filters]);

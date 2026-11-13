@@ -9,8 +9,8 @@ import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipmen
 import { type PlayerType, SPECIAL_TYPES, bossGroups, identityText, playerType } from "../roles";
 import { playerLook } from "../style";
 
-export type TabId = "players" | "items" | "containers" | "exfils" | "explosives";
-export const TAB_IDS: readonly TabId[] = ["players", "items", "containers", "exfils", "explosives"];
+export type TabId = "players" | "items" | "containers" | "exfils";
+export const TAB_IDS: readonly TabId[] = ["players", "items", "containers", "exfils"];
 
 /** What a thing is, across tabs. */
 export type SubjectKind = "player" | "item" | "quest" | "container" | "airdrop" | "corpse" | "exfil" | "grenade" | "tripwire";
@@ -79,10 +79,11 @@ export interface TabRows {
   items: ItemRow[];
   containers: ContainerRow[];
   exfils: ExfilRow[];
+  /** Not a tab (no list of their own), but on the map and matched by highlights. */
   explosives: ExplosiveRow[];
 }
 
-export type AnyRow = TabRows[TabId][number];
+export type AnyRow = TabRows[keyof TabRows][number];
 
 const isContainerKind = (k: LootEntry["kind"]): k is ContainerRow["kind"] =>
   k === "container" || k === "airdrop" || k === "corpse";
@@ -93,7 +94,7 @@ export function tabOf(sel: Selection, state: Pick<RadarState, "loot">): TabId | 
     case "player": return "players";
     case "exfil": return "exfils";
     case "grenade":
-    case "tripwire": return "explosives";
+    case "tripwire": return undefined;
     case "loot": {
       const l = state.loot.find((x) => x.id === sel.id);
       return l ? (isContainerKind(l.kind) ? "containers" : "items") : undefined;
@@ -234,7 +235,6 @@ export const DEFAULT_FILTERS: ListFilters = {
   items: { text: "", minValue: 0 },
   containers: { text: "" },
   exfils: { text: "" },
-  explosives: { text: "" },
 };
 
 export const isTabFiltered = (f: TabFilter): boolean =>

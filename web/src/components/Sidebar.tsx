@@ -1,7 +1,7 @@
 // VS Code-style navigation: an always-visible activity bar of icons on the left, and a collapsible
 // side panel showing the picked view. Clicking the active icon collapses the panel.
 
-import { Archive, Bomb, DoorOpen, History, Layers, type LucideIcon, Package, PanelLeftClose, Settings, Users } from "lucide-react";
+import { Archive, DoorOpen, History, Layers, type LucideIcon, Package, PanelLeftClose, Settings, Users } from "lucide-react";
 import { type PointerEvent, type ReactNode, useRef } from "react";
 import { usePersistentState } from "../hooks";
 import { TABS } from "../list/columns";
@@ -17,10 +17,9 @@ export const LIST_ICONS: Record<TabId, LucideIcon> = {
   items: Package,
   containers: Archive,
   exfils: DoorOpen,
-  explosives: Bomb,
 };
 
-const TOP: ViewId[] = ["players", "items", "containers", "exfils", "explosives", "map", "raids"];
+const TOP: ViewId[] = ["players", "items", "containers", "exfils", "map", "raids"];
 
 export const VIEW_TITLES: Record<ViewId, string> = {
   ...Object.fromEntries(Object.entries(TABS).map(([id, t]) => [id, t.label])),

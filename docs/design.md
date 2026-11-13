@@ -105,6 +105,20 @@ for a raid → in raid → cooldown → waiting for a raid.
 - **Known gap:** no per-client send backpressure (Crow doesn't expose its queue), so a stalled
   client's buffer can grow. Fine on localhost; revisit for LAN use.
 
+## Frontend: what shows, and how
+
+Three separate concerns, each in one place:
+
+- **Filtering and highlighting** (`web/src/list/rows.ts`, `web/src/highlight/`). Everything the radar
+  knows becomes one row per thing (what it is, the items it is or carries, its value). The list's
+  controls filter, per tab; the map follows each tab's filter for its own kind of thing. The global
+  search highlights, across everything, and a highlight beats anything that hides (filters, layers).
+- **How things look** (`web/src/style.ts`): colours and sizes; each player type has a colour and a
+  prominence (minor, normal, special, boss, self) that decides the rest. Map, figures, trails and the
+  list all read it.
+- **What shows when** (`web/src/declutter.ts`): which markers and labels drop out as you zoom out, and
+  in which order labels claim screen space (one placement pass for all labels, `render.ts`).
+
 ## Offsets
 
 - **Single source of truth:** `game/eft/offsets/eft.offsets.json`, turned into constants at build

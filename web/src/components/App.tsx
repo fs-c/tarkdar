@@ -329,6 +329,7 @@ export function App() {
     loot: shown.loot,
     layers,
     minLabelPrice: lootPrefs.minLabelPrice,
+    lootDensity: lootPrefs.density,
     selected: selectedPosition(selection, state),
     hovered: listShown ? selectedPosition(hovered, state) : null,
     highlights: highlighted.colors,

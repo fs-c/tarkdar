@@ -1,9 +1,11 @@
 // Map view of the side panel: which layers to draw (and, on 2D maps with several, which floor).
 
+import { DEFAULT_LOOT_DENSITY, LOOT_DENSITY, type LootDensity } from "../declutter";
 import type { LootPrefs, TrailPrefs } from "../hooks";
 import { formatPrice } from "../items";
 import type { Layers } from "../render";
 import { PanelBody, Section, Segmented, type SegmentedOption, ToggleRow } from "../ui";
+import s from "./MapPanel.module.css";
 
 interface Props {
   /** Number of map floors; the floor picker only shows from 2 (2D maps). */
@@ -47,16 +49,31 @@ export function MapPanel(p: Props) {
         {LAYERS.map(({ key, label, hint }) => (
           <ToggleRow key={key} label={label} hint={hint} checked={p.layers[key]} onChange={() => p.onToggleLayer(key)} />
         ))}
-        {p.layers.loot && (
-          <Segmented
-            label="Label items worth at least"
-            title="Label items worth at least (per unit)"
-            options={LABEL_PRICES.map((v) => ({ value: v, label: v === 0 ? "All" : `≥${formatPrice(v)}` }))}
-            value={p.loot.minLabelPrice}
-            onChange={(v) => p.onLoot({ ...p.loot, minLabelPrice: v })}
-          />
-        )}
       </Section>
+      {p.layers.loot && (
+        <Section title="Loose items">
+          <div className={s.field}>
+            <span className={s.caption}>Markers when zoomed out</span>
+            <Segmented
+              label="Markers when zoomed out"
+              title="Which loose items keep their marker as you zoom out (quest items and highlighted ones always do)"
+              options={(Object.keys(LOOT_DENSITY) as LootDensity[]).map((v) => ({ value: v, label: LOOT_DENSITY[v].label, title: LOOT_DENSITY[v].hint }))}
+              value={p.loot.density in LOOT_DENSITY ? p.loot.density : DEFAULT_LOOT_DENSITY}
+              onChange={(v) => p.onLoot({ ...p.loot, density: v })}
+            />
+          </div>
+          <div className={s.field}>
+            <span className={s.caption}>Labels for items worth at least (zoomed in)</span>
+            <Segmented
+              label="Label items worth at least"
+              title="Label items worth at least (per unit)"
+              options={LABEL_PRICES.map((v) => ({ value: v, label: v === 0 ? "All" : `≥${formatPrice(v)}` }))}
+              value={p.loot.minLabelPrice}
+              onChange={(v) => p.onLoot({ ...p.loot, minLabelPrice: v })}
+            />
+          </div>
+        </Section>
+      )}
       <Section title="Trails">
         <ToggleRow
           label="Selected player"

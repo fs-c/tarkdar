@@ -323,6 +323,11 @@ export class Map3D {
     this.renderNow();
   };
 
+  /** Direction the top of the screen points to (radians clockwise from north); 0 before loading. */
+  heading(): number {
+    return this.stage?.heading() ?? 0;
+  }
+
   /**
    * Turns the view, smoothly, until `degrees` (clockwise from north, a player's yaw) points up.
    * Call it again whenever the direction changes: the view keeps following. Frames are rendered

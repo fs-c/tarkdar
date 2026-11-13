@@ -15,7 +15,7 @@ import { playerLook } from "../style";
 import { PLAYER_TYPES } from "../roles";
 import { Price } from "../ui";
 import s from "./columns.module.css";
-import type { ContainerRow, ExfilRow, ExplosiveRow, ItemRow, PlayerRow, RowBase, TabId } from "./rows";
+import type { ContainerRow, ExfilRow, ItemRow, PlayerRow, RowBase, TabId } from "./rows";
 
 export const features = tableFeatures({
   rowSortingFeature,
@@ -185,21 +185,7 @@ const exfils: TabDef<ExfilRow> = {
   numeric: ["dist", "dh"],
 };
 
-const x = createColumnHelper<Features, ExplosiveRow>();
-const explosives: TabDef<ExplosiveRow> = {
-  id: "explosives",
-  label: "Explosives",
-  template: "minmax(90px, 1fr) 60px 52px 40px",
-  columns: [
-    x.accessor("kind", { header: "kind", sortFn: "text" }),
-    x.accessor("length", { header: "length", sortUndefined: "last", cell: (c) => (c.getValue() === undefined ? "" : `${c.getValue()!.toFixed(1)} m`) }),
-    ...distanceColumns<ExplosiveRow>(),
-  ],
-  defaultSort: [{ id: "dist", desc: false }],
-  numeric: ["length", "dist", "dh"],
-};
-
-export const TABS = { players, items, containers, exfils, explosives } as const;
+export const TABS = { players, items, containers, exfils } as const;
 
 /** Ids of a tab's columns (to drop stored sorting by columns that no longer exist). */
 export function columnIds(def: TabDef<any>): Set<string> {
@@ -208,4 +194,4 @@ export function columnIds(def: TabDef<any>): Set<string> {
     return col.id ?? col.accessorKey ?? "";
   }));
 }
-export const TAB_ORDER: TabId[] = ["players", "items", "containers", "exfils", "explosives"];
+export const TAB_ORDER: TabId[] = ["players", "items", "containers", "exfils"];

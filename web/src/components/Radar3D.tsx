@@ -13,6 +13,9 @@ import { type Scene, renderMarkers } from "../render";
 import { ui } from "../theme";
 import s from "./Radar3D.module.css";
 
+/** Turned less than this (radians) counts as north up. */
+const NORTH_TOLERANCE = 0.01;
+
 export interface Radar3DHandle {
   /** Flies there. */
   centerOn(pos: WorldPos): void;
@@ -70,6 +73,9 @@ export function Radar3D({ url, scene, settings, follow, heading, onPan, onTurn, 
   const [interior, setInterior] = useState(false);
   const [pickedFloor, setPickedFloor] = useState<number | null>(null);
   const playerFloor = useRef<number | null>(null);
+  // Turned away from north: a button turns it back (its needle points north on screen).
+  const [rotated, setRotated] = useState(false);
+  const needleRef = useRef<SVGSVGElement>(null);
 
   /** Markers onto the overlay, through the map's current camera. */
   const draw = () => {
@@ -106,6 +112,10 @@ export function Radar3D({ url, scene, settings, follow, heading, onPan, onTurn, 
     mapRef.current = map;
     map.onRender = () => {
       draw(); // same frame as the map, so markers never lag behind the camera
+      const heading = map.heading();
+      const off = Math.abs(Math.atan2(Math.sin(heading), Math.cos(heading))) > NORTH_TOLERANCE;
+      setRotated(off);
+      if (needleRef.current) needleRef.current.style.transform = `rotate(${-heading}rad)`;
       latest.current.onStats?.(map.stats);
     };
     map.onUserPan = () => latest.current.onPan();
@@ -287,6 +297,26 @@ export function Radar3D({ url, scene, settings, follow, heading, onPan, onTurn, 
             <ChevronDown size={18} />
           </button>
         </div>
+      )}
+      {rotated && (
+        <button
+          className={s.north}
+          title="Turn the map north up (stops following your view direction)"
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onClick={() => {
+            latest.current.onTurn();
+            mapRef.current?.turnTo(0);
+          }}
+        >
+          <svg
+            ref={needleRef}
+            style={{ transform: `rotate(${-(mapRef.current?.heading() ?? 0)}rad)` }}
+            viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path d="M12 2 L16 12 H8 Z" fill="var(--danger)" />
+            <path d="M12 22 L8 12 H16 Z" fill="currentColor" />
+          </svg>
+        </button>
       )}
       {status.progress !== null && <p className={s.status}>Loading the map… {Math.round(status.progress * 100)} %</p>}
       {status.error && <p className={s.status} data-tone="error">Couldn't load the 3D map: {status.error}</p>}

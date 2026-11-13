@@ -1,7 +1,7 @@
 import { contentsDelta, describeEvent, eventConcerns, eventGroup, playerName } from "./events";
 import { type ItemCatalog, type ItemInfo, emptyCatalog } from "./items";
 import type { LootEntry, Player, RecordedMessage } from "./protocol";
-import { Timeline } from "./timeline";
+import { Timeline, isJump } from "./timeline";
 
 const catalog: ItemCatalog = {
   ...emptyCatalog,
@@ -60,5 +60,23 @@ describe("Track trails", () => {
     expect(track.posOf(kept[1]!)).toEqual([1, 0, 0]);
     expect(track.distanceUntil(1000 + 49 * 100)).toBeCloseTo(12.25);
     expect(track.distanceUntil(1000 + 4 * 100)).toBeCloseTo(1);
+  });
+
+  it("don't count teleports as distance travelled", () => {
+    const tl = new Timeline();
+    const at = (i: number, x: number) =>
+      tl.ingest({ type: "players", raid: 1, rev: i + 1, t: 1000 + i * 100, data: { players: [{ ...base, pos: [x, 0, 0] }] } } as RecordedMessage);
+    at(0, 0);
+    at(1, 0.5);
+    at(2, 200.5); // 200 m in 100 ms
+    at(3, 201);
+    expect(tl.tracks.get(2)!.distanceUntil(1300)).toBeCloseTo(1);
+  });
+
+  it("call a step a jump only when nobody could make it", () => {
+    expect(isJump(7, 1000)).toBe(false); // sprinting
+    expect(isJump(4, 10)).toBe(false); // too short to judge
+    expect(isJump(50, 100)).toBe(true);
+    expect(isJump(50, 10_000)).toBe(false); // out of sight for a while
   });
 });

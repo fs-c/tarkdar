@@ -8,7 +8,7 @@ import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, ty
 import { type PlayerTypeInfo, bossGroups, playerType } from "./roles";
 import { COLORS, ITEM_LOOK, LOOT_LOOK, type PlayerLook, exfilColor, playerLook } from "./style";
 import { EXFIL_STATUS_DETAIL, LABEL_DETAIL, LABEL_RANK, type LootDensity, itemMarkerShown } from "./declutter";
-import type { Timeline } from "./timeline";
+import { type Timeline, isJump } from "./timeline";
 import { type Projector, flatProjector } from "./projector";
 import { midpoint } from "./pick";
 import type { View } from "./view";
@@ -178,19 +178,19 @@ function drawTrails(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene):
       if (track.timeOf(kept[mid]!) < from) lo = mid + 1;
       else hi = mid;
     }
-    const points: { t: number; x: number; y: number; wy: number }[] = [];
+    const points: { t: number; x: number; y: number; wx: number; wy: number; wz: number }[] = [];
     for (let k = lo; k < kept.length; k++) {
       const i = kept[k]!;
       const ti = track.timeOf(i);
       if (ti > at) break;
       const [wx, wy, wz] = track.posOf(i);
       const [x, y] = pr.toScreen([wx, wy, wz]);
-      points.push({ t: ti, x, y, wy });
+      points.push({ t: ti, x, y, wx, wy, wz });
     }
     const pose = track.poseAt(at);
     if (pose && points.length) {
       const [x, y] = pr.toScreen(pose.pos);
-      points.push({ t: at, x, y, wy: pose.pos[1] });
+      points.push({ t: at, x, y, wx: pose.pos[0], wy: pose.pos[1], wz: pose.pos[2] });
     }
     if (points.length < 2) continue;
 
@@ -200,6 +200,8 @@ function drawTrails(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene):
     const paths = Array.from({ length: TRAIL_BUCKETS * 2 }, () => new Path2D());
     for (let k = 1; k < points.length; k++) {
       const a = points[k - 1]!, b = points[k]!;
+      // Teleports and one-frame glitches: no line across them.
+      if (isJump(Math.hypot(b.wx - a.wx, b.wy - a.wy, b.wz - a.wz), b.t - a.t)) continue;
       const bucket = Math.min(TRAIL_BUCKETS - 1, Math.floor(((b.t - start) / span) * TRAIL_BUCKETS));
       const path = paths[bucket + (otherFloor(b.wy) ? TRAIL_BUCKETS : 0)]!;
       path.moveTo(a.x, a.y);

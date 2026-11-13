@@ -11,7 +11,15 @@
   background: var(--overlay-surface); color: var(--muted); font-size: var(--fs-sm);
   &[data-tone="error"] { color: var(--danger); }
 }
-/* Indoor maps: which floor the map is cut open at. Above the follow button. */
+/* Turned away from north: back to north up. Above the follow button (and below the floor picker). */
+.north {
+  position: absolute; right: 14px; bottom: 64px; z-index: 2;
+  width: 40px; height: 40px; display: grid; place-items: center; padding: 0; cursor: pointer;
+  border: 1px solid var(--border-strong); border-radius: 50%; background: var(--overlay); color: var(--muted);
+  box-shadow: 0 2px 10px var(--shadow);
+  &:hover { color: var(--text); }
+}
+/* Indoor maps: which floor the map is cut open at. Above the follow button (and north button). */
 .floor {
   position: absolute; right: 14px; bottom: 64px; z-index: 2; width: 40px; cursor: default;
   display: grid; border: 1px solid var(--border-strong); border-radius: var(--radius);
@@ -21,6 +29,7 @@
     &:hover:not(:disabled) { color: var(--text); background: var(--overlay-surface); }
   }
 }
+.floor:has(~ .north) { bottom: 114px; }
 .floorLevel {
   font-size: var(--fs-xs, 11px); font-variant-numeric: tabular-nums;
   border-block: 1px solid var(--border) !important; color: var(--accent) !important;

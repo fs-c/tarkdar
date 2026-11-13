@@ -2,7 +2,8 @@
 // Screenshots of a dataset through the map's own camera API (not the fixed harness views):
 //   node shot.mjs --data customs --out /tmp/shots/a --settings '{"orthographic":true}' \
 //        --bg 11161c --views '[{"name":"all"},{"name":"dorms","center":[200,0,150],"span":250,"tilt":0,"heading":0}]'
-// center: game world [x, y, z]; span: metres across the view height; tilt: degrees from vertical.
+// center: game world [x, y, z]; span: metres across the view height; tilt: degrees from vertical;
+// floor: cut the map open to show the floor at this height (indoor maps).
 import fs from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -45,6 +46,7 @@ for (const view of JSON.parse(opt.views)) {
       map.setPose([x - Math.sin(heading) * h, y + Math.cos(tilt) * d, z - Math.cos(heading) * h], view.center);
     }
     if (view.span) map.setViewSpan(view.span);
+    map.setFloor(view.floor ?? null);
     await new Promise((r) => setTimeout(r, view.wait ?? 300));
     map.renderNow();
     return map.debug().stage.renderer.domElement.toDataURL("image/png");

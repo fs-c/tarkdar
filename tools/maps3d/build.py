@@ -15,6 +15,7 @@ import re
 import sys
 import time
 from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -250,6 +251,7 @@ def select_scenes(manifest: dict, map_name: str, include_indoor: bool) -> list[s
     return [key_of[p] for p in paths]
 
 
+INTERIOR_MARGIN = 25.0     # metres around an indoor map's objects that count as the map
 BORDERS_RE = re.compile(r"levelborders$", re.I)
 BOX_CORNERS = np.array([[x, y, z] for x in (-0.5, 0.5) for y in (-0.5, 0.5) for z in (-0.5, 0.5)])
 
@@ -362,11 +364,22 @@ def map_config(map_name: str, label: str) -> dict:
 def build(root: Path, map_name: str, out_dir: Path, profile: str, *, hlod_options: hlod.Options | None = None,
           **options):
     t0 = time.time()
+    interior = bool(MAPS.get(map_name, {}).get("interior"))
+    if interior:
+        # Everything is kept: the viewer cuts the map open above the floor being looked at.
+        options["include_indoor"] = True
+        if hlod_options is not None:
+            hlod_options = replace(hlod_options, hsr=False)
     ds = assemble(root, map_name, profile, **options)
+    if interior and ds.playable is None and ds.instances:
+        # No level borders: the building is where nearly everything is. Tight, so the camera frames
+        # the building and not the yard around it.
+        centers = np.array([inst.matrix[:3, 3] for inst in ds.instances])
+        ds.playable = (np.percentile(centers, 1, axis=0) - INTERIOR_MARGIN, np.percentile(centers, 99, axis=0) + INTERIOR_MARGIN)
     if hlod_options is not None:
         ds = hlod.bake(ds, hlod_options)
         ds.build = {"cells": {"size": hlod_options.cell_size, "error": hlod_options.error,
-                              "hiddenSurfaceRemoval": hlod_options.hsr}}
+                              "hiddenSurfaceRemoval": hlod_options.hsr}, "interior": interior}
         # After the bake: hidden surfaces are gone, so what is left is what a viewer sees from above.
         ds.ground = ground.of_dataset(ds, dataset.focus_bounds(ds))
         if ds.ground is not None:

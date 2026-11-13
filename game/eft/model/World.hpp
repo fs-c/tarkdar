@@ -51,7 +51,7 @@ struct LootEntry {
     std::string templateId;  // item/container template id; empty for airdrops and corpses
     std::string objectName{};  // GameObject name (for debugging; not meant for display)
     math::Vec3 position;
-    // Containers: their contents. Corpses: their equipment (one node per occupied slot).
+    // Corpses: their equipment (one node per occupied slot). Empty for everything else.
     std::vector<ItemNode> contents{};
 };
 

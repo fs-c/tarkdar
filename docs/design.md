@@ -87,7 +87,7 @@ for a raid → in raid → cooldown → waiting for a raid.
 - **Ids, not addresses.** Players and loot get small integer ids, stable within a raid. Addresses
   never leave the backend.
 - **Loot is classified by runtime class**, including base classes, so SPT subclasses still match.
-- **Item trees** (container contents, equipment) are read with depth/node caps so one read stays
+- **Item trees** (player and corpse equipment) are read with depth/node caps so one read stays
   bounded.
 - **Item data comes from tarkov.dev**, fetched and cached by the browser (the feeds allow
   cross-origin requests), behind an interface so another source (the SPT server database) can

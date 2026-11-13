@@ -110,7 +110,8 @@ export interface LootEntry {
   /** GameObject name, for debugging. */
   obj: string;
   pos: WorldPos;
-  /** Containers: contents. Corpses: equipment. */
+  /** Corpses: equipment. (Older recordings may have container contents: dropped on parse, see
+   *  withoutContainerContents.) */
   contents?: ItemNode[];
 }
 
@@ -166,8 +167,25 @@ export function parseMessage(text: string): Message | null {
   try {
     const m = JSON.parse(text) as { type?: unknown };
     if (typeof m !== "object" || m === null || typeof m.type !== "string") return null;
-    return m as Message;
+    return withoutContainerContents(m as Message);
   } catch {
     return null;
   }
+}
+
+/** Container contents can't be read reliably; only corpses (equipment) keep `contents`. Older
+ *  backends sent them for containers too, and recordings still have them. */
+export function withoutContainerContents<M extends RecordedMessage>(m: M): M {
+  const strip = (l: LootEntry): LootEntry => {
+    if (l.kind === "corpse" || !l.contents) return l;
+    const { contents: _, ...rest } = l;
+    return rest;
+  };
+  const msg = m as RecordedMessage;
+  if (msg.type === "loot" && Array.isArray(msg.data?.loot)) msg.data.loot = msg.data.loot.map(strip);
+  if (msg.type === "lootDiff" && msg.data) {
+    if (Array.isArray(msg.data.added)) msg.data.added = msg.data.added.map(strip);
+    if (Array.isArray(msg.data.changed)) msg.data.changed = msg.data.changed.map(strip);
+  }
+  return m;
 }

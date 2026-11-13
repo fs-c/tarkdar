@@ -131,8 +131,8 @@ Thrown grenades (all types alike) until they explode, and armed tripwires.
 - **`tpl`:** the item or container template id (the key for item data); empty for airdrops and
   corpses.
 - **`obj`:** the GameObject name, for debugging.
-- **`contents`** (optional): for containers, their contents; for corpses, their equipment. A list of
-  item nodes (below).
+- **`contents`** (optional): for corpses, their equipment, a list of item nodes (below). Container
+  contents aren't read (recordings from older backends may still have them; the frontend ignores them).
 
 Sent after every loot scan or resolve that changed something (a few thousand entries at most).
 
@@ -149,7 +149,7 @@ few seconds; the message is sent when something changed.
 ### Item nodes
 `{ "tpl": template id, "slot": slot id (if in a slot), "count": stack size (if > 1), "items": [child
 nodes] (if any) }`. Children are slot attachments (weapon mods, magazine cartridges, armour plates),
-plus grid contents (backpack, rig, container), slot items first. Names and prices come
+plus grid contents (backpack, rig), slot items first. Names and prices come
 from item data, keyed by `tpl`.
 
 ## Raid recordings

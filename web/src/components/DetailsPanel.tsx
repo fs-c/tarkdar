@@ -2,7 +2,7 @@
 
 import type { RadarState } from "../connection";
 import { describeEvent, eventConcerns } from "../events";
-import { type ItemCatalog, containerName, exfilStatus, equipmentValue, formatPrice, totalValue } from "../items";
+import { type ItemCatalog, containerName, exfilStatus, equipmentValue, formatPrice } from "../items";
 import type { Selection } from "../pick";
 import type { ItemNode, WorldPos } from "../protocol";
 import { WILD_SPAWN_TYPES, bossGroups, playerType } from "../roles";
@@ -100,14 +100,7 @@ function Details({ selection: sel, state, catalog }: Props) {
         {l.tpl && <Line label="template" value={l.tpl} />}
         <Line label="object" value={l.obj} />
         <Line label="position" value={formatPos(l.pos)} />
-        {(l.kind === "container" || l.kind === "corpse") && (
-          <ItemSection
-            heading={l.kind === "corpse" ? "equipment" : "contents"}
-            nodes={l.contents}
-            empty="empty (or not readable)"
-            catalog={catalog}
-          />
-        )}
+        {l.kind === "corpse" && <ItemSection heading="equipment" nodes={l.contents} empty="none (or not readable)" catalog={catalog} />}
       </>
     );
   }
@@ -162,7 +155,7 @@ function ItemSection(props: { heading: string; nodes: ItemNode[] | undefined; em
         <div className="muted">{empty}</div>
       </>
     );
-  const v = (heading === "equipment" ? equipmentValue : totalValue)(nodes, catalog);
+  const v = equipmentValue(nodes, catalog);
   return (
     <>
       <h4 className={s.heading}>{`${heading} · ${v > 0 ? `${formatPrice(v)} ₽` : "no price data"}`}</h4>

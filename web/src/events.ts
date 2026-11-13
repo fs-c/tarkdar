@@ -12,7 +12,7 @@ export const EVENT_GROUPS = {
   deaths: { label: "Deaths", kinds: ["died"] },
   left: { label: "Left", kinds: ["left", "extracted"] },
   taken: { label: "Loot gone", kinds: ["lootRemoved"] },
-  changed: { label: "Contents", kinds: ["lootChanged"] },
+  changed: { label: "Bodies looted", kinds: ["lootChanged"] },
   appeared: { label: "Loot new", kinds: ["lootAdded"] },
   exfils: { label: "Exfils", kinds: ["exfilStatus"] },
 } satisfies Record<string, { label: string; kinds: EventKind[] }>;

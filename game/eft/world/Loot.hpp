@@ -20,9 +20,9 @@ namespace radar::eft {
 //   reads the template id and the position. Failures are retried with back-off.
 // - Positions are read once, except airdrops (they fall), which are re-read every scan.
 //
-// - Contents: containers get their contents, corpses their equipment (item trees). Read at resolve
-//   time and refreshed for kContentRefreshPerScan entries per scan, round-robin (contents change
-//   when looted).
+// - Corpses get their equipment (item trees). Read at resolve time and refreshed for
+//   kContentRefreshPerScan corpses per scan, round-robin (equipment changes when looted). Container
+//   contents aren't read: that turned out to be infeasible.
 // - Address reuse: each scan re-reads every entry's class pointer; an entry whose class changed is
 //   dropped and resolved again (the address now belongs to a different object).
 class Loot final : public RaidSubsystem {
@@ -47,7 +47,7 @@ private:
     struct Entry {
         LootEntry loot;
         Address transform = 0;
-        Address contentsRoot = 0;  // container root item, or corpse equipment root
+        Address contentsRoot = 0;  // corpse equipment root
         Address klass = 0;         // runtime class at resolve time; a change means the address was reused
         int misses = 0;
     };

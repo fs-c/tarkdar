@@ -8,6 +8,11 @@ a scene is only recorded in the manifest after its meshes are flushed, so an
 interrupted run resumes cleanly.
 
     python extract_cache.py --map customs --map streets
+    python extract_cache.py --map all
+    python extract_cache.py --list          # BuildSettings scenes by location folder
+
+A map's extraction covers whole location folders (`folders` in t3d/maps.py);
+which of those scenes a build uses is decided at build time (`select`).
 """
 
 from __future__ import annotations
@@ -22,10 +27,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from t3d import cache  # noqa: E402
-from t3d.maps import MAPS  # noqa: E402
+from t3d import maps as maps_mod  # noqa: E402
+from t3d.maps import MAPS, extract_scenes, location_folder  # noqa: E402
 
 # Bump when the extractor records something new/different.
-EXTRACTOR_VERSION = 3
+# 4: whole location folders; per-scene object type counts (`typeCounts`).
+EXTRACTOR_VERSION = 4
 DEFAULT_GAME_DIR = "/mnt/win/Battlestate Games/Escape from Tarkov/EscapeFromTarkov_Data"
 
 
@@ -40,15 +47,41 @@ def source_files(game_dir: Path, level: str) -> dict:
     return out
 
 
+def list_scenes(all_scenes: list[str], game_presets: dict) -> None:
+    """BuildSettings scenes grouped by location folder, with the preset that extracts each
+    folder; then the game's presets (location id -> scenes) and the map that builds each."""
+    owner = {f.lower(): name for name, mp in MAPS.items() for f in mp["folders"]}
+    groups: dict[str, list[str]] = {}
+    for p in all_scenes:
+        groups.setdefault(location_folder(p) or "(outside Locations)", []).append(p)
+    for folder in sorted(groups, key=str.lower):
+        scenes = groups[folder]
+        print(f"{folder}  ({len(scenes)} scenes)  -> {owner.get(folder.lower(), '-')}")
+        for p in dict.fromkeys(scenes):
+            twice = "  (listed twice)" if scenes.count(p) > 1 else ""
+            print(f"    level{all_scenes.index(p):<4d} {p}{twice}")
+    by_game = {i.lower(): name for name, mp in MAPS.items() for i in mp["ids"]}
+    by_game.update({mp["game"].lower(): name for name, mp in MAPS.items()})
+    print("\nGame presets (StreamingAssets/Windows/maps):")
+    for server, preset in game_presets.items():
+        offline = sum(s["onlyOffline"] for s in preset["scenes"])
+        print(f"  {server:18s} {len(preset['scenes']):4d} scenes ({offline} offline only)  "
+              f"{preset['bundle']:32s} -> {by_game.get(server.lower(), '-')}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--game-dir", default=DEFAULT_GAME_DIR)
     ap.add_argument("--cache", default=str(cache.DEFAULT_ROOT))
-    ap.add_argument("--map", action="append", choices=sorted(MAPS), required=True)
+    ap.add_argument("--map", action="append", choices=sorted(MAPS) + ["all"])
+    ap.add_argument("--list", action="store_true", help="list BuildSettings scenes by location folder and exit")
     ap.add_argument("--only", default=None, help="regex: only (re)extract matching scene paths")
     ap.add_argument("--force", action="store_true", help="re-extract even if unchanged")
     ap.add_argument("--flush-every", type=int, default=25)
     args = ap.parse_args()
+    if not args.map and not args.list:
+        ap.error("--map or --list is required")
+    maps = sorted(MAPS) if "all" in (args.map or []) else list(dict.fromkeys(args.map or []))
 
     from t3d import unity  # needs UnityPy; imported lazily so build-only setups don't
 
@@ -57,24 +90,37 @@ def main():
     if not (game_dir / "globalgamemanagers").exists():
         sys.exit(f"game data not found: {game_dir}")
 
-    manifest = cache.load_manifest(root)
     all_scenes = unity.build_settings_scenes(game_dir)
-    level_of = {p: f"level{i}" for i, p in enumerate(all_scenes)}
+    if args.list:
+        list_scenes(all_scenes, unity.location_presets(game_dir))
+        return
+    manifest = cache.load_manifest(root)
+    # A path can be listed twice (Terminal's scenes are): the first copy has the full
+    # sharedassets, the second's only refer to it.
+    level_of: dict[str, str] = {}
+    for i, p in enumerate(all_scenes):
+        level_of.setdefault(p, f"level{i}")
     gg = (game_dir / "globalgamemanagers").stat()
     manifest["source"] = {
         "unityVersion": unity.unity_version(game_dir),
         "globalgamemanagers": {"size": gg.st_size, "mtime": int(gg.st_mtime)},
         "buildSettingsScenes": len(all_scenes),
     }
+    manifest["buildSettings"] = all_scenes  # what exists, for choosing scenes without the game
+    manifest["gamePresets"] = unity.location_presets(game_dir)  # what the game loads per location
     manifest["extractorVersion"] = EXTRACTOR_VERSION
 
     todo = []
-    for map_name in args.map:
+    for map_name in maps:
         preset = MAPS[map_name]
-        scenes = preset["select"](all_scenes)
-        missing = [p for p in scenes if p not in level_of]
+        scenes = extract_scenes(map_name, all_scenes, manifest["gamePresets"])
+        if not scenes:
+            sys.exit(f"{map_name}: no BuildSettings scenes in folders {preset['folders']}")
+        missing = [p for p in getattr(preset["select"], "names", []) if p not in level_of]
         if missing:
-            sys.exit(f"{map_name}: scenes not in BuildSettings: {missing}")
+            sys.exit(f"{map_name}: preset scenes not in BuildSettings: {missing}")
+        if preset.get("tuned") is False and maps_mod.game_preset_scenes(manifest["gamePresets"], preset["game"]) is None:
+            print(f"warning: {map_name}: no game preset {preset['game']!r}; builds will use every folder scene")
         manifest["maps"][map_name] = {
             "label": preset["label"],
             "tag": preset["tag"],
@@ -137,6 +183,7 @@ def main():
             "extractorVersion": EXTRACTOR_VERSION,
             "extractedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "stats": st,
+            "typeCounts": meta.get("typeCounts", {}),
         }))
         done += 1
         del meta, arrays

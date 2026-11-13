@@ -1,16 +1,23 @@
 # 3D maps: game files -> cache/ -> maps/3d/<map>/ (what the radar shows). See docs/maps3d.md.
 PY := .venv/bin/python
 REPO := ../..
-.PHONY: install install-harness cache cache-pull cache-push maps customs streets publish test \
+.PHONY: install install-harness cache list-scenes cache-pull cache-push maps customs streets publish test \
         harness-serve reference-data views reference measure
 
 install:
 	python3 -m venv .venv
 	.venv/bin/pip install -r requirements.txt
 
-# Stage 1 - needs the game files (EscapeFromTarkov_Data). Incremental.
+# Stage 1 - needs the game files (EscapeFromTarkov_Data). Incremental. Every preset's location
+# folders (t3d/maps.py); GAME_DIR=... overrides the default install path.
+GAME_DIR ?=
+GAME_ARG := $(if $(GAME_DIR),--game-dir "$(GAME_DIR)")
 cache:
-	$(PY) extract_cache.py --map customs --map streets
+	$(PY) extract_cache.py $(GAME_ARG) --map all
+
+# BuildSettings scenes by location folder, and which preset extracts each.
+list-scenes:
+	$(PY) extract_cache.py $(GAME_ARG) --list
 
 # cache/ lives in the asset store (assets.json at the repo root; setup: root README, "Data files").
 # assets.py takes paths relative to the current directory (here: tools/maps3d).

@@ -52,9 +52,30 @@ make publish        # upload maps/3d to the asset store; commit assets.json
 `build.py --map customs --error 0.05` builds a finer map (about 7M triangles instead of 5M);
 `--no-hsr`, `--cell-size`, `--include-indoor`, `--workers` are the other knobs.
 
-Re-extraction (a game patch, another map) needs a machine with `EscapeFromTarkov_Data`:
-`make cache` (7–13 min), then `make cache-push`. A new map needs a preset in `t3d/maps.py`: its
-scene paths, its location `ids`, and whether `*indoor*` scenes are optional.
+Re-extraction (a game patch) needs a machine with `EscapeFromTarkov_Data`: `make cache`
+(`GAME_DIR=...` if it is not at the default path), then `make cache-push`. `make list-scenes`
+shows the BuildSettings scenes by location folder and the game's scene presets.
+
+### Which scenes make a map
+
+`t3d/maps.py` has a preset per map, with two separate choices, because only the first needs the
+game:
+
+- **Extraction** caches whole location folders (`folders`: every scene under
+  `Assets/Content/Locations/<folder>/`, scripts, AI, culling and all) plus anything else the
+  game's preset for the location loads. Re-extracting later means mounting the game again, and
+  a scene in the cache costs little (meshes are shared by content).
+- **The build** picks scenes from the cache (`select`). Customs, Streets and Factory have
+  hand-checked lists; the other maps (`tuned: False`) take what **the game loads**: its
+  `ScenesPreset` assets (`StreamingAssets/Windows/maps/*.bundle`, read by
+  `unity.location_presets` and saved in the manifest as `gamePresets`, keyed by location id),
+  minus scenes without map geometry (`NON_GEOMETRY_RE`: scripts, AI, sound, culling, quests,
+  portals, stencil, grass, level borders). So a selection can be changed without the game.
+
+Every scene a game preset names is in BuildSettings: no map geometry comes from asset
+bundles. The manifest also keeps the whole BuildSettings list (`buildSettings`) and per scene
+the count of each object type (`typeCounts`). Scenes do not reference NavMesh data
+(`NavMeshSettings.m_NavMeshData` is null), so there is no navmesh to extract.
 
 ## In the frontend
 
@@ -313,6 +334,14 @@ Frame rates were never measured on a GPU by the harness (the development contain
 21. **Do not read the gunzipped stream with `new Response(stream).arrayBuffer()`**: in Chromium
     that sometimes takes two seconds for 40 MB; `readAll` in `dataset.ts` takes a tenth of one.
 
+22. **A scene path can be in BuildSettings twice** (Terminal's are). The first level has the full
+    `sharedassets`; the second's are stubs that refer to it. `extract_cache.py` takes the first.
+23. **Game presets are flattened through their children**, and only a top-level `*.ScenesPreset`
+    is a location: a child can carry a wrong `ServerName` (Factory's night culling preset says
+    `factory4_day`), and the Customs bundle has an editor preset that says `Lighthouse`.
+24. **`ServerName` is not always the location id**: Ground Zero's start variant is `Sandbox_SL`,
+    its location id `sandbox_start`. Presets name their game preset (`game`).
+
 `tools/maps3d/tests/test_build.py` (`ValidationChecksTest`) checks known objects of the real
 Customs cache when it is present (sizes, counts, categories).
 
@@ -330,7 +359,8 @@ Customs cache when it is present (sizes, counts, categories).
 
 ## Known limits
 
-- Customs and Streets only. Factory, Ground Zero and Woods still use their 2D maps.
+- Built and checked: Customs and Streets; Factory is a first version. Every other location is
+  extracted (cache v4) but not yet tuned: see `docs/maps3d-handoff.md`.
 - No interiors: Streets is built from its exterior scenes, and hidden-surface removal strips what
   is under roofs. Glass is drawn solid for that reason.
 - One level of detail; curved objects are faceted close up, thin objects are gone.

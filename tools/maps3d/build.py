@@ -221,6 +221,27 @@ def _slots(tables: Tables, mesh_name: str, part_count: int, mats: list[int], dom
     return [tables.slot(mesh_name, "mesh", mats[min(k, len(mats) - 1)]) for k in range(part_count)]
 
 
+def select_scenes(manifest: dict, map_name: str, include_indoor: bool) -> list[str]:
+    """The cached scenes (keys) a build of `map_name` uses.
+
+    Extraction caches whole location folders; the preset's `select` picks from them. A map
+    without a preset (tests, experiments) uses every scene cached for it."""
+    mp = manifest["maps"][map_name]
+    preset = MAPS.get(map_name)
+    key_of = {manifest["scenes"][k]["path"]: k for k in mp["scenes"] if k in manifest["scenes"]}
+    if preset is None:
+        paths = list(key_of)
+    else:
+        paths = preset["select"](list(key_of), manifest.get("gamePresets"))
+        missing = [p for p in getattr(preset["select"], "names", []) if p not in key_of]
+        if missing:
+            sys.exit(f"{map_name}: preset scenes not in the cache (re-extract): {missing}")
+    indoor_optional = (preset or mp).get("indoorOptional", False)
+    if indoor_optional and not include_indoor:
+        paths = [p for p in paths if not INDOOR_RE.search(p)]
+    return [key_of[p] for p in paths]
+
+
 def assemble(root: Path, map_name: str, profile: str, *, lod: int, terrain_step: int, include_indoor: bool,
              categories: set[str] | None = None, log=print) -> dataset.Dataset:
     """cache -> in-memory Dataset (LOD choice, classification, conversion).
@@ -231,8 +252,7 @@ def assemble(root: Path, map_name: str, profile: str, *, lod: int, terrain_step:
     if map_name not in manifest["maps"]:
         sys.exit(f"map {map_name!r} not in cache (have: {', '.join(manifest['maps'])})")
     mp = manifest["maps"][map_name]
-    drop_indoor = mp.get("indoorOptional", False) and not include_indoor
-    scene_keys = [k for k in mp["scenes"] if not (drop_indoor and INDOOR_RE.search(manifest["scenes"][k]["path"]))]
+    scene_keys = select_scenes(manifest, map_name, include_indoor)
     log(f"Building {map_name}/{profile} from {len(scene_keys)} cached scenes")
 
     tables = Tables()

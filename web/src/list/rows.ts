@@ -6,7 +6,8 @@ import type { RadarState } from "../connection";
 import { type ItemCatalog, containerName, equipmentValue, exfilStatus } from "../items";
 import { type Selection, midpoint, selectionKey } from "../pick";
 import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, WorldPos } from "../protocol";
-import { type PlayerType, MINOR_TYPES, SPECIAL_TYPES, bossGroups, identityText, playerType } from "../roles";
+import { type PlayerType, SPECIAL_TYPES, bossGroups, identityText, playerType } from "../roles";
+import { playerLook } from "../style";
 
 export type TabId = "players" | "items" | "containers" | "exfils" | "explosives";
 export const TAB_IDS: readonly TabId[] = ["players", "items", "containers", "exfils", "explosives"];
@@ -151,7 +152,7 @@ export function playerRows(players: Player[], equipment: Map<number, PlayerEquip
       ...base({ kind: "player", id: p.id }, "player", p.pos, search, gear.tpls),
       value: slots?.length ? equipmentValue(slots, catalog) || undefined : undefined,
       name, local: p.local, ai: p.ai, type: t.type, typeLabel: t.label, typeDetail: `${t.type}: ${t.reason}\n${raw}`,
-      state: st, dim: MINOR_TYPES.has(t.type),
+      state: st, dim: playerLook(t.type).dim,
     };
   });
 }

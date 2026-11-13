@@ -229,11 +229,9 @@ function fromVoice(p: PlayerIdentity): PlayerTypeInfo | null {
   return null;
 }
 
-/** Types worth calling out on the map and in the list. */
+/** Types worth calling out: the list's "special" filter, the "Special" highlight. (How types look,
+ *  special ones included, is style.ts's business.) */
 export const SPECIAL_TYPES: ReadonlySet<PlayerType> = new Set(["boss", "follower", "raider", "rogue", "cultist", "bd"]);
-
-/** Types that are many and rarely matter: drawn smaller and fainter, dimmed in the list. */
-export const MINOR_TYPES: ReadonlySet<PlayerType> = new Set(["ai-scav", "zombie"]);
 
 /** The raw inputs, one line, for tooltips: "AI · observed · side savage · role 5 (followerBully) · voice Scav_3 · …". */
 export function identityText(p: PlayerIdentity): string {

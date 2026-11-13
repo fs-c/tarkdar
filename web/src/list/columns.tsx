@@ -11,7 +11,7 @@ import {
   tableFeatures,
 } from "@tanstack/react-table";
 import { formatPrice } from "../items";
-import { COLORS, TYPE_COLORS } from "../render";
+import { playerLook } from "../style";
 import { PLAYER_TYPES } from "../roles";
 import { Price } from "../ui";
 import s from "./columns.module.css";
@@ -60,7 +60,7 @@ export function heightText(dh: number | undefined): string {
   return dh > 0 ? `▲${Math.round(dh)}` : `▼${Math.round(-dh)}`;
 }
 
-const dotColor = (r: PlayerRow) => (r.state === "dead" ? COLORS.dead : TYPE_COLORS[r.type]);
+const dotColor = (r: PlayerRow) => playerLook(r.type, { dead: r.state === "dead" }).color;
 /** Sorts by type (PLAYER_TYPES order), then label. */
 const typeSortKey = (r: PlayerRow) => `${String(PLAYER_TYPES.indexOf(r.type)).padStart(2, "0")} ${r.typeLabel}`;
 
@@ -87,7 +87,7 @@ const players: TabDef<PlayerRow> = {
       cell: (c) => {
         const r = c.row.original;
         return (
-          <span title={r.typeDetail} className={r.type === "boss" ? s.boss : undefined} style={{ color: TYPE_COLORS[r.type] }}>
+          <span title={r.typeDetail} className={r.type === "boss" ? s.boss : undefined} style={{ color: playerLook(r.type).color }}>
             {r.typeLabel}
           </span>
         );

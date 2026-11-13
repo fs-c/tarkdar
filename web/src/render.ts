@@ -3,10 +3,10 @@
 import { type Affine, pixelsPerMetre, worldToPixel } from "./calibration";
 import { LabelPlacer, candidatesAround } from "./labels";
 import { type LoadedMap, selectLayer } from "./maps";
-import { type ItemCatalog, type ValueTier, containerName, exfilStatus, formatPrice, valueTier } from "./items";
+import { type ItemCatalog, containerName, exfilStatus, formatPrice, valueTier } from "./items";
 import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type WorldPos } from "./protocol";
-import { type PlayerType, type PlayerTypeInfo, MINOR_TYPES, SPECIAL_TYPES, bossGroups, playerType } from "./roles";
-import { ui } from "./theme";
+import { type PlayerTypeInfo, bossGroups, playerType } from "./roles";
+import { COLORS, ITEM_LOOK, LOOT_LOOK, type PlayerLook, exfilColor, playerLook } from "./style";
 import type { Timeline } from "./timeline";
 import { type Projector, flatProjector } from "./projector";
 import { midpoint } from "./pick";
@@ -14,51 +14,6 @@ import type { View } from "./view";
 
 /** Used when there's no map for the location: 2 px per metre, north up, world origin at (0, 0). */
 export const NO_MAP_TRANSFORM: Affine = { a: 2, b: 0, c: 0, d: 0, e: -2, f: 0 };
-
-export const COLORS = {
-  background: ui.bg,
-  grid: "#1f2a33",
-  gridLabel: "#4d5d6b",
-  local: ui.accent,
-  dead: "#6b6b6b",
-  label: "#e8eef2",
-  labelHalo: "rgba(8, 12, 16, 0.85)",
-  calibration: "#ff4fd8",
-  lootQuest: ui.quest,
-  lootContainer: "#b08a5a",
-  lootAirdrop: "#4de1ff",
-  lootCorpse: "#9a9a9a",
-  exfilOpen: ui.accent,
-  exfilClosed: ui.danger,
-  exfilPending: ui.warn,
-  exfilNeutral: "#e8eef2",
-  exfilSecret: ui.secret,
-  danger: "#ff3b30",
-};
-
-/** Player colours by type (roles.ts). */
-export const TYPE_COLORS: Record<PlayerType, string> = {
-  self: ui.accent,
-  usec: ui.link,
-  bear: ui.danger,
-  "p-scav": ui.gold,
-  "ai-scav": ui.gold,
-  boss: "#ff4fd8",
-  follower: ui.warn,
-  raider: "#4de1ff",
-  rogue: "#38e8c0",
-  cultist: "#b26bff",
-  bd: "#ff7a1a",
-  zombie: "#9bd14b",
-  other: "#c0c0c0",
-};
-
-/** Loose item markers by value tier: colour and side length (px). */
-const ITEM_MARKERS: Record<ValueTier, { color: string; size: number }> = {
-  low: { color: "#8b969f", size: 3 },
-  mid: { color: "#e8eef2", size: 4 },
-  high: { color: ui.gold, size: 5 },
-};
 
 /** Item labels show from this level of detail on (and then only where they fit). */
 const ITEM_LABEL_ZOOM = 2.5;
@@ -151,11 +106,12 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
 
   const local = scene.players.find((p) => p.local && p.pos);
   const groups = bossGroups(scene.players);
-  const typed = scene.players.map((p) => ({ p, info: playerType(p, groups) }));
-  // Drawn bottom to top: plain scavs, the dead, everyone else, special bots, us.
-  const rank = ({ p, info }: { p: Player; info: PlayerTypeInfo }) =>
-    p.local ? 4 : p.dead ? 1 : MINOR_TYPES.has(info.type) ? 0 : SPECIAL_TYPES.has(info.type) ? 3 : 2;
-  typed.sort((a, b) => rank(a) - rank(b));
+  const typed = scene.players.map((p) => {
+    const info = playerType(p, groups);
+    return { p, info, order: playerLook(info.type, p).order };
+  });
+  // Drawn bottom to top (style.ts: minor, the dead, normal, special, us).
+  typed.sort((a, b) => a.order - b.order);
   for (const { p, info } of typed) drawPlayer(ctx, pr, p, info, local?.pos?.[1] ?? null, scene.bodies);
 
   if (hl.size) drawHighlights(ctx, pr, scene);
@@ -246,10 +202,10 @@ function drawTrails(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene):
       path.moveTo(a.x, a.y);
       path.lineTo(b.x, b.y);
     }
-    const type = playerType(track.meta, groups).type;
-    ctx.strokeStyle = TYPE_COLORS[type];
+    const look = playerLook(playerType(track.meta, groups).type);
+    ctx.strokeStyle = look.color;
     ctx.lineWidth = isSelected ? 2.5 : 1.5;
-    const maxAlpha = isSelected ? 0.95 : MINOR_TYPES.has(type) ? 0.35 : 0.6;
+    const maxAlpha = isSelected ? 0.95 : look.trailAlpha;
     paths.forEach((path, i) => {
       const bucket = i % TRAIL_BUCKETS;
       const age = 0.25 + (0.75 * (bucket + 1)) / TRAIL_BUCKETS;
@@ -300,14 +256,11 @@ function drawPlayer(
   let [x, y] = pr.toScreen(p.pos);
   if (!onScreen(pr, x, y)) return;
 
-  // Plain AI scavs are many and rarely what matters: smaller and fainter, so PMCs and player scavs
-  // stand out. Bosses, guards, raiders, rogues and cultists get a halo and their name.
-  const scav = MINOR_TYPES.has(info.type);
-  const special = SPECIAL_TYPES.has(info.type);
-  const boss = info.type === "boss";
-  const color = p.dead ? COLORS.dead : TYPE_COLORS[info.type];
-  ctx.globalAlpha = (p.absent ? 0.35 : 1) * (scav ? 0.55 : 1);
-  let r = p.local || boss ? 7 : scav ? 4 : 5.5;
+  // Its look (style.ts): colour, size and emphasis by type, prominence and state.
+  const look = playerLook(info.type, p);
+  const { color } = look;
+  ctx.globalAlpha = look.alpha;
+  let r = look.radius;
 
   // Close enough, and the skeleton is known: the figure, with the facing line and label at its head.
   const head = bodies && !p.dead && p.joints && pr.pxPerMetre(p.pos) >= BODY_MIN_PX_PER_METRE ? drawBody(ctx, pr, p.pos, p.joints, color) : null;
@@ -318,20 +271,14 @@ function drawPlayer(
     const [ax, ay] = pr.toScreen([head.pos[0] + Math.sin(yaw), head.pos[1], head.pos[2] + Math.cos(yaw)]);
     const du = Number.isFinite(ax) ? ax - x : 0, dv = Number.isFinite(ay) ? ay - y : 0;
     const len = Math.hypot(du, dv) || 1;
-    const lineLen = r + (p.local ? 22 : scav ? 9 : 14);
+    const lineLen = r + look.facingFromHead;
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(x + (du / len) * r, y + (dv / len) * r);
     ctx.lineTo(x + (du / len) * lineLen, y + (dv / len) * lineLen);
     ctx.stroke();
-    if (special) {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = boss ? 2 : 1.5;
-      ctx.beginPath();
-      ctx.arc(x, y, r + (boss ? 4 : 3), 0, Math.PI * 2);
-      ctx.stroke();
-    }
+    drawHalo(ctx, x, y, r, look);
   } else if (p.dead) {
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
@@ -349,7 +296,7 @@ function drawPlayer(
     const [ax, ay] = pr.toScreen([p.pos[0] + Math.sin(yaw), p.pos[1], p.pos[2] + Math.cos(yaw)]);
     const du = Number.isFinite(ax) ? ax - x : 0, dv = Number.isFinite(ay) ? ay - y : 0;
     const len = Math.hypot(du, dv) || 1;
-    const lineLen = p.local ? 28 : scav ? 11 : 18;
+    const lineLen = look.facing;
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -364,27 +311,30 @@ function drawPlayer(
     ctx.strokeStyle = "#000";
     ctx.lineWidth = 1;
     ctx.stroke();
-    if (special) {
-      // A halo, so they stand out even among a crowd.
-      ctx.strokeStyle = color;
-      ctx.lineWidth = boss ? 2 : 1.5;
-      ctx.beginPath();
-      ctx.arc(x, y, r + (boss ? 4 : 3), 0, Math.PI * 2);
-      ctx.stroke();
-    }
+    drawHalo(ctx, x, y, r, look);
   }
 
   if (!p.local) {
-    let label = special ? `${info.label} ${p.id}` : `${p.id}`;
+    let label = look.namedLabel ? `${info.label} ${p.id}` : `${p.id}`;
     if (localY !== null) {
       const dy = p.pos[1] - localY;
       if (Math.abs(dy) >= 2) label += dy > 0 ? ` ▲${Math.round(dy)}` : ` ▼${Math.round(-dy)}`;
     }
-    ctx.fillStyle = special && !p.dead ? color : COLORS.label;
-    ctx.font = scav ? "10px sans-serif" : boss ? "bold 12px sans-serif" : "11px sans-serif";
-    haloText(ctx, label, x + r + (special ? 7 : 3), y + 4);
+    ctx.fillStyle = look.labelColor;
+    ctx.font = look.labelFont;
+    haloText(ctx, label, x + r + (look.halo ? 7 : 3), y + 4);
   }
   ctx.globalAlpha = 1;
+}
+
+/** A ring around special players' markers, so they stand out even among a crowd. */
+function drawHalo(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, look: PlayerLook): void {
+  if (!look.halo) return;
+  ctx.strokeStyle = look.color;
+  ctx.lineWidth = look.halo.width;
+  ctx.beginPath();
+  ctx.arc(x, y, r + look.halo.gap, 0, Math.PI * 2);
+  ctx.stroke();
 }
 
 /** Players are drawn as figures from this many screen pixels per metre on (a 1.8 m figure: 14 px). */
@@ -550,7 +500,7 @@ function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, { loot, layers, 
       case "item": {
         const info = catalog.lookup(l.tpl);
         const price = info?.price;
-        const marker = ITEM_MARKERS[valueTier(price)];
+        const marker = ITEM_LOOK[valueTier(price)];
         ctx.fillStyle = marker.color;
         ctx.fillRect(x - marker.size / 2, y - marker.size / 2, marker.size, marker.size);
         if (info && itemLabels && !highlight && (price ?? 0) >= minLabelPrice) {
@@ -559,39 +509,46 @@ function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, { loot, layers, 
         }
         break;
       }
-      case "quest":
-        ctx.fillStyle = COLORS.lootQuest;
+      case "quest": {
+        const { color, size } = LOOT_LOOK.quest;
+        ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.moveTo(x, y - 5);
-        ctx.lineTo(x + 5, y);
-        ctx.lineTo(x, y + 5);
-        ctx.lineTo(x - 5, y);
+        ctx.moveTo(x, y - size);
+        ctx.lineTo(x + size, y);
+        ctx.lineTo(x, y + size);
+        ctx.lineTo(x - size, y);
         ctx.fill();
         if (!highlight) requests.push({ x, y, texts: ["quest item"], forced: true, priority: 2 });
         break;
+      }
       case "container": {
-        ctx.strokeStyle = COLORS.lootContainer;
+        const { color, size } = LOOT_LOOK.container;
+        ctx.strokeStyle = color;
         ctx.lineWidth = 1.5;
-        ctx.strokeRect(x - 3, y - 3, 6, 6);
+        ctx.strokeRect(x - size, y - size, size * 2, size * 2);
         const name = containerName(l.tpl);
         if (name && containerLabels && !highlight) requests.push({ x, y, texts: [name], forced: true, priority: 0 });
         break;
       }
-      case "airdrop":
-        ctx.fillStyle = COLORS.lootAirdrop;
-        ctx.fillRect(x - 5, y - 5, 10, 10);
+      case "airdrop": {
+        const { color, size } = LOOT_LOOK.airdrop;
+        ctx.fillStyle = color;
+        ctx.fillRect(x - size, y - size, size * 2, size * 2);
         if (!highlight) requests.push({ x, y, texts: ["airdrop"], forced: true, priority: 1 });
         break;
-      case "corpse":
-        ctx.strokeStyle = COLORS.lootCorpse;
+      }
+      case "corpse": {
+        const { color, size } = LOOT_LOOK.corpse;
+        ctx.strokeStyle = color;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(x - 3, y - 3);
-        ctx.lineTo(x + 3, y + 3);
-        ctx.moveTo(x + 3, y - 3);
-        ctx.lineTo(x - 3, y + 3);
+        ctx.moveTo(x - size, y - size);
+        ctx.lineTo(x + size, y + size);
+        ctx.moveTo(x + size, y - size);
+        ctx.lineTo(x - size, y + size);
         ctx.stroke();
         break;
+      }
     }
   }
 
@@ -668,8 +625,7 @@ function drawExfil(ctx: CanvasRenderingContext2D, pr: Projector, e: Exfil): void
   const [x, y] = pr.toScreen(e.pos);
   if (!onScreen(pr, x, y, 150)) return;
   const status = exfilStatus(e.status);
-  const tones = { open: COLORS.exfilOpen, closed: COLORS.exfilClosed, pending: COLORS.exfilPending, neutral: COLORS.exfilNeutral };
-  const color = e.kind === "secret" ? COLORS.exfilSecret : tones[status.tone];
+  const color = exfilColor(e.kind, status.tone);
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
   ctx.beginPath();

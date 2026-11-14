@@ -15,6 +15,7 @@ import {
   JOINT_COUNT,
   type Player,
   type PlayerEquipment,
+  type QuestState,
   type RecordedMessage,
   type SkeletonsData,
   type StatusData,
@@ -32,6 +33,7 @@ export interface TimelineState {
   vehicles: Vehicle[];
   loot: LootEntry[];
   equipment: Map<number, PlayerEquipment>;
+  quests: QuestState[] | null;
 }
 
 export type TimelineEvent =
@@ -300,6 +302,7 @@ export class Timeline {
   private readonly explosives: Stamped<ExplosivesData>[] = [];
   private readonly vehicles: Stamped<Vehicle[]>[] = [];
   private readonly equipment: Stamped<Map<number, PlayerEquipment>>[] = [];
+  private readonly quests: Stamped<QuestState[] | null>[] = [];
   private readonly loot: LootVersion[] = [];
   /** The loot as of the last version. */
   private lootHead = new Map<number, LootEntry>();
@@ -355,6 +358,9 @@ export class Timeline {
         break;
       case "equipment":
         this.equipment.push({ t, value: new Map(msg.data.players.map((p) => [p.id, p])) });
+        break;
+      case "quests":
+        this.quests.push({ t, value: msg.data.quests });
         break;
       case "loot":
         this.ingestLoot(t, msg.data.loot);
@@ -494,6 +500,7 @@ export class Timeline {
       vehicles: latest(this.vehicles, t) ?? [],
       loot: this.lootAt(t),
       equipment: latest(this.equipment, t) ?? EMPTY_EQUIPMENT,
+      quests: latest(this.quests, t),
     };
   }
 

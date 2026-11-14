@@ -2,6 +2,7 @@
 
 #include "game/eft/Status.hpp"
 #include "game/eft/model/Players.hpp"
+#include "game/eft/model/Quests.hpp"
 #include "game/eft/model/World.hpp"
 
 #include <cstdint>
@@ -37,6 +38,7 @@ inline constexpr int kRecordingFormat = 1;
                                          const std::vector<std::uint32_t>& removed,
                                          const std::vector<const eft::LootEntry*>& changed);
 [[nodiscard]] std::string encodeEquipment(const eft::EquipmentSnapshot& equipment);
+[[nodiscard]] std::string encodeQuests(const eft::QuestsSnapshot& quests);
 
 // The "type" field of an encoded message; nullopt if it isn't a valid message.
 [[nodiscard]] std::optional<std::string> messageType(std::string_view message);

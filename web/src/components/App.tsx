@@ -1,7 +1,8 @@
 import { Locate, LocateFixed, Navigation } from "lucide-react";
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RadarState } from "../connection";
-import { isTyping, useCatalog, useConnection, useLayers, useLootPrefs, useMapIndex, useMapPrefs, usePersistentState, useTrailPrefs } from "../hooks";
+import { isTyping, useCatalog, useConnection, useLayers, useLootPrefs, useMapIndex, useMapPrefs, usePersistentState, useQuestData, useTrailPrefs } from "../hooks";
+import { knownQuestItems, neededQuestItems, withoutUnneededQuestItems } from "../quests";
 import { describeEvent } from "../events";
 import type { MapStats } from "../map3d/Map3D";
 import { findMap, mapUrl } from "../maps";
@@ -46,7 +47,7 @@ export function App() {
   const range = timeline && !Number.isNaN(timeline.start) ? timeline.range() : null;
   const playback = usePlayback(range, !review, review ? `rec:${review.info.name}` : `live:${timeline?.raid ?? "-"}`);
   // Vehicle gunners (the BTR's) are part of the vehicle, not shown as players anywhere.
-  const state: RadarState = useMemo(() => {
+  const unfiltered: RadarState = useMemo(() => {
     // Live and at "now": the stream's state as is.
     if (!timeline || !range) return withoutGunners(conn);
     // Live and at "now": the stream's state as is, but players come from the timeline (it knows who extracted).
@@ -59,6 +60,23 @@ export function App() {
   const at = playback.cursor ?? range?.[1] ?? null;
   const [trailPrefs, setTrailPrefs] = useTrailPrefs();
   const [lootPrefs, setLootPrefs] = useLootPrefs();
+
+  // Quest items nobody needs are left out everywhere (map, list, search), unless all are wanted.
+  const { tasks: questTasks, status: questDataStatus } = useQuestData();
+  const knownQuest = useMemo(() => knownQuestItems(questTasks), [questTasks]);
+  const neededQuest = useMemo(() => neededQuestItems(unfiltered.quests, questTasks), [unfiltered.quests, questTasks]);
+  const filterQuest = lootPrefs.questItems !== "all";
+  const state: RadarState = useMemo(() => {
+    const loot = withoutUnneededQuestItems(unfiltered.loot, filterQuest ? neededQuest : null, knownQuest);
+    return loot === unfiltered.loot ? unfiltered : { ...unfiltered, loot };
+  }, [unfiltered, filterQuest, neededQuest, knownQuest]);
+  const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
+  const questInfo = !questTasks
+    ? `no quest data (${questDataStatus.state}): all shown`
+    : !neededQuest
+      ? "quests unknown: all shown"
+      : `${plural(neededQuest.started, "quest")} started, ${plural(neededQuest.items.size, "item")} needed` +
+        (neededQuest.complete ? "" : " (some quests unknown)");
 
   const openRecording = (info: RecordingInfo) => {
     if (review?.info.name === info.name) return setUi((u) => ({ ...u, raidsLevel: "timeline" }));
@@ -324,6 +342,7 @@ export function App() {
             onTrails={setTrailPrefs}
             loot={lootPrefs}
             onLoot={setLootPrefs}
+            questInfo={questInfo}
             layers={layers}
             onToggleLayer={toggleLayer}
           />

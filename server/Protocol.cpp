@@ -234,6 +234,30 @@ std::string encodeVehicles(const eft::VehiclesSnapshot& snap) {
     return envelope("vehicles", snap.raidId, snap.revision, std::move(data));
 }
 
+std::string encodeQuests(const eft::QuestsSnapshot& snap) {
+    crow::json::wvalue data;
+    if (!snap.known) {
+        data["quests"] = nullptr;
+        return envelope("quests", snap.raidId, snap.revision, std::move(data));
+    }
+    std::vector<crow::json::wvalue> list;
+    for (const auto& q : snap.quests) {
+        crow::json::wvalue o;
+        o["id"] = q.id;
+        o["status"] = q.status;
+        if (q.completedConditions) {
+            std::vector<crow::json::wvalue> done;
+            for (const auto& c : *q.completedConditions) done.emplace_back(c);
+            o["done"] = std::move(done);
+        } else {
+            o["done"] = nullptr;
+        }
+        list.push_back(std::move(o));
+    }
+    data["quests"] = std::move(list);
+    return envelope("quests", snap.raidId, snap.revision, std::move(data));
+}
+
 std::string encodeLoot(const eft::LootSnapshot& snap) {
     std::vector<crow::json::wvalue> list;
     list.reserve(snap.loot.size());

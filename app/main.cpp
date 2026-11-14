@@ -16,6 +16,7 @@
 #include "game/eft/players/Players.hpp"
 #include "game/eft/world/Exfils.hpp"
 #include "game/eft/world/Explosives.hpp"
+#include "game/eft/world/Quests.hpp"
 #include "game/eft/world/Vehicles.hpp"
 #include "game/eft/world/Loot.hpp"
 #include "server/Feeds.hpp"
@@ -144,6 +145,7 @@ int main(int argc, char** argv) {
         subsystems.push_back(std::make_unique<eft::Explosives>(session, world));
         subsystems.push_back(std::move(vehicles));
         subsystems.push_back(std::make_unique<eft::Loot>(session, world));
+        subsystems.push_back(std::make_unique<eft::Quests>(session, world));
         return subsystems;
     });
     server::LiveFeed feed(

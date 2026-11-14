@@ -2,6 +2,7 @@
 
 #include "core/sched/Published.hpp"
 #include "game/eft/model/Players.hpp"
+#include "game/eft/model/Quests.hpp"
 #include "game/eft/model/World.hpp"
 
 namespace radar::eft {
@@ -16,6 +17,7 @@ struct WorldState {
     sched::Published<VehiclesSnapshot> vehicles;
     sched::Published<LootSnapshot> loot;
     sched::Published<EquipmentSnapshot> equipment;
+    sched::Published<QuestsSnapshot> quests;
 };
 
 }  // namespace radar::eft

@@ -63,6 +63,7 @@ int LiveFeed::poll() {
                 [&](const auto& s, const std::string& m) { rec->onLoot(s, m); });
         forward(w.equipment, lastEquipment_, "equipment", [](const auto& s) { return encodeEquipment(s); },
                 other("equipment"));
+        forward(w.quests, lastQuests_, "quests", [](const auto& s) { return encodeQuests(s); }, other("quests"));
     }
     return sent;
 }

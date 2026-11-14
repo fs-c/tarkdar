@@ -11,6 +11,7 @@
 #include "game/eft/world/Exfils.hpp"
 #include "game/eft/world/Explosives.hpp"
 #include "game/eft/world/Loot.hpp"
+#include "game/eft/world/Quests.hpp"
 #include "game/eft/world/Vehicles.hpp"
 
 #include <eft_offsets.hpp>
@@ -446,6 +447,33 @@ void checkLoot(Report& r, const std::shared_ptr<const eft::RaidSession>& session
     }
 }
 
+void checkQuests(Report& r, const std::shared_ptr<const eft::RaidSession>& session) {
+    r.section("Quests");
+    eft::WorldState world;
+    eft::Quests quests(session, world);
+    quests.update();
+    const auto snap = world.quests.get();
+    if (!snap->known) {
+        r.fail("local player's quest list not readable", "Player.Profile, Profile.QuestsData (List<QuestStatusData>)");
+        return;
+    }
+    const auto unreadable = std::count_if(snap->quests.begin(), snap->quests.end(),
+                                          [](const auto& q) { return !q.completedConditions; });
+    if (snap->quests.empty())
+        r.info("no quests in progress (or QuestsData.Status reads wrong; start a quest and check again)");
+    else
+        r.ok(std::format("{} quests in progress", snap->quests.size()));
+    if (unreadable)
+        r.fail(std::format("completed conditions unreadable for {} of them", unreadable),
+               "QuestsData.CompletedConditions; managed HashSet.Slots / HashSet.LastIndex (unverified on SPT)");
+    for (std::size_t i = 0; i < std::min<std::size_t>(5, snap->quests.size()); ++i) {
+        const auto& q = snap->quests[i];
+        std::string done = q.completedConditions ? std::to_string(q.completedConditions->size()) : "?";
+        if (q.completedConditions && !q.completedConditions->empty()) done += " e.g. " + q.completedConditions->front();
+        r.info(std::format("quest {} status {} (2 started, 3 ready to hand in), conditions done: {}", q.id, q.status, done));
+    }
+}
+
 }  // namespace
 
 int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out) {
@@ -486,8 +514,9 @@ int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out) {
         checkExplosives(r, session);
         checkVehicles(r, session);
         checkLoot(r, session);
+        checkQuests(r, session);
     } else {
-        r.info("skipping players, exfils, explosives, vehicles and loot: they need a raid");
+        r.info("skipping players, exfils, explosives, vehicles, loot and quests: they need a raid");
     }
 
     r.section("Summary");

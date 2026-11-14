@@ -10,6 +10,7 @@ import {
   PROTOCOL_VERSION,
   type Player,
   type PlayerEquipment,
+  type QuestState,
   type StatusData,
   parseMessage,
 } from "./protocol";
@@ -31,6 +32,8 @@ export interface RadarState {
   vehicles: Vehicle[];
   loot: LootEntry[];
   equipment: Map<number, PlayerEquipment>;
+  /** The local player's quests in progress; null when unknown (not sent yet, or an old backend). */
+  quests: QuestState[] | null;
 }
 
 const emptyExplosives = (): ExplosivesData => ({ grenades: [], tripwires: [] });
@@ -48,6 +51,7 @@ export const initialRadarState = (): RadarState => ({
   vehicles: [],
   loot: [],
   equipment: new Map(),
+  quests: null,
 });
 
 export class Connection {
@@ -139,6 +143,8 @@ export class Connection {
         return this.update({ loot: msg.data.loot.filter((l) => !isSentinelPos(l.pos)) });
       case "equipment":
         return this.update({ equipment: new Map(msg.data.players.map((p) => [p.id, p])) });
+      case "quests":
+        return this.update({ quests: msg.data.quests });
     }
   }
 }

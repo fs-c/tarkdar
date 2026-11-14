@@ -4,7 +4,7 @@ import { DEFAULT_LOOT_DENSITY, LOOT_DENSITY, type LootDensity } from "../declutt
 import type { LootPrefs, TrailPrefs } from "../hooks";
 import { formatPrice } from "../items";
 import type { Layers } from "../render";
-import { PanelBody, Section, Segmented, ToggleRow } from "../ui";
+import { PanelBody, Section, Segmented, type SegmentedOption, ToggleRow } from "../ui";
 import s from "./MapPanel.module.css";
 
 interface Props {
@@ -14,9 +14,16 @@ interface Props {
   onTrails: (t: TrailPrefs) => void;
   loot: LootPrefs;
   onLoot: (l: LootPrefs) => void;
+  /** What the quest item filter knows right now, e.g. "3 quests in progress". */
+  questInfo: string;
 }
 
 const LABEL_PRICES = [0, 10_000, 25_000, 50_000, 100_000];
+
+const QUEST_ITEM_OPTIONS: SegmentedOption<LootPrefs["questItems"]>[] = [
+  { value: "needed", label: "Needed", title: "Only quest items a started quest still needs to find" },
+  { value: "all", label: "All", title: "Every quest item on the map" },
+];
 
 const TRAIL_LENGTHS: (number | null)[] = [0.5, 1, 2, 5, 10, 15, 30, null];
 
@@ -45,6 +52,16 @@ export function MapPanel(p: Props) {
               options={(Object.keys(LOOT_DENSITY) as LootDensity[]).map((v) => ({ value: v, label: LOOT_DENSITY[v].label, title: LOOT_DENSITY[v].hint }))}
               value={p.loot.density in LOOT_DENSITY ? p.loot.density : DEFAULT_LOOT_DENSITY}
               onChange={(v) => p.onLoot({ ...p.loot, density: v })}
+            />
+          </div>
+          <div className={s.field}>
+            <span className={s.caption}>Quest items · {p.questInfo}</span>
+            <Segmented<LootPrefs["questItems"]>
+              label="Quest items"
+              title="Quest items: only those a quest in progress still needs, or all of them"
+              options={QUEST_ITEM_OPTIONS}
+              value={p.loot.questItems === "all" ? "all" : "needed"}
+              onChange={(v) => p.onLoot({ ...p.loot, questItems: v })}
             />
           </div>
           <div className={s.field}>

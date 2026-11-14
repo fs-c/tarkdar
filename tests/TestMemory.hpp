@@ -19,6 +19,7 @@ inline constexpr il2cpp::Layout kIl2Cpp{
     .arrayLength = 0x18, .arrayData = 0x20,
     .listItems = 0x10, .listSize = 0x18,
     .dictEntries = 0x18, .dictCount = 0x20,
+    .hashSetSlots = 0x18, .hashSetLastIndex = 0x24,
     .className = 0x10, .classNamespace = 0x18, .classParent = 0x58, .classStaticFields = 0xB8,
 };
 

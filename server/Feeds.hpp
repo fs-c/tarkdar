@@ -42,6 +42,7 @@ private:
     std::shared_ptr<const eft::VehiclesSnapshot> lastVehicles_;
     std::shared_ptr<const eft::LootSnapshot> lastLoot_;
     std::shared_ptr<const eft::EquipmentSnapshot> lastEquipment_;
+    std::shared_ptr<const eft::QuestsSnapshot> lastQuests_;
 };
 
 }  // namespace radar::server

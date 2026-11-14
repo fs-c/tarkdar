@@ -3,6 +3,7 @@
 #include "game/eft/world/Exfils.hpp"
 #include "game/eft/world/Explosives.hpp"
 #include "game/eft/world/Loot.hpp"
+#include "game/eft/world/Quests.hpp"
 #include "game/eft/world/Vehicles.hpp"
 #include "game/eft/players/Players.hpp"
 
@@ -369,4 +370,82 @@ TEST_CASE("Vehicles: BTR position, heading, gunner and passengers") {
     h.put<Address>(controller + off::BtrController::BtrView, 0);
     vehicles.update();
     CHECK(world.vehicles.get()->vehicles.empty());
+}
+
+TEST_CASE("Quests: in-progress quests with their completed conditions") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 1);
+    auto& h = w.heap;
+    mem::MemoryView view(w.fake, FakeWorld::kPid);
+    const Address profile = view.read<Address>(w.localPlayer + off::Player::Profile);
+
+    struct MongoSlot {  // HashSet<MongoID> slot: {hashCode, next, MongoID{timestamp, counter, stringId}}
+        std::int32_t hashCode, next;
+        std::uint32_t timestamp;
+        std::uint64_t counter;
+        Address stringId;
+    };
+    static_assert(offsetof(MongoSlot, stringId) - offsetof(MongoSlot, timestamp) == off::MongoID::StringId);
+    struct StringSlot {
+        std::int32_t hashCode, next;
+        Address value;
+    };
+    const auto hashSet = [&](Address slots, std::int32_t used) {
+        const Address set = h.alloc(0x50);
+        h.put<Address>(set + kIl2Cpp.hashSetSlots, slots);
+        h.put<std::int32_t>(set + kIl2Cpp.hashSetLastIndex, used);
+        return set;
+    };
+    const auto quest = [&](std::u16string_view id, std::int32_t status, Address completed) {
+        const Address q = h.alloc(0x40);
+        h.put<Address>(q + off::QuestsData::Id, h.managedString(id));
+        h.put<std::int32_t>(q + off::QuestsData::Status, status);
+        h.put<Address>(q + off::QuestsData::CompletedConditions, completed);
+        return q;
+    };
+    // Started, conditions as MongoIDs (one slot freed); ready to hand in, conditions as strings;
+    // finished long ago (not reported); started, with an unreadable condition set.
+    const Address mongoSet = hashSet(h.array(std::vector<MongoSlot>{{5, -1, 1, 2, h.managedString(u"cond_b")},
+                                                                    {-1, -1, 0, 0, 0},
+                                                                    {7, -1, 3, 4, h.managedString(u"cond_a")}}),
+                                     3);
+    const Address started = quest(u"quest_started", eft::kQuestStarted, mongoSet);
+    const Address ready = quest(u"quest_ready", eft::kQuestAvailableForFinish,
+                                hashSet(h.array(std::vector<StringSlot>{{1, -1, h.managedString(u"cond_x")}}), 1));
+    const Address done = quest(u"quest_done", 4, 0);
+    const Address broken = quest(u"quest_broken", eft::kQuestStarted, hashSet(h.alloc(0x40), 9));
+    h.put<Address>(profile + off::Profile::QuestsData, h.list(std::vector<Address>{started, ready, done, broken}));
+
+    eft::WorldState world;
+    {
+        eft::Quests quests(makeSession(w), world);
+        CHECK_FALSE(world.quests.get()->known);
+        quests.update();
+        auto snap = world.quests.get();
+        REQUIRE(snap->known);
+        CHECK(snap->raidId == 5);
+        REQUIRE(snap->quests.size() == 3);  // ordered by id
+        CHECK(snap->quests[0].id == "quest_broken");
+        CHECK(snap->quests[0].completedConditions == std::nullopt);
+        CHECK(snap->quests[1].id == "quest_ready");
+        CHECK(snap->quests[1].status == eft::kQuestAvailableForFinish);
+        CHECK(snap->quests[1].completedConditions == std::vector<std::string>{"cond_x"});
+        CHECK(snap->quests[2].id == "quest_started");
+        CHECK(snap->quests[2].status == eft::kQuestStarted);
+        CHECK(snap->quests[2].completedConditions == std::vector<std::string>{"cond_a", "cond_b"});
+
+        // Unchanged: not republished. A newly completed condition is.
+        quests.update();
+        CHECK(world.quests.get() == snap);
+        h.put<std::int32_t>(mongoSet + kIl2Cpp.hashSetLastIndex, 2);  // cond_a gone
+        quests.update();
+        CHECK(world.quests.get()->revision == snap->revision + 1);
+        CHECK(world.quests.get()->quests[2].completedConditions == std::vector<std::string>{"cond_b"});
+
+        // An unreadable quest list keeps the last good one.
+        h.put<Address>(profile + off::Profile::QuestsData, 0);
+        quests.update();
+        CHECK(world.quests.get()->quests.size() == 3);
+    }
+    CHECK_FALSE(world.quests.get()->known);  // cleared when the raid ends
 }

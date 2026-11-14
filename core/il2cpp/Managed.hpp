@@ -113,6 +113,41 @@ public:
         return out;
     }
 
+    // HashSet<T> → the values of the occupied slots, in slot order. Unlike Dictionary's count, the
+    // slot count (_lastIndex) is checked against the slots array's length: a mismatch means the
+    // object isn't a HashSet with the assumed layout.
+    template <class T>
+    [[nodiscard]] std::optional<std::vector<T>> readHashSet(Address setObject,
+                                                            std::size_t maxElements = kDefaultMaxElements,
+                                                            Freshness freshness = Freshness::Cached) const {
+        static_assert(std::is_trivially_copyable_v<T>);
+        struct Slot {  // natural alignment matches the managed struct layout
+            std::int32_t hashCode;
+            std::int32_t next;
+            T value;
+        };
+        std::int32_t used = 0;
+        Address slots = 0;
+        std::uint64_t capacity = 0;
+        if (!mem::MemoryView::isUserPointer(setObject) ||
+            !mem_.tryRead(setObject + layout_.hashSetLastIndex, used, freshness) || used < 0 ||
+            static_cast<std::size_t>(used) > maxElements)
+            return std::nullopt;
+        if (used == 0) return std::vector<T>{};
+        if (!mem_.tryRead(setObject + layout_.hashSetSlots, slots, freshness) ||
+            !mem::MemoryView::isUserPointer(slots) ||
+            !mem_.tryRead(slots + layout_.arrayLength, capacity, freshness) ||
+            capacity < static_cast<std::uint64_t>(used))
+            return std::nullopt;
+        auto read = readElements<Slot>(slots + layout_.arrayData, static_cast<std::size_t>(used), freshness);
+        if (!read) return std::nullopt;
+        std::vector<T> out;
+        out.reserve(read->size());
+        for (const Slot& s : *read)
+            if (s.hashCode >= 0) out.push_back(s.value);  // hashCode < 0: freed slot
+        return out;
+    }
+
     // ---- class identity -----------------------------------------------------------------------
     [[nodiscard]] std::optional<Address> klassOf(Address object,
                                                  Freshness freshness = Freshness::Cached) const;

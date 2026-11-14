@@ -137,6 +137,16 @@ Vehicles on the map; so far only the BTR, from when it spawns until it's gone. E
 - Sent when something changes; a moving vehicle at most every 100 ms (moves under 0.1 m and turns
   under 1° aren't sent).
 
+### `quests`
+```json
+{ "quests": [ { "id": "5967530a86f77462ba22226b", "status": 2, "done": [ "5967725e86f774601a446662" ] } ] }
+```
+The local player's quests in progress (`Profile.QuestsData`); `null` until they've been read.
+- **`status`:** the game's `EQuestStatus`: 2 started, 3 ready to hand in (other quests aren't sent).
+- **`done`:** ids of the quest's conditions (objectives) already completed; `null` if unreadable.
+- Sent when something changes (read every 2 s). Quest names, objectives and which items they need
+  come from quest data in the frontend.
+
 ### `loot`
 ```json
 { "loot": [ { "id": 7, "kind": "container", "tpl": "578f8782245977354405a1e3", "obj": "container_safe", "pos": [3.0, 1.0, 3.0] } ] }
@@ -192,7 +202,7 @@ stream, with these differences:
   ```
 - **`skeletons`** is throttled harder than `players` (at most 5 per second); the ones in between are
   dropped. Recordings from before it existed have none.
-- `status`, `exfils`, `explosives`, `vehicles` and `equipment` are written as sent. The last line is the
+- `status`, `exfils`, `explosives`, `vehicles`, `equipment` and `quests` are written as sent. The last line is the
   `status` that ended the raid (unless the backend stopped mid-raid).
 - A last line may be cut off (a raid in progress, or a crash): readers skip lines that don't parse.
 

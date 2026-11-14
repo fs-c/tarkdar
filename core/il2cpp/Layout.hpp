@@ -27,6 +27,10 @@ struct Layout {
     std::uint32_t dictEntries;   // Entry[] entries; Entry = {int32 hashCode; int32 next; K; V}
     std::uint32_t dictCount;     // int32 count (slots used, including freed ones)
 
+    // HashSet<T> (corefx-era layout, as in Mono's class libraries)
+    std::uint32_t hashSetSlots;      // Slot[] _slots; Slot = {int32 hashCode; int32 next; T value}
+    std::uint32_t hashSetLastIndex;  // int32 _lastIndex (slots used, including freed ones)
+
     // Il2CppClass
     std::uint32_t className;         // const char*
     std::uint32_t classNamespace;    // const char*

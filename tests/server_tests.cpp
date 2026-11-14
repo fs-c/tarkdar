@@ -198,6 +198,20 @@ TEST_CASE("protocol encoding: vehicles") {
     CHECK(contains(v, R"("seat":"passenger")"));
 }
 
+TEST_CASE("protocol encoding: quests") {
+    CHECK(contains(server::encodeQuests(eft::QuestsSnapshot{}), R"("quests":null)"));
+    eft::QuestsSnapshot snap{.raidId = 2, .revision = 3, .known = true, .quests = {}};
+    snap.quests.push_back({.id = "q1", .status = eft::kQuestStarted, .completedConditions = std::vector<std::string>{"c1", "c2"}});
+    snap.quests.push_back({.id = "q2", .status = eft::kQuestAvailableForFinish, .completedConditions = std::nullopt});
+    const auto q = server::encodeQuests(snap);
+    CHECK(contains(q, R"("type":"quests")"));
+    CHECK(contains(q, R"("id":"q1")"));
+    CHECK(contains(q, R"("status":2)"));
+    CHECK(contains(q, R"("done":["c1","c2"])"));
+    CHECK(contains(q, R"("id":"q2")"));
+    CHECK(contains(q, R"("done":null)"));
+}
+
 TEST_CASE("LiveFeed broadcasts only changes") {
     server::MessageHub hub;
     std::vector<std::string> types;
@@ -206,7 +220,7 @@ TEST_CASE("LiveFeed broadcasts only changes") {
     auto status = std::make_shared<eft::Status>();
     server::LiveFeed feed({.status = [&] { return std::shared_ptr<const eft::Status>(status); }, .world = &world}, hub);
 
-    CHECK(feed.poll() == 7);  // initial status + every (empty) world snapshot
+    CHECK(feed.poll() == 8);  // initial status + every (empty) world snapshot
     CHECK(feed.poll() == 0);
     world.players.publish(eft::PlayersSnapshot{.raidId = 1, .revision = 1, .players = {}});
     CHECK(feed.poll() == 1);
@@ -214,7 +228,7 @@ TEST_CASE("LiveFeed broadcasts only changes") {
     changed->state = eft::Status::State::InRaid;
     status = changed;
     CHECK(feed.poll() == 1);
-    CHECK(types == std::vector<std::string>{"status", "players", "exfils", "explosives", "vehicles", "loot", "equipment", "players", "status"});
+    CHECK(types == std::vector<std::string>{"status", "players", "exfils", "explosives", "vehicles", "loot", "equipment", "quests", "players", "status"});
 }
 
 TEST_CASE("LiveFeed sends skeletons with the players that have joints") {

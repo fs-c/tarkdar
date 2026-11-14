@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { type CatalogStatus, loadCatalog } from "./catalog";
+import { type QuestDataStatus, type SlimTasks, loadQuestData } from "./quests";
 import { Connection, type RadarState } from "./connection";
 import { type Backfill, LiveTimeline } from "./liveTimeline";
 import { fetchRecordings, parseLine, readRecording } from "./recordings";
@@ -60,6 +61,28 @@ export function useCatalog(): CatalogState {
       if (!live) return;
       if (status.error) console.warn("item data:", status.error);
       setState({ catalog: catalog ?? emptyCatalog, status });
+    });
+    return () => void (live = false);
+  }, []);
+  return state;
+}
+
+// Quest data (which quest needs which quest item): like the item data, once per page load.
+let questDataLoad: ReturnType<typeof loadQuestData> | null = null;
+
+export interface QuestDataState {
+  tasks: SlimTasks | null;
+  status: QuestDataStatus;
+}
+
+export function useQuestData(): QuestDataState {
+  const [state, setState] = useState<QuestDataState>({ tasks: null, status: { state: "loading", fetchedAt: null } });
+  useEffect(() => {
+    let live = true;
+    void (questDataLoad ??= loadQuestData()).then((loaded) => {
+      if (!live) return;
+      if (loaded.status.error) console.warn("quest data:", loaded.status.error);
+      setState(loaded);
     });
     return () => void (live = false);
   }, []);
@@ -131,10 +154,12 @@ export interface LootPrefs {
   minLabelPrice: number;
   /** Which loose item markers drop out as you zoom out (declutter.ts). */
   density: LootDensity;
+  /** Quest items: only those a quest in progress still needs, or all of them. */
+  questItems: "needed" | "all";
 }
 
 export function useLootPrefs() {
-  return usePersistentState<LootPrefs>("radar.loot", { minLabelPrice: 0, density: DEFAULT_LOOT_DENSITY });
+  return usePersistentState<LootPrefs>("radar.loot", { minLabelPrice: 0, density: DEFAULT_LOOT_DENSITY, questItems: "needed" });
 }
 
 const DEFAULT_LAYERS: Layers = { loot: false, containers: false, exfils: true, explosives: true };

@@ -118,6 +118,15 @@ export interface PlayerEquipment {
   slots: ItemNode[];
 }
 
+/** One of the local player's quests in progress (`quests` message). */
+export interface QuestState {
+  id: string;
+  /** EQuestStatus: 2 started, 3 ready to hand in. */
+  status: number;
+  /** Ids of the conditions (objectives) already completed; null if unreadable. */
+  done: string[] | null;
+}
+
 export type LootKind = "item" | "quest" | "container" | "airdrop" | "corpse";
 
 export interface LootEntry {
@@ -148,7 +157,9 @@ export type Message =
   | Envelope<"explosives", ExplosivesData>
   | Envelope<"vehicles", { vehicles: Vehicle[] }>
   | Envelope<"loot", { loot: LootEntry[] }>
-  | Envelope<"equipment", { players: PlayerEquipment[] }>;
+  | Envelope<"equipment", { players: PlayerEquipment[] }>
+  /** `quests` null: not read yet. */
+  | Envelope<"quests", { quests: QuestState[] | null }>;
 
 // ---- raid recordings (docs/protocol.md, "Raid recordings") ----
 

@@ -46,6 +46,8 @@
     "List.Size": "0x18",
     "Dictionary.Entries": "0x18",
     "Dictionary.Count": "0x20",
+    "HashSet.Slots": "0x18",
+    "HashSet.LastIndex": "0x24",
     "Il2CppClass.Name": "0x10",
     "Il2CppClass.Namespace": "0x18",
     "Il2CppClass.Parent": "0x58",

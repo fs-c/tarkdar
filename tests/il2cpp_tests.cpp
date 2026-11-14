@@ -142,6 +142,30 @@ TEST_CASE("readDictionary skips freed slots") {
     CHECK(managed.readDictionary<std::uint64_t, std::int32_t>(dict, 2) == std::nullopt);
 }
 
+TEST_CASE("readHashSet skips freed slots and checks the slot count") {
+    SETUP;
+    struct Slot {
+        std::int32_t hashCode, next;
+        std::uint64_t value;
+    };
+    const std::vector<Slot> slots{{1, -1, 0xAA}, {-1, -1, 0xBB}, {3, 0, 0xCC}, {0, 0, 0}};
+    const Address set = heap.alloc(0x40);
+    heap.put<Address>(set + kIl2Cpp.hashSetSlots, heap.array(slots));
+    heap.put<std::int32_t>(set + kIl2Cpp.hashSetLastIndex, 3);  // the 4th slot was never used
+
+    CHECK(managed.readHashSet<std::uint64_t>(set) == std::vector<std::uint64_t>{0xAA, 0xCC});
+    CHECK(managed.readHashSet<std::uint64_t>(set, 2) == std::nullopt);
+
+    SUBCASE("more slots used than the array holds is rejected") {
+        heap.put<std::int32_t>(set + kIl2Cpp.hashSetLastIndex, 5);
+        CHECK(managed.readHashSet<std::uint64_t>(set) == std::nullopt);
+    }
+    SUBCASE("empty") {
+        heap.put<std::int32_t>(set + kIl2Cpp.hashSetLastIndex, 0);
+        CHECK(managed.readHashSet<std::uint64_t>(set)->empty());
+    }
+}
+
 TEST_CASE("class identity and inheritance") {
     SETUP;
     const Address objectClass = heap.klass("Object", "System");

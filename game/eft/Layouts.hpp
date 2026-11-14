@@ -19,6 +19,8 @@ inline constexpr il2cpp::Layout kIl2CppLayout{
     .listSize = off::managed::List::Size,
     .dictEntries = off::managed::Dictionary::Entries,
     .dictCount = off::managed::Dictionary::Count,
+    .hashSetSlots = off::managed::HashSet::Slots,
+    .hashSetLastIndex = off::managed::HashSet::LastIndex,
     .className = off::managed::Il2CppClass::Name,
     .classNamespace = off::managed::Il2CppClass::Namespace,
     .classParent = off::managed::Il2CppClass::Parent,

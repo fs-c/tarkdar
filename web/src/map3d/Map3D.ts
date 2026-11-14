@@ -2,6 +2,10 @@
 // something changed (the camera moved, a setting changed, an image arrived). Markers are not
 // drawn here: the caller projects world positions through `projector()` onto its own canvas.
 //
+// An orthographic view straight down is drawn from tiles (stage.ts, tiles.ts): a frame is then
+// a few textured squares. Tiles are painted on animation frames of their own, a few at a time,
+// until the view has all it needs.
+//
 // Coordinates: the public API speaks the game's world coordinates ([x east, y up, z north],
 // as in protocol.ts). Internally z is negated (three.js is right-handed).
 
@@ -19,6 +23,8 @@ export interface MapStats {
   /** CPU time of the last frame's submission in ms (not the GPU's time). */
   frameMs: number;
   frames: number;
+  /** The last frame was drawn from tiles: the counts are the tiles', not the map's. */
+  fromTiles: boolean;
 }
 
 /** What `Projector` in the app needs; kept structural so this module has no app imports. */
@@ -48,7 +54,7 @@ function angleDifference(a: number, b: number): number {
 }
 
 export class Map3D {
-  readonly stats: MapStats = { drawCalls: 0, triangles: 0, frameMs: 0, frames: 0 };
+  readonly stats: MapStats = { drawCalls: 0, triangles: 0, frameMs: 0, frames: 0, fromTiles: false };
   /** Called after every rendered frame (the camera may have moved: redraw the markers). */
   onRender: (() => void) | null = null;
   /** The user moved the map by hand (so a caller that follows something can stop). */
@@ -61,6 +67,7 @@ export class Map3D {
   private instances: InstanceRenderer | null = null;
   private settings: MapSettings = DEFAULT_MAP_SETTINGS;
   private frameRequested = 0;
+  private tilesRequested = 0;
   private readonly motion = { right: 0, forward: 0, fast: false, frame: 0, time: 0 };
   private abort: AbortController | null = null;
   private readonly observer: ResizeObserver;
@@ -128,6 +135,7 @@ export class Map3D {
     }
     if (low < high) stage.setTerrainHeights(low, high);
     stage.setGround(data.ground);
+    stage.setExtent(data.index.bounds);
 
     this.stage = stage;
     this.data = data;
@@ -161,6 +169,8 @@ export class Map3D {
     this.abort = null;
     cancelAnimationFrame(this.frameRequested);
     this.frameRequested = 0;
+    cancelAnimationFrame(this.tilesRequested);
+    this.tilesRequested = 0;
     cancelAnimationFrame(this.motion.frame);
     this.motion.frame = 0;
     this.cancelFlight();
@@ -194,13 +204,17 @@ export class Map3D {
     for (const name of HIDDEN) visible.delete(data.categoryId(name));
     // The plan style works from the material colours as well.
     this.instances.rebuild(data.slotsOf(visible), this.settings.colored || this.settings.style === "plan");
+    this.stage?.invalidate();
   }
 
   private applySettings(): void {
     const stage = this.stage;
     if (!stage) return;
     const trees = stage.groups[stage.categories.indexOf("foliage")];
-    if (trees) trees.visible = this.settings.trees;
+    if (trees && trees.visible !== this.settings.trees) {
+      trees.visible = this.settings.trees;
+      stage.invalidate();
+    }
     stage.setContours(this.settings.contours);
     stage.setWireframe(this.settings.wireframe);
     stage.setGrade(this.settings);
@@ -238,7 +252,22 @@ export class Map3D {
     this.stats.triangles = info.triangles;
     this.stats.frameMs = performance.now() - t0;
     this.stats.frames++;
+    this.stats.fromTiles = stage.fromTiles;
+    if (stage.tilesPending) this.requestTiles();
     this.onRender?.();
+  }
+
+  /** Tiles are painted between frames, a few per animation frame, until the view has them all. */
+  private requestTiles(): void {
+    if (this.tilesRequested || !this.stage) return;
+    this.tilesRequested = requestAnimationFrame(() => {
+      this.tilesRequested = 0;
+      const stage = this.stage;
+      if (!stage) return;
+      // The view on screen was drawn directly and its tiles are complete now: show them.
+      if (stage.paintTiles()) this.requestRender();
+      if (stage.tilesPending) this.requestTiles();
+    });
   }
 
   // ---- camera ---------------------------------------------------------------------------------

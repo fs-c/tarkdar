@@ -34,6 +34,18 @@ node shot.mjs --data customs --out /tmp/shots --settings '{"style":"plan","ortho
 `center` is a game world position, `span` the metres across the height of the view, `tilt` degrees
 from vertical.
 
+`bench.mjs` measures frame times on this machine's GPU, panning as following a player does:
+
+```bash
+node bench.mjs --data customs --settings '{"style":"plan","orthographic":true}'              # from tiles
+node bench.mjs --data customs --settings '{"style":"plan","orthographic":true}' --no-tiles   # drawn directly
+node bench.mjs --data streets --size 2560x1440 --spans 150,350 --settings '{"orthographic":true}'
+```
+
+It runs Chromium's own build (not the headless shell) on the GPU through Vulkan and prints which
+GPU that was. A top-down orthographic view is drawn from tiles (`docs/maps3d.md`, "The top-down
+view"): the line then also says what painting the tiles of the view took.
+
 The page (`page/`) is nothing but the radar's own 3D core (`web/src/map3d`) showing one dataset;
 `vite.config.mjs` serves it with the web app's vite and maps `--data <name>` to
 `harness/data/<name>` or `maps/3d/<name>`.
@@ -62,7 +74,7 @@ The page (`page/`) is nothing but the radar's own 3D core (`web/src/map3d`) show
 - **changed**: share of pixels whose colour differs by more than 8/255.
 - **tris / calls**: what was drawn in that view (`renderer.info`), and
   the percentage of the reference.
-- **Render time** is only a GPU frame time on a machine with a GPU.
+- **Render time** (of `capture.mjs`; for frame times use `bench.mjs`) is only a GPU frame time on a machine with a GPU.
   `run.json` records the WebGL renderer string and `software: true` when
   Chromium fell back to SwiftShader (the development container has no GPU):
   the screenshots and counts are still valid there, the times are not.

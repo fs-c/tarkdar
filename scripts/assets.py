@@ -16,6 +16,15 @@ overwritten, so any commit's manifest can be pulled later.
     scripts/assets.py verify                  check the store has every blob
     scripts/assets.py gc     [--delete]       blobs no commit's manifest references
 
+Shared dirs (manifest "shared", e.g. recordings/) are for files that need no
+versioning: unique names, never changed. They live in the store as plain files
+under `shared/<repo path>` and never appear in the manifest, so adding one
+needs no commit. `pull` also fetches shared files missing locally.
+
+    scripts/assets.py share   PATH...         upload files (never overwrites)
+    scripts/assets.py unshare PATH...         delete them from the store
+    scripts/assets.py shared  [PATH...]       list: in the store, here, or both
+
 PATH arguments are files, directories or prefixes (relative to the current
 directory); they filter which manifest entries a command touches.
 
@@ -49,6 +58,7 @@ MANIFEST_VERSION = 1
 JOBS = 8
 CHUNK = 1 << 20
 STAGING = ROOT / ".assets-staging"  # same filesystem as the work tree, so pulls can rename
+SHARED_PREFIX = "shared/"  # store area for shared dirs: plain files under their repo path, no manifest entries
 
 
 def die(msg: str) -> None:
@@ -69,7 +79,15 @@ def load_manifest() -> dict:
     m.setdefault("store", {"prefix": "sha256/"})
     m.setdefault("track", [])
     m.setdefault("files", {})
+    m["shared"] = [d.strip("/") for d in m.get("shared", [])]
+    if m["store"].get("prefix", "").startswith(SHARED_PREFIX):
+        die(f"{MANIFEST.name}: store prefix must not start with {SHARED_PREFIX!r}")
     return m
+
+
+def shared_dir(m: dict, rel: str) -> str | None:
+    """The shared dir containing `rel` (or equal to it), if any."""
+    return next((d for d in m["shared"] if rel == d or rel.startswith(d + "/")), None)
 
 
 def save_manifest(m: dict) -> None:
@@ -261,7 +279,44 @@ class Store:
             return set()
         if r.returncode:
             raise StoreError(f"listing {self.name}: {r.stderr.strip()}")
-        return {self.prefix + line for line in r.stdout.splitlines() if line}
+        # With an empty prefix the blobs share the root with shared/: never count those as blobs (gc!).
+        return {self.prefix + line for line in r.stdout.splitlines()
+                if line and not (self.prefix + line).startswith(SHARED_PREFIX)}
+
+    def shared_files(self, dirs: list[str]) -> dict[str, int]:
+        """{repo-relative path: size} of everything under shared/<dir>/ for each shared dir."""
+        out: dict[str, int] = {}
+        for d in dirs:
+            r = self._run("lsf", "-R", "--files-only", "--format", "sp", "--separator", "\t",
+                          self._path(SHARED_PREFIX + d), capture=True)
+            if r.returncode == 3:  # nothing shared yet
+                continue
+            if r.returncode:
+                raise StoreError(f"listing {self.name}: {r.stderr.strip()}")
+            for line in r.stdout.splitlines():
+                size, _, rel = line.partition("\t")
+                if rel:
+                    out[f"{d}/{rel}"] = int(size)
+        return out
+
+    def put_shared(self, rels: list[str]) -> None:
+        """Upload repo files to shared/<same path>, never overwriting."""
+        r = self._run("copy", "--files-from-raw", "-", "--ignore-existing", "--transfers", str(JOBS),
+                      str(ROOT), self._path(SHARED_PREFIX), stdin="\n".join(rels) + "\n", progress=True)
+        if r.returncode:
+            raise StoreError(f"rclone copy to {self.name} failed (exit {r.returncode})")
+
+    def get_shared(self, rels: list[str]) -> None:
+        """Download shared/<path> to the same repo path; existing local files are left alone."""
+        r = self._run("copy", "--files-from-raw", "-", "--ignore-existing", "--transfers", str(JOBS),
+                      self._path(SHARED_PREFIX), str(ROOT), stdin="\n".join(rels) + "\n", progress=True)
+        if r.returncode:
+            print(f"assets: rclone copy from {self.name} reported errors (exit {r.returncode})", file=sys.stderr)
+
+    def delete_shared(self, rels: list[str]) -> None:
+        r = self._run("delete", "--files-from-raw", "-", self._path(SHARED_PREFIX), stdin="\n".join(rels) + "\n")
+        if r.returncode:
+            raise StoreError(f"rclone delete in {self.name} failed (exit {r.returncode})")
 
     def put(self, blobs: dict[str, Path]) -> None:
         """Upload {key: local file}. Staged as symlinks so one rclone call does it all."""
@@ -369,12 +424,20 @@ def cmd_pull(args) -> int:
     hc.save()
     for rel in skipped:
         print(f"skip (locally modified, use --force): {rel}")
-    if not todo:
+    shared = [d for d in m["shared"] if selected(paths, d) or any(shared_dir(m, p) == d for p in paths)]
+    if not todo and not shared:
         print("nothing to download")
         return 0
+    store = connect(m)
+    failed = _pull_blobs(m, store, todo) if todo else 0
+    if shared:
+        failed += _pull_shared(m, store, shared, paths)
+    return 1 if failed else 0
+
+
+def _pull_blobs(m: dict, store: Store, todo: list[tuple[str, dict]]) -> int:
     total = sum(e["size"] for _, e in todo)
     print(f"downloading {len(todo)} files, {fmt_size(total)}")
-    store = connect(m)
     by_sha: dict[str, list[str]] = {}
     for rel, e in todo:
         by_sha.setdefault(e["sha256"], []).append(rel)
@@ -411,11 +474,42 @@ def cmd_pull(args) -> int:
     for rel, e in errors:
         print(f"error: {rel}: {e}", file=sys.stderr)
     print(f"downloaded {len(todo) - len(errors)} files" + (f", {len(errors)} failed" if errors else ""))
-    return 1 if errors else 0
+    return len(errors)
+
+
+def _pull_shared(m: dict, store: Store, dirs: list[str], paths: list[str]) -> int:
+    """Download shared files that don't exist locally. Names are unique, so existing ones are kept."""
+    try:
+        remote = {r: s for r, s in store.shared_files(dirs).items() if selected(paths, r)}
+    except StoreError as e:
+        die(str(e))
+    todo, differs = [], []
+    for rel, size in sorted(remote.items()):
+        p = ROOT / rel
+        if not p.is_file():
+            todo.append(rel)
+        elif p.stat().st_size != size:
+            differs.append(rel)
+    for rel in differs:
+        print(f"skip (local file differs from the shared one, kept): {rel}")
+    if not todo:
+        print(f"shared ({', '.join(d + '/' for d in dirs)}): nothing to download")
+        return 0
+    print(f"downloading {len(todo)} shared files, {fmt_size(sum(remote[r] for r in todo))}")
+    store.get_shared(todo)
+    failed = [r for r in todo if not ((ROOT / r).is_file() and (ROOT / r).stat().st_size == remote[r])]
+    for rel in failed:
+        print(f"error: {rel}: download failed", file=sys.stderr)
+    print(f"downloaded {len(todo) - len(failed)} shared files" + (f", {len(failed)} failed" if failed else ""))
+    return len(failed)
 
 
 def _publish(m: dict, rels: list[str], dry_run: bool) -> int:
     """Hash, upload whatever blobs the store lacks, record changes in the manifest."""
+    in_shared = [r for r in rels if shared_dir(m, r)]
+    if in_shared:
+        die(f"{in_shared[0]} is in a shared dir ({shared_dir(m, in_shared[0])}/): use `share` for it"
+            + (" (and keep the track globs out of shared dirs)" if len(in_shared) > 1 else ""))
     hc = HashCache()
     hashed = []
     for rel in rels:
@@ -512,6 +606,112 @@ def cmd_rm(args) -> int:
     return 0
 
 
+def _shared_args(m: dict, args_paths: list[str]) -> list[str]:
+    paths = [to_rel(p) for p in args_paths]
+    if not m["shared"]:
+        die(f"no shared dirs configured ({MANIFEST.name} \"shared\")")
+    for p, arg in zip(paths, args_paths):
+        if not shared_dir(m, p):
+            die(f"{arg} is not in a shared dir ({', '.join(d + '/' for d in m['shared'])})")
+    return paths
+
+
+def cmd_share(args) -> int:
+    m = load_manifest()
+    paths = _shared_args(m, args.paths)
+    rels = []
+    for p, arg in zip(paths, args.paths):
+        files = walk_files(p)
+        if not files:
+            die(f"{arg}: no such file or directory")
+        rels.extend(f for f in files if not f.endswith((".tmp", ".partial")))
+    rels = sorted(set(rels))
+    managed = [r for r in rels if r in m["files"]]
+    if managed:
+        die(f"{managed[0]} is in the manifest: `rm` it there first")
+    store = connect(m)
+    try:
+        remote = store.shared_files(sorted({shared_dir(m, r) for r in rels}))
+        new = [r for r in rels if r not in remote]
+        conflicts = [r for r in rels if r in remote and remote[r] != (ROOT / r).stat().st_size]
+        if args.dry_run:
+            print(f"{len(new)} files to share, {fmt_size(sum((ROOT / r).stat().st_size for r in new))}")
+            for rel in new:
+                print(f"  {rel}")
+        elif new:
+            print(f"sharing {len(new)} files, {fmt_size(sum((ROOT / r).stat().st_size for r in new))}")
+            store.put_shared(new)
+            remote = store.shared_files(sorted({shared_dir(m, r) for r in new}))
+    except StoreError as e:
+        die(str(e))
+    for rel in conflicts:
+        print(f"error: {rel}: a different file with this name is already shared (rename yours, or unshare it)",
+              file=sys.stderr)
+    if args.dry_run:
+        return 1 if conflicts else 0
+    failed = [r for r in new if remote.get(r) != (ROOT / r).stat().st_size]
+    for rel in failed:
+        print(f"error: {rel}: upload failed", file=sys.stderr)
+    already = len(rels) - len(new) - len(conflicts)
+    print(f"shared {len(new) - len(failed)} files" + (f", {already} already shared" if already else "")
+          + (f", {len(failed)} failed" if failed else ""))
+    return 1 if conflicts or failed else 0
+
+
+def cmd_unshare(args) -> int:
+    m = load_manifest()
+    paths = _shared_args(m, args.paths)
+    store = connect(m)
+    try:
+        remote = store.shared_files(sorted({shared_dir(m, p) for p in paths}))
+        gone = sorted(r for r in remote if selected(paths, r))
+        if not gone:
+            print("nothing shared under these paths")
+            return 0
+        if args.dry_run:
+            print(f"{len(gone)} files to unshare:")
+        else:
+            store.delete_shared(gone)
+            print(f"unshared {len(gone)} files (local copies untouched):")
+    except StoreError as e:
+        die(str(e))
+    for rel in gone:
+        print(f"  {rel}")
+    return 0
+
+
+def cmd_shared(args) -> int:
+    m = load_manifest()
+    paths = [to_rel(p) for p in args.paths]
+    dirs = [d for d in m["shared"] if selected(paths, d) or any(shared_dir(m, p) == d for p in paths)]
+    if not dirs:
+        die(f"no shared dirs here (configured: {', '.join(d + '/' for d in m['shared']) or 'none'})")
+    store = connect(m)
+    try:
+        remote = {r: s for r, s in store.shared_files(dirs).items() if selected(paths, r)}
+    except StoreError as e:
+        die(str(e))
+    local = {r for d in dirs for r in walk_files(d) if selected(paths, r) and not r.endswith(".partial")}
+    marks = {"both": " ", "remote": "↓", "local": "↑", "differs": "!"}
+    rows = []
+    for rel in sorted(set(remote) | local):
+        if rel not in local:
+            st = "remote"
+        elif rel not in remote:
+            st = "local"
+        else:
+            st = "both" if (ROOT / rel).stat().st_size == remote[rel] else "differs"
+        if st != "local" or args.all:
+            rows.append((st, rel))
+    for st, rel in rows:
+        size = remote.get(rel) or (ROOT / rel).stat().st_size
+        print(f"{marks[st]} {rel}  ({fmt_size(size)})")
+    n_local = sum(1 for r in local if r not in remote)
+    print(f"{len(remote)} shared ({sum(1 for r in remote if r not in local)} not here: pull)"
+          + (f"; {n_local} local only (share to publish{'' if args.all else ', --all lists them'})" if n_local else ""))
+    return 0
+
+
 def cmd_verify(args) -> int:
     m = load_manifest()
     store = connect(m)
@@ -579,6 +779,18 @@ def main() -> int:
     p = sub.add_parser("rm", help="remove entries from the manifest")
     p.add_argument("paths", nargs="+")
     p.set_defaults(fn=cmd_rm)
+    p = sub.add_parser("share", help="upload files in a shared dir (no manifest change)")
+    p.add_argument("paths", nargs="+")
+    p.add_argument("-n", "--dry-run", action="store_true")
+    p.set_defaults(fn=cmd_share)
+    p = sub.add_parser("unshare", help="delete shared files from the store (local copies stay)")
+    p.add_argument("paths", nargs="+")
+    p.add_argument("-n", "--dry-run", action="store_true")
+    p.set_defaults(fn=cmd_unshare)
+    p = sub.add_parser("shared", help="list shared files: here, in the store, or both")
+    p.add_argument("paths", nargs="*")
+    p.add_argument("-a", "--all", action="store_true", help="also list local files that are not shared")
+    p.set_defaults(fn=cmd_shared)
     p = sub.add_parser("verify", help="check every manifest blob exists in the store")
     p.set_defaults(fn=cmd_verify)
     p = sub.add_parser("gc", help="list (or --delete) blobs no commit references")

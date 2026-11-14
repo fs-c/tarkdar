@@ -159,5 +159,68 @@ class AssetsTest(unittest.TestCase):
         r = self.run_assets("verify", env=dict(env, RCLONE="/nonexistent/rclone"), ok=False)
         self.assertIn("running rclone", r.stderr)
 
+    def set_shared(self, dirs, prefix="sha256/"):
+        m = self.manifest()
+        m["shared"] = dirs
+        m["store"]["prefix"] = prefix
+        (self.repo / "assets.json").write_text(json.dumps(m))
+
+    def test_shared_dir_roundtrip(self):
+        self.set_shared(["rec/"])
+        rec = self.repo / "rec"
+        rec.mkdir()
+        (rec / "a.gz").write_bytes(b"a" * 100)
+        (rec / "b.gz").write_bytes(b"b" * 200)
+        (rec / "mine.gz").write_bytes(b"private")
+        before = (self.repo / "assets.json").read_text()
+
+        self.run_assets("share", "a.gz", "b.gz", cwd=rec)
+        self.assertEqual((self.repo / "assets.json").read_text(), before)  # no manifest change
+        self.assertEqual((self.store / "shared/rec/a.gz").read_bytes(), b"a" * 100)
+        self.assertFalse((self.store / "shared/rec/mine.gz").exists())
+        self.assertIn("1 already shared", self.run_assets("share", "rec/a.gz").stdout)
+
+        # Listing: shared + here, shared only, local only (hidden unless --all).
+        (rec / "b.gz").unlink()
+        out = self.run_assets("shared").stdout
+        self.assertIn("2 shared (1 not here: pull); 1 local only", out)
+        self.assertIn("↓ rec/b.gz", out)
+        self.assertNotIn("mine.gz", out)
+        self.assertIn("↑ rec/mine.gz", self.run_assets("shared", "--all").stdout)
+
+        # pull fetches missing shared files; a path filter limits it; other files are left alone.
+        self.run_assets("pull", "rec/a.gz")
+        self.assertFalse((rec / "b.gz").exists())
+        self.assertIn("downloaded 1 shared files", self.run_assets("pull").stdout)
+        self.assertEqual((rec / "b.gz").read_bytes(), b"b" * 200)
+        self.assertEqual((rec / "mine.gz").read_bytes(), b"private")
+        self.assertIn("nothing to download", self.run_assets("pull").stdout)
+
+        # A different file under a shared name: never overwritten in either direction.
+        (rec / "a.gz").write_bytes(b"other")
+        r = self.run_assets("share", "rec/a.gz", ok=False)
+        self.assertIn("already shared", r.stderr)
+        self.assertEqual((self.store / "shared/rec/a.gz").read_bytes(), b"a" * 100)
+        self.assertIn("local file differs", self.run_assets("pull").stdout)
+        self.assertEqual((rec / "a.gz").read_bytes(), b"other")
+
+        self.run_assets("unshare", "rec/a.gz")
+        self.assertFalse((self.store / "shared/rec/a.gz").exists())
+        self.assertTrue((rec / "a.gz").exists())
+
+    def test_shared_dir_boundaries(self):
+        self.set_shared(["rec"], prefix="")  # empty prefix: blobs and shared/ share the store root
+        (self.repo / "rec").mkdir()
+        (self.repo / "rec/a.gz").write_bytes(b"a")
+        self.assertIn("not in a shared dir", self.run_assets("share", "other.txt", ok=False).stderr)
+        self.assertIn("use `share`", self.run_assets("add", "rec/a.gz", ok=False).stderr)
+        self.run_assets("share", "rec")
+        self.run_assets("push")
+        self.assertIn("8 / 8 blobs present", self.run_assets("verify").stdout)
+        self.assertIn("0 blobs not referenced", self.run_assets("gc").stdout)  # shared/ is not garbage
+        self.run_assets("gc", "--delete")
+        self.assertTrue((self.store / "shared/rec/a.gz").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

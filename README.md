@@ -36,7 +36,7 @@ Large or copyrighted files are not in git. They live in a private asset store on
 the local network (plain files, moved by rclone) and are listed in `assets.json`
 by path and SHA-256: the il2cpp dump, the 3D maps
 (`maps/3d`, see `docs/maps3d.md`), the cache they are built from
-(`tools/maps3d/cache`) and a couple of sample recordings. `scripts/assets.py` (stdlib
+(`tools/maps3d/cache`) and shared raid recordings. `scripts/assets.py` (stdlib
 Python plus `rclone`, which `mise install` provides) manages them:
 
 ```sh
@@ -44,13 +44,28 @@ scripts/assets.py status               # missing / modified / new files
 scripts/assets.py pull                 # download everything missing (or: pull maps/ dumps/)
                                        # running the radar needs maps/; tools/maps3d/cache only to rebuild 3D maps
 scripts/assets.py push                 # upload changed tracked files, update assets.json
-scripts/assets.py add recordings/X.gz  # start tracking a file (or directory)
+scripts/assets.py add dumps/X.json     # start tracking a file (or directory)
 ```
 
 `push` and `add` change `assets.json`; commit it like code. Blobs are stored
 under their hash and never overwritten, so older commits stay pullable.
 `assets.json` → `track` lists globs whose new files `push` picks up
 automatically.
+
+`recordings/` is a *shared dir* (`assets.json` → `shared`): its files need no
+versioning (unique names, never changed), so they are not in the manifest and
+sharing one needs no commit. They sit in the store as plain files under
+`shared/recordings/`; `pull` fetches the ones you don't have. The backend writes
+every raid to `recordings/`, so nothing is shared until you say so:
+
+```sh
+scripts/assets.py share recordings/X.jsonl.gz    # upload (never overwrites)
+scripts/assets.py shared                         # list: ↓ only in the store, ↑ only here (--all)
+scripts/assets.py unshare recordings/X.jsonl.gz  # delete from the store (local copy stays)
+```
+
+A test that depends on one exact recording should pin it as a normal asset
+under its own path instead (e.g. `tests/fixtures/`), so it is versioned.
 
 The store is a directory of blobs on one always-on machine (the hub); every
 other machine reaches it over SFTP. Set `ASSETS_REMOTE` to an rclone path, in

@@ -210,6 +210,30 @@ std::string encodeExplosives(const eft::ExplosivesSnapshot& snap) {
     return envelope("explosives", snap.raidId, snap.revision, std::move(data));
 }
 
+std::string encodeVehicles(const eft::VehiclesSnapshot& snap) {
+    std::vector<crow::json::wvalue> list;
+    for (const auto& v : snap.vehicles) {
+        crow::json::wvalue o;
+        o["id"] = v.id;
+        o["kind"] = "btr";
+        o["state"] = v.state;
+        o["pos"] = vec(v.position);
+        o["yaw"] = std::round(static_cast<double>(v.yaw) * 10.0) / 10.0;
+        std::vector<crow::json::wvalue> occupants;
+        for (const auto& occ : v.occupants) {
+            crow::json::wvalue x;
+            x["player"] = occ.playerId;
+            x["seat"] = occ.seat == eft::VehicleOccupant::Seat::Gunner ? "gunner" : "passenger";
+            occupants.push_back(std::move(x));
+        }
+        o["occupants"] = std::move(occupants);
+        list.push_back(std::move(o));
+    }
+    crow::json::wvalue data;
+    data["vehicles"] = std::move(list);
+    return envelope("vehicles", snap.raidId, snap.revision, std::move(data));
+}
+
 std::string encodeLoot(const eft::LootSnapshot& snap) {
     std::vector<crow::json::wvalue> list;
     list.reserve(snap.loot.size());

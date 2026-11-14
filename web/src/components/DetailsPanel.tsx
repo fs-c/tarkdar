@@ -1,5 +1,6 @@
 // Details panel for a selected player, loot entry or exfil.
 
+import { vehicleOf } from "../vehicles";
 import type { RadarState } from "../connection";
 import { describeEvent, eventConcerns } from "../events";
 import { type ItemCatalog, containerName, exfilStatus, equipmentValue, formatPrice } from "../items";
@@ -80,6 +81,7 @@ function Details({ selection: sel, state, catalog }: Props) {
         {p.groupId && <Line label="group" value={p.groupId} />}
         {p.kind && <Line label="kind" value={p.kind} />}
         <Line label="state" value={p.dead ? "dead" : p.absent ? (p.extracted ? "extracted" : "left the raid") : "alive"} />
+        {vehicleOf(state.vehicles, p.id) && <Line label="riding" value="BTR" />}
         <Line label="position" value={formatPos(p.pos)} />
         <ItemSection heading="equipment" nodes={eq?.slots} empty="not read (yet)" catalog={catalog} />
       </>

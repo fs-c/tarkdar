@@ -57,6 +57,8 @@ int LiveFeed::poll() {
         forward(w.exfils, lastExfils_, "exfils", [](const auto& s) { return encodeExfils(s); }, other("exfils"));
         forward(w.explosives, lastExplosives_, "explosives", [](const auto& s) { return encodeExplosives(s); },
                 other("explosives"));
+        forward(w.vehicles, lastVehicles_, "vehicles", [](const auto& s) { return encodeVehicles(s); },
+                other("vehicles"));
         forward(w.loot, lastLoot_, "loot", [](const auto& s) { return encodeLoot(s); },
                 [&](const auto& s, const std::string& m) { rec->onLoot(s, m); });
         forward(w.equipment, lastEquipment_, "equipment", [](const auto& s) { return encodeEquipment(s); },

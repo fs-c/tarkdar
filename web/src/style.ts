@@ -26,6 +26,7 @@ export const COLORS = {
   exfilNeutral: "#e8eef2",
   exfilSecret: ui.secret,
   danger: "#ff3b30",
+  vehicle: "#f2c14e",
 };
 
 // ---- Players ----

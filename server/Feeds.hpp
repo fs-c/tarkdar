@@ -39,6 +39,7 @@ private:
     std::shared_ptr<const eft::PlayersSnapshot> lastSkeletonsFrom_;  // the snapshot skeletons were last sent for
     std::shared_ptr<const eft::ExfilsSnapshot> lastExfils_;
     std::shared_ptr<const eft::ExplosivesSnapshot> lastExplosives_;
+    std::shared_ptr<const eft::VehiclesSnapshot> lastVehicles_;
     std::shared_ptr<const eft::LootSnapshot> lastLoot_;
     std::shared_ptr<const eft::EquipmentSnapshot> lastEquipment_;
 };

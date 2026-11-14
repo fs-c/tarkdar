@@ -85,6 +85,24 @@ export interface ExplosivesData {
   tripwires: { id: number; from: WorldPos; to: WorldPos }[];
 }
 
+export interface VehicleOccupant {
+  /** Player id. */
+  player: number;
+  /** "gunner": the bot on the BTR's turret; "passenger": getting in, inside or getting out. */
+  seat: "gunner" | "passenger";
+}
+
+export interface Vehicle {
+  id: number;
+  kind: "btr";
+  /** BTR: 0 stopped, 1 stopped (paid ride), 2 driving. */
+  state: number;
+  pos: WorldPos;
+  /** Heading in degrees, like a player's yaw (0 = +z, 90 = +x). */
+  yaw: number;
+  occupants: VehicleOccupant[];
+}
+
 /** An item and its contents (slot attachments, grid contents). */
 export interface ItemNode {
   tpl: string;
@@ -128,6 +146,7 @@ export type Message =
   | Envelope<"skeletons", SkeletonsData>
   | Envelope<"exfils", { exfils: Exfil[] }>
   | Envelope<"explosives", ExplosivesData>
+  | Envelope<"vehicles", { vehicles: Vehicle[] }>
   | Envelope<"loot", { loot: LootEntry[] }>
   | Envelope<"equipment", { players: PlayerEquipment[] }>;
 

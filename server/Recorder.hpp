@@ -53,7 +53,7 @@ public:
     void onPlayers(const eft::PlayersSnapshot& players, const std::string& message);
     void onLoot(const eft::LootSnapshot& loot, const std::string& message);
     void onSkeletons(std::uint64_t raidId, const std::string& message);
-    // Other per-raid messages (exfils, explosives, equipment): written as they are.
+    // Other per-raid messages (exfils, explosives, vehicles, equipment): written as they are.
     void onMessage(const std::string& type, std::uint64_t raidId, const std::string& message);
 
     // Flushes the active recording and returns its file name; nullopt outside a raid.

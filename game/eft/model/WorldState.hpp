@@ -13,6 +13,7 @@ struct WorldState {
     sched::Published<PlayersSnapshot> players;
     sched::Published<ExfilsSnapshot> exfils;
     sched::Published<ExplosivesSnapshot> explosives;
+    sched::Published<VehiclesSnapshot> vehicles;
     sched::Published<LootSnapshot> loot;
     sched::Published<EquipmentSnapshot> equipment;
 };

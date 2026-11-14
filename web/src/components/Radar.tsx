@@ -1,7 +1,9 @@
 // The radar: the map (WebGL, map3d/Map3D) with a 2D canvas on top for everything that moves.
 // A location without a map gets a grid of world coordinates instead, with the same camera.
-// The two are redrawn independently: the map only when its camera or settings change, the markers
-// whenever the scene does. A camera that stands still costs the GPU nothing.
+// The map is redrawn only when its camera or settings change, the markers whenever the scene does:
+// a camera that stands still costs the GPU nothing. Both are drawn in the map's animation frame
+// (Map3D.onFrame), where following also moves the camera: a frame on screen always shows the
+// newest scene through the camera that belongs to it, and the markers are drawn once.
 
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { type Ref, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
@@ -57,8 +59,14 @@ const FLOOR_STEP = 1;
 
 const MOVE_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD"]);
 
-/** While following, the map is re-rendered at most this often (ms); markers update on every scene. */
+/**
+ * While following, a map whose frames are not cheap (the whole scene, not tiles) is moved at most
+ * this often (ms). The markers wait with it: drawn through the camera of an older scene, the one
+ * followed would leave the centre and jump back.
+ */
 const FOLLOW_INTERVAL = 33;
+/** ... less this: display frames are not exactly evenly spaced. */
+const FOLLOW_SLACK = 4;
 /** Flying to the local player from further out than this (metres across the view) also zooms in. */
 const FLY_ZOOM_ABOVE = 600;
 
@@ -69,6 +77,9 @@ export function Radar({ url, scene, settings, follow, heading, onPan, onTurn, on
   const mapRef = useRef<Map3D | null>(null);
   const latest = useRef({ scene, follow, heading, onPan, onTurn, onTap, onStats, settings });
   const drawRequested = useRef(0);
+  /** The scene changed since the markers were drawn. */
+  const stale = useRef(false);
+  const lastFollow = useRef(0);
   const [status, setStatus] = useState<{ progress: number | null; error: string | null }>({ progress: url ? 0 : null, error: null });
   // Indoor maps are cut open at one floor: the local player's, or one picked by hand (a height).
   const [interior, setInterior] = useState(false);
@@ -91,6 +102,7 @@ export function Radar({ url, scene, settings, follow, heading, onPan, onTurn, on
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
+    stale.current = false;
     if (!map.loaded) return;
     try {
       renderMarkers(ctx, map.projector(), latest.current.scene);
@@ -98,6 +110,7 @@ export function Radar({ url, scene, settings, follow, heading, onPan, onTurn, on
       console.error("marker frame failed", e);
     }
   };
+  /** Without a loaded map (which has no frames): the markers on a frame of their own. */
   const requestDraw = () => {
     if (drawRequested.current) return;
     drawRequested.current = requestAnimationFrame(() => {
@@ -111,6 +124,24 @@ export function Radar({ url, scene, settings, follow, heading, onPan, onTurn, on
     const host = hostRef.current!;
     const map = new Map3D(host, Number.parseInt(ui.bg.slice(1), 16));
     mapRef.current = map;
+    // A new scene: following moves the camera to it first, then map and markers are drawn.
+    map.onFrame = (now) => {
+      if (!stale.current) return;
+      const { scene, follow, heading } = latest.current;
+      const player = follow ? scene.players.find((p) => p.local && p.pos) : undefined;
+      if (player?.pos) {
+        if (!map.cheapFrames && !map.renderDue && now - lastFollow.current < FOLLOW_INTERVAL - FOLLOW_SLACK) {
+          map.requestFrame(); // too early for another costly frame: this scene, or a newer one, in a later one
+          return;
+        }
+        lastFollow.current = now;
+        // A flight ends on the player by itself.
+        if (!map.flying) map.centerOn(player.pos);
+        if (heading) map.turnTo(player.yaw);
+      }
+      // The camera stays where it is: only the markers.
+      if (!map.renderDue) draw();
+    };
     map.onRender = () => {
       draw(); // same frame as the map, so markers never lag behind the camera
       const heading = map.heading();
@@ -150,35 +181,18 @@ export function Radar({ url, scene, settings, follow, heading, onPan, onTurn, on
     if (status.progress === null) mapRef.current?.setSettings(settings);
   }, [settings, status.progress]);
 
-  // Every render: new scene. Follow moves the map's camera (rate-limited, the map then redraws
-  // the markers itself); otherwise only the markers are redrawn.
-  const lastFollow = useRef(0);
+  // Every render: new scene, shown in the map's next frame (onFrame above).
   const wasFollowing = useRef(follow);
-  const followTimer = useRef(0);
   useLayoutEffect(() => {
     latest.current = { scene, follow, heading, onPan, onTurn, onTap, onStats, settings };
+    stale.current = true;
     const map = mapRef.current;
-    const local = follow ? scene.players.find((p) => p.local && p.pos)?.pos : null;
     // Follow turned on (not: the map opened while following): fly to the local player.
     const turnedOn = follow && !wasFollowing.current;
     wasFollowing.current = follow;
-    if (turnedOn && map?.loaded && local) {
+    if (turnedOn && map?.loaded && scene.players.some((p) => p.local && p.pos)) {
       const player = () => (latest.current.follow ? (latest.current.scene.players.find((p) => p.local && p.pos)?.pos ?? null) : null);
       map.flyTo(player, map.viewSpan() > FLY_ZOOM_ABOVE ? FOLLOW_SPAN : null);
-    } else if (map?.loaded && local) {
-      const recenter = () => {
-        lastFollow.current = performance.now();
-        const now = latest.current, map = mapRef.current;
-        const player = now.follow ? now.scene.players.find((p) => p.local && p.pos) : null;
-        if (!player?.pos || !map) return;
-        // A flight ends on the player by itself.
-        if (!map.flying) map.centerOn(player.pos);
-        if (now.heading) map.turnTo(player.yaw);
-      };
-      window.clearTimeout(followTimer.current);
-      const wait = FOLLOW_INTERVAL - (performance.now() - lastFollow.current);
-      if (wait <= 0) recenter();
-      else followTimer.current = window.setTimeout(recenter, wait);
     }
     if (map?.loaded && interior) {
       // Not every step of a staircase: only once they have left the floor shown.
@@ -187,9 +201,9 @@ export function Radar({ url, scene, settings, follow, heading, onPan, onTurn, on
       else if (playerFloor.current === null || Math.abs(y - playerFloor.current) > FLOOR_FOLLOW) playerFloor.current = y;
       map.setFloor(pickedFloor ?? playerFloor.current);
     }
-    requestDraw();
+    if (map?.loaded) map.requestFrame();
+    else requestDraw();
   });
-  useEffect(() => () => window.clearTimeout(followTimer.current), []);
 
   /** One step up or down from the floor shown; from the whole map, down from its top. */
   const stepFloor = (direction: 1 | -1) => {

@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { itemMarkerShown } from "./declutter";
 import { type ItemCatalog, emptyCatalog } from "./items";
-import { flatProjector } from "./projector";
+import { topDownProjector } from "./projector.fixture";
 import type { Exfil, LootEntry, Player } from "./protocol";
-import { NO_MAP_TRANSFORM, type Scene, renderMarkers } from "./render";
-import { View } from "./view";
+import { type Scene, renderMarkers } from "./render";
 
 /** A canvas context that records the text and the filled rectangles drawn (text is 6 px a character). */
 function fakeCtx() {
@@ -31,16 +30,16 @@ const player = (id: number): Player => ({ id, local: false, ai: false, side: "us
 const loot = (id: number, kind: LootEntry["kind"], tpl = ""): LootEntry => ({ id, kind, tpl, obj: "", pos: [0, 0, 0] });
 const exfil: Exfil = { id: 1, kind: "regular", name: "Gate", status: 4, pos: [0, 0, 0] };
 
-function draw(zoom: number, patch: Partial<Scene>) {
-  const view = Object.assign(new View(), { width: 200, height: 200, zoom });
+/** Draws the scene at a level of detail (declutter.ts). */
+function draw(detail: number, patch: Partial<Scene>) {
   const scene: Scene = {
-    map: null, layer: 0, players: [], catalog, exfils: [], explosives: { grenades: [], tripwires: [] }, vehicles: [], loot: [],
+    players: [], catalog, exfils: [], explosives: { grenades: [], tripwires: [] }, vehicles: [], loot: [],
     layers: { loot: true, containers: true, exfils: true, explosives: true }, minLabelPrice: 0, lootDensity: "all",
-    selected: null, hovered: null, highlights: new Map(), calibrationPixels: [], debugPoints: [], trails: null, bodies: false,
+    selected: null, hovered: null, highlights: new Map(), debugPoints: [], trails: null, bodies: false,
     ...patch,
   };
   const f = fakeCtx();
-  renderMarkers(f.ctx, flatProjector(view, NO_MAP_TRANSFORM), scene);
+  renderMarkers(f.ctx, topDownProjector(200, 200, 4 * detail), scene);
   return f;
 }
 

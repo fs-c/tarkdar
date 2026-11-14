@@ -1,20 +1,14 @@
-// Draws the radar: map layer (or a world grid when there's no map), players, calibration markers.
+// Draws the radar's markers (players, loot, exfils, ...) over the map, through its camera (projector.ts).
 
-import { type Affine, pixelsPerMetre, worldToPixel } from "./calibration";
 import { LabelPlacer, type Rect, candidatesAround } from "./labels";
-import { type LoadedMap, selectLayer } from "./maps";
 import { type ItemCatalog, containerName, exfilStatus, formatPrice, valueTier } from "./items";
 import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type Vehicle, type WorldPos } from "./protocol";
 import { type PlayerTypeInfo, bossGroups, playerType } from "./roles";
 import { COLORS, ITEM_LOOK, LOOT_LOOK, type PlayerLook, exfilColor, playerLook } from "./style";
 import { EXFIL_STATUS_DETAIL, LABEL_DETAIL, LABEL_RANK, type LootDensity, itemMarkerShown } from "./declutter";
 import { type Timeline, isJump } from "./timeline";
-import { type Projector, flatProjector } from "./projector";
+import type { Projector } from "./projector";
 import { midpoint } from "./pick";
-import type { View } from "./view";
-
-/** Used when there's no map for the location: 2 px per metre, north up, world origin at (0, 0). */
-export const NO_MAP_TRANSFORM: Affine = { a: 2, b: 0, c: 0, d: 0, e: -2, f: 0 };
 
 export interface Layers {
   loot: boolean;
@@ -24,8 +18,6 @@ export interface Layers {
 }
 
 export interface Scene {
-  map: LoadedMap | null;
-  layer: number;
   players: Player[];
   catalog: ItemCatalog;
   exfils: Exfil[];
@@ -42,7 +34,6 @@ export interface Scene {
   hovered: [number, number, number] | null;
   /** Highlighted things (selection key → colour): ringed, labelled, and drawn even when their layer is off. */
   highlights: ReadonlyMap<string, string>;
-  calibrationPixels: [number, number][];
   /** World positions picked with the coordinate tool (3D map debugging), drawn numbered. */
   debugPoints: [number, number, number][];
   trails: TrailScene | null;
@@ -60,39 +51,9 @@ export interface TrailScene {
   selected: number | null;
 }
 
-/** The 2D radar: map image (or world grid), markers, calibration crosses. */
-export function render(ctx: CanvasRenderingContext2D, view: View, scene: Scene): void {
-  const transform = scene.map?.transform ?? NO_MAP_TRANSFORM;
-  ctx.fillStyle = COLORS.background;
-  ctx.fillRect(0, 0, view.width, view.height);
-
-  const image = scene.map?.images[scene.layer] ?? null;
-  if (image) {
-    const [x, y] = view.toScreen(0, 0);
-    ctx.imageSmoothingEnabled = view.zoom < 2;
-    ctx.drawImage(image, x, y, image.naturalWidth * view.zoom, image.naturalHeight * view.zoom);
-  } else {
-    drawGrid(ctx, view, transform);
-  }
-
-  renderMarkers(ctx, flatProjector(view, transform), scene);
-
-  for (const [u, v] of scene.calibrationPixels) {
-    const [x, y] = view.toScreen(u, v);
-    ctx.strokeStyle = COLORS.calibration;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x - 8, y);
-    ctx.lineTo(x + 8, y);
-    ctx.moveTo(x, y - 8);
-    ctx.lineTo(x, y + 8);
-    ctx.stroke();
-  }
-}
-
 /**
  * Everything that moves: loot, exfils, explosives, vehicles, trails, players, selection. Drawn in screen
- * space through the projector, so it is the same code over the 2D image and over the 3D map.
+ * space through the projector.
  */
 export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene): void {
   const hl = scene.highlights;
@@ -146,8 +107,8 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
 
   scene.debugPoints.forEach((pos, i) => {
     const [x, y] = pr.toScreen(pos);
-    ctx.strokeStyle = COLORS.calibration;
-    ctx.fillStyle = COLORS.calibration;
+    ctx.strokeStyle = COLORS.debug;
+    ctx.fillStyle = COLORS.debug;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(x - 7, y);
@@ -162,12 +123,10 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
 
 const TRAIL_BUCKETS = 6;
 
-/** Trails fade with age (in TRAIL_BUCKETS steps); parts on other floors than the shown one are dimmed. */
+/** Trails fade with age (in TRAIL_BUCKETS steps). */
 function drawTrails(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene): void {
   const { timeline, at, since, selected } = scene.trails!;
   const groups = bossGroups(scene.players);
-  const floors = scene.map && scene.map.config.layers.length > 1 ? scene.map.config.layers : null;
-  const otherFloor = (y: number) => floors !== null && selectLayer(floors, y, null, 0) !== scene.layer;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   for (const [id, from] of since) {
@@ -200,13 +159,13 @@ function drawTrails(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene):
     const isSelected = id === selected;
     const start = points[0]!.t;
     const span = Math.max(1, at - start);
-    const paths = Array.from({ length: TRAIL_BUCKETS * 2 }, () => new Path2D());
+    const paths = Array.from({ length: TRAIL_BUCKETS }, () => new Path2D());
     for (let k = 1; k < points.length; k++) {
       const a = points[k - 1]!, b = points[k]!;
       // Teleports and one-frame glitches: no line across them.
       if (isJump(Math.hypot(b.wx - a.wx, b.wy - a.wy, b.wz - a.wz), b.t - a.t)) continue;
       const bucket = Math.min(TRAIL_BUCKETS - 1, Math.floor(((b.t - start) / span) * TRAIL_BUCKETS));
-      const path = paths[bucket + (otherFloor(b.wy) ? TRAIL_BUCKETS : 0)]!;
+      const path = paths[bucket]!;
       path.moveTo(a.x, a.y);
       path.lineTo(b.x, b.y);
     }
@@ -214,41 +173,12 @@ function drawTrails(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene):
     ctx.strokeStyle = look.color;
     ctx.lineWidth = isSelected ? 2.5 : 1.5;
     const maxAlpha = isSelected ? 0.95 : look.trailAlpha;
-    paths.forEach((path, i) => {
-      const bucket = i % TRAIL_BUCKETS;
+    paths.forEach((path, bucket) => {
       const age = 0.25 + (0.75 * (bucket + 1)) / TRAIL_BUCKETS;
-      ctx.globalAlpha = maxAlpha * age * (i >= TRAIL_BUCKETS ? 0.3 : 1);
+      ctx.globalAlpha = maxAlpha * age;
       ctx.stroke(path);
     });
     ctx.globalAlpha = 1;
-  }
-}
-
-function drawGrid(ctx: CanvasRenderingContext2D, view: View, t: Affine): void {
-  const stepMetres = 50;
-  const stepPx = stepMetres * pixelsPerMetre(t) * view.zoom;
-  if (stepPx < 8) return;
-  ctx.strokeStyle = COLORS.grid;
-  ctx.fillStyle = COLORS.gridLabel;
-  ctx.lineWidth = 1;
-  ctx.font = "11px sans-serif";
-  // NO_MAP_TRANSFORM is axis-aligned, so lines of constant world x/z are vertical/horizontal.
-  const [x0] = view.toScreen(...worldToPixel(t, 0, 0));
-  const [, y0] = view.toScreen(...worldToPixel(t, 0, 0));
-  const first = (origin: number) => origin - Math.ceil(origin / stepPx) * stepPx;
-  for (let x = first(x0); x < view.width; x += stepPx) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, view.height);
-    ctx.stroke();
-    ctx.fillText(`x ${Math.round(((x - x0) / stepPx) * stepMetres)}`, x + 3, 12);
-  }
-  for (let y = first(y0); y < view.height; y += stepPx) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(view.width, y);
-    ctx.stroke();
-    ctx.fillText(`z ${Math.round((-(y - y0) / stepPx) * stepMetres)}`, 3, y - 3);
   }
 }
 

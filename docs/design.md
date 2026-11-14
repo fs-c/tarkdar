@@ -9,7 +9,8 @@ which file does what) lives in the code and its comments.
 - The game runs in a **QEMU guest**. The radar runs on the **Linux host** and reads guest memory
   through VMM (MemProcFS) on top of LeechCore and its QEMU device plugin.
 - The game build is **IL2CPP** (`GameAssembly.dll`).
-- **2D radar** first. An angled (3D-projected) view may come later.
+- The map is **3D**, built from the game's own geometry (`docs/maps3d.md`), seen straight down
+  during a raid; it can be tilted and turned for a closer look.
 - Until verified against a real SPT build, game-reading behaviour follows what is known to work on
   live EFT (a reference implementation). Deviations get fixed once they're confirmed
   (`docs/verification-playbook.md`).

@@ -158,27 +158,26 @@ TEST_CASE("originAllowed: only pages from the same host may connect") {
     CHECK_FALSE(server::originAllowed("null", "127.0.0.1:8080"));
 }
 
-TEST_CASE("buildMapsIndex lists valid map folders of both kinds") {
+TEST_CASE("buildMapsIndex lists the valid map folders") {
     TempDir maps;
-    maps.write("2d/woods/map.json", R"({"name":"Woods","ids":["woods"]})");
-    maps.write("2d/broken/map.json", "{ not json");
-    maps.write("2d/empty/readme.txt", "no config");
-    maps.write("2d/labs/map.json", R"({"name":"Labs","ids":["laboratory"]})");
+    maps.write("3d/woods/map.json", R"({"name":"Woods","ids":["woods"]})");
+    maps.write("3d/broken/map.json", "{ not json");
+    maps.write("3d/empty/readme.txt", "no config");
+    maps.write("3d/labs/map.json", R"({"name":"Labs","ids":["laboratory"]})");
     maps.write("3d/customs/map.json", R"({"name":"Customs","ids":["bigmap"]})");
-    maps.write("stray/map.json", R"({"name":"Stray","ids":["stray"]})");  // not under 2d/ or 3d/
+    maps.write("2d/factory/map.json", R"({"name":"Factory","ids":["factory4_day"]})");  // not under 3d/
+    maps.write("stray/map.json", R"({"name":"Stray","ids":["stray"]})");
     const auto index = server::buildMapsIndex(maps.path);
     CHECK(contains(index, R"("folder":"labs")"));
     CHECK(contains(index, R"("folder":"woods")"));
     CHECK(contains(index, R"("folder":"customs")"));
+    CHECK(contains(index, R"("name":"Customs")"));
     CHECK_FALSE(contains(index, "broken"));
     CHECK_FALSE(contains(index, "empty"));
+    CHECK_FALSE(contains(index, "factory"));
     CHECK_FALSE(contains(index, "stray"));
-    CHECK(index.find("labs") < index.find("woods"));     // sorted by folder
-    CHECK(index.find("woods") < index.find("customs"));  // ... within kind: 2d before 3d
-    const auto labs = index.find(R"("folder":"labs")");
-    const auto entryStart = index.rfind('{', index.rfind(R"("kind")", labs + 40));
-    CHECK(contains(index.substr(entryStart, 120), R"("kind":"2d")"));
-    CHECK(contains(index, R"("kind":"3d")"));
+    CHECK(index.find("customs") < index.find("labs"));  // sorted by folder
+    CHECK(index.find("labs") < index.find("woods"));
     CHECK(server::buildMapsIndex(maps.path / "missing") == "[]");
 }
 

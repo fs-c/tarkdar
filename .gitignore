@@ -16,6 +16,8 @@ node_modules/
 .assets-staging/
 .assets-hashes.json
 
-# Maps are derived from copyrighted material, so they live in the asset store too: maps/2d (images + their
-# map.json calibration) and maps/3d (built by tools/maps3d). maps/2d/demo is synthetic and committed.
+# Maps are derived from copyrighted material, so they live in the asset store too: maps/3d (built by
+# tools/maps3d).
 /maps/
+
+.claude/worktrees/

@@ -11,8 +11,8 @@ change, e.g. `0.0.0.0:8080` for LAN access).
 | Route | Content |
 |---|---|
 | `GET /ws` | WebSocket: the message stream below. Server → client only for now. |
-| `GET /maps/index.json` | Generated list of the map folders under `maps/2d` and `maps/3d`: `[{"kind": "2d"\|"3d", "folder": "...", "config": {map.json contents}}]`, sorted by kind, then folder. See `docs/maps.md`, `docs/maps3d.md`. |
-| `GET /maps/<kind>/<folder>/<file>` | Map files: 2D layer images, 3D datasets. |
+| `GET /maps/index.json` | Generated list of the map folders under `maps/3d`: `[{"folder": "...", "config": {map.json contents}}]`, sorted by folder. See `docs/maps3d.md`. |
+| `GET /maps/3d/<folder>/<file>` | Map files: the 3D datasets. |
 | `GET /data/<path>` | Item/quest data files (not used yet). |
 | `GET /api/recordings` | Raid recordings, newest first (below). |
 | `GET /api/recordings/<name>` | One recording file, as stored (`.jsonl`, or `.jsonl.gz` as `application/gzip`: the client unpacks it). The active one is flushed first. |
@@ -197,7 +197,7 @@ stream, with these differences:
 - A last line may be cut off (a raid in progress, or a crash): readers skip lines that don't parse.
 
 Readers also accept plain message streams without a header (format 0: recordings made with the old
-`--record`, `tools/make-demo-stream.py` before this format).
+`--record`).
 
 `GET /api/recordings`:
 ```json
@@ -206,5 +206,3 @@ Readers also accept plain message streams without a header (format 0: recordings
 ```
 - **`active`:** the raid being recorded right now; its `end` is `null`.
 - **`locationId`, `start`, `end`:** `null` when the file doesn't say (empty or unreadable).
-
-`tools/make-demo-stream.py` writes a synthetic raid recording for `maps/2d/demo` (`recordings/demo.jsonl`).

@@ -42,29 +42,26 @@ bool originAllowed(std::string_view origin, std::string_view host) {
 }
 
 std::string buildMapsIndex(const fs::path& mapsRoot) {
-    // (kind, folder) -> entry; std::map keeps the list sorted by kind, then folder.
-    std::map<std::pair<std::string, std::string>, crow::json::wvalue> maps;
-    for (const std::string kind : {"2d", "3d"}) {
-        std::error_code ec;
-        for (const auto& dir : fs::directory_iterator(mapsRoot / kind, ec)) {
-            if (!dir.is_directory()) continue;
-            const fs::path configPath = dir.path() / "map.json";
-            std::ifstream in(configPath);
-            if (!in) continue;
-            std::stringstream text;
-            text << in.rdbuf();
-            auto config = crow::json::load(text.str());
-            if (!config || config.t() != crow::json::type::Object) {
-                log::warn("maps: ignoring {}: not a valid JSON object", configPath.string());
-                continue;
-            }
-            const std::string folder = dir.path().filename().string();
-            crow::json::wvalue entry;
-            entry["kind"] = kind;
-            entry["folder"] = folder;
-            entry["config"] = crow::json::wvalue(config);
-            maps.emplace(std::pair{kind, folder}, std::move(entry));
+    // folder -> entry; std::map keeps the list sorted by folder.
+    std::map<std::string, crow::json::wvalue> maps;
+    std::error_code ec;
+    for (const auto& dir : fs::directory_iterator(mapsRoot / "3d", ec)) {
+        if (!dir.is_directory()) continue;
+        const fs::path configPath = dir.path() / "map.json";
+        std::ifstream in(configPath);
+        if (!in) continue;
+        std::stringstream text;
+        text << in.rdbuf();
+        auto config = crow::json::load(text.str());
+        if (!config || config.t() != crow::json::type::Object) {
+            log::warn("maps: ignoring {}: not a valid JSON object", configPath.string());
+            continue;
         }
+        const std::string folder = dir.path().filename().string();
+        crow::json::wvalue entry;
+        entry["folder"] = folder;
+        entry["config"] = crow::json::wvalue(config);
+        maps.emplace(folder, std::move(entry));
     }
     std::vector<crow::json::wvalue> list;
     for (auto& [key, entry] : maps) list.push_back(std::move(entry));

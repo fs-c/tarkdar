@@ -1,4 +1,4 @@
-// Settings view of the side panel: how the 3D map looks, map debugging tools, 2D map calibration.
+// Settings view of the side panel: how the map looks, and map debugging tools.
 
 import type { MapPrefs } from "../hooks";
 import { COLOR_SCHEMES, type ColorGrade, type ColorSchemeName, PLAN_PALETTES, type PlanPalette, type PlanPaletteName, paletteOf, schemeOf } from "../map3d/settings";
@@ -9,18 +9,13 @@ import { PALETTE_LABELS } from "./StyleSwitch";
 interface Props {
   prefs: MapPrefs;
   onPrefs: (p: MapPrefs) => void;
-  /** Which kind of map is on screen (null: none). */
-  shown: "2d" | "3d" | null;
-  /** Render statistics of the 3D map, when it is shown. */
+  /** A map is on screen (not just the grid of a location without one). */
+  mapShown: boolean;
+  /** Render statistics of the map, when it is shown. */
   stats: string | null;
   /** Coordinate pick output to paste into a bug report. */
   pickOutput: string;
   onClearPicks: () => void;
-  calibrating: boolean;
-  onToggleCalibrate: () => void;
-  /** Calibration output (or the last error) to paste into map.json. */
-  calibrationOutput: string;
-  onClearCalibration: () => void;
 }
 
 const SCHEMES: { value: ColorSchemeName; label: string; title: string }[] = [
@@ -66,7 +61,7 @@ export function SettingsPanel(p: Props) {
   const palette: PlanPalette = { ...PLAN_PALETTES.paper, ...p.prefs.palette };
   return (
     <PanelBody>
-      <Section title="3D map">
+      <Section title="Map">
         <div className={s.choice}>
           <span>Style</span>
           <Segmented
@@ -98,12 +93,6 @@ export function SettingsPanel(p: Props) {
           hint="Up close, players are drawn from their skeleton instead of as dots"
           checked={p.prefs.bodies}
           onChange={toggle("bodies")}
-        />
-        <ToggleRow
-          label="Use the 2D map"
-          hint="Where a location has both a 2D and a 3D map"
-          checked={p.prefs.prefer2d}
-          onChange={toggle("prefer2d")}
         />
         <div className={s.choice}>
           <span>Projection</span>
@@ -176,7 +165,7 @@ export function SettingsPanel(p: Props) {
           </Button>
         </Actions>
       </Section>
-      <Section title="3D map colours">
+      <Section title="Map colours">
         <div className={s.choice}>
           <Segmented
             label="Colour scheme"
@@ -201,7 +190,7 @@ export function SettingsPanel(p: Props) {
           also lights the one-colour-per-kind view.
         </p>
       </Section>
-      {p.shown === "3d" && (
+      {p.mapShown && (
         <Section title="Map debugging">
           <ToggleRow
             label="Coordinate pick"
@@ -220,21 +209,6 @@ export function SettingsPanel(p: Props) {
               <textarea className={s.output} readOnly rows={12} value={p.pickOutput} />
             </>
           )}
-        </Section>
-      )}
-      {p.shown === "2d" && (
-        <Section title="Calibration">
-          <p className="muted">
-            Stand somewhere recognisable, then click that spot on the map. Repeat at 2–3 places far apart, and paste the
-            result into the map's <code>map.json</code>.
-          </p>
-          <Actions>
-            <Button variant="primary" pressed={p.calibrating} onClick={p.onToggleCalibrate}>
-              {p.calibrating ? "Stop calibrating" : "Calibrate this map"}
-            </Button>
-            {p.calibrating && <Button onClick={p.onClearCalibration}>Clear points</Button>}
-          </Actions>
-          {p.calibrating && <textarea className={s.output} readOnly rows={12} value={p.calibrationOutput} />}
         </Section>
       )}
     </PanelBody>

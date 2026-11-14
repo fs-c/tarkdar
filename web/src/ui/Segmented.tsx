@@ -13,8 +13,6 @@ interface Props<T> {
   /** The picked option. */
   value: T;
   onChange: (value: T) => void;
-  /** Another option to mark (e.g. what "auto" resolved to). */
-  marked?: T;
   /** Accessible name of the group. */
   label?: string;
   title?: string;
@@ -22,7 +20,7 @@ interface Props<T> {
 }
 
 /** A row of mutually exclusive options (a radio group). */
-export function Segmented<T>({ options, value, onChange, marked, label, title, className }: Props<T>) {
+export function Segmented<T>({ options, value, onChange, label, title, className }: Props<T>) {
   return (
     <div className={cx(s.segmented, className)} role="radiogroup" aria-label={label} title={title}>
       {options.map((o) => (
@@ -31,7 +29,6 @@ export function Segmented<T>({ options, value, onChange, marked, label, title, c
           type="button"
           role="radio"
           aria-checked={o.value === value}
-          data-marked={marked !== undefined && o.value === marked}
           className={s.option}
           title={o.title}
           onClick={() => onChange(o.value)}

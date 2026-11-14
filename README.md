@@ -35,9 +35,8 @@ marked `ignore = dirty`, so it doesn't show as modified.
 Large or copyrighted files are not in git. They live in a private asset store on
 the local network (plain files, moved by rclone) and are listed in `assets.json`
 by path and SHA-256: the il2cpp dump, the 3D maps
-(`maps/3d`, see `docs/maps3d.md`) and the cache they are built from
-(`tools/maps3d/cache`), the 2D map images and their `map.json` calibrations
-(`maps/2d`, except `maps/2d/demo`) and a couple of sample recordings. `scripts/assets.py` (stdlib
+(`maps/3d`, see `docs/maps3d.md`), the cache they are built from
+(`tools/maps3d/cache`) and a couple of sample recordings. `scripts/assets.py` (stdlib
 Python plus `rclone`, which `mise install` provides) manages them:
 
 ```sh

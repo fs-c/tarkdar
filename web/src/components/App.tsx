@@ -1,11 +1,10 @@
 import { Locate, LocateFixed, Navigation } from "lucide-react";
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { type ControlPoint, formatCalibration, worldToPixel } from "../calibration";
 import type { RadarState } from "../connection";
-import { isTyping, useAutoLayer, useCatalog, useConnection, useLayers, useLootPrefs, useMap2D, useMapIndex, useMapPrefs, usePersistentState, useTrailPrefs } from "../hooks";
+import { isTyping, useCatalog, useConnection, useLayers, useLootPrefs, useMapIndex, useMapPrefs, usePersistentState, useTrailPrefs } from "../hooks";
 import { describeEvent } from "../events";
 import type { MapStats } from "../map3d/Map3D";
-import { type LoadedMap, findMap, map3dUrl, selectLayer } from "../maps";
+import { findMap, mapUrl } from "../maps";
 import { type Highlight, type Match, allRows } from "../highlight/match";
 import { useHighlights } from "../highlight/useHighlights";
 import { isFiltered, rowKeys } from "../list/rows";
@@ -13,19 +12,16 @@ import { withoutGunners } from "../vehicles";
 import { useListPrefs, useListRows } from "../list/useListRows";
 import { type Selection, pick, selectedPosition, selectionKey } from "../pick";
 import { usePlayback } from "../playback";
-import { flatProjector } from "../projector";
 import type { RecordingInfo, WorldPos } from "../protocol";
 import { loadRecording } from "../recordings";
 import type { Timeline, TimelineEvent } from "../timeline";
-import { NO_MAP_TRANSFORM, type Scene } from "../render";
-import { View } from "../view";
+import type { Scene } from "../render";
 import { DetailsPanel } from "./DetailsPanel";
 import { Highlights } from "./Highlights";
 import { ListPanel } from "./ListPanel";
 import { MapPanel } from "./MapPanel";
 import { RaidsPanel } from "./RaidsPanel";
-import { RadarCanvas } from "./RadarCanvas";
-import type { Radar3DHandle } from "./Radar3D";
+import type { RadarHandle } from "./Radar";
 import { SettingsPanel } from "./SettingsPanel";
 import { StyleSwitch } from "./StyleSwitch";
 import { PlaybackBar } from "./PlaybackBar";
@@ -34,8 +30,8 @@ import s from "./App.module.css";
 import { StatusBar, StatusButton } from "./StatusBar";
 import { TimelinePanel } from "./TimelinePanel";
 
-// The 3D map brings the renderer (three.js) with it: only loaded when a raid's location has one.
-const Radar3D = lazy(() => import("./Radar3D").then((m) => ({ default: m.Radar3D })));
+// The radar brings the renderer (three.js) with it: loaded after the rest of the page.
+const Radar = lazy(() => import("./Radar").then((m) => ({ default: m.Radar })));
 
 const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
 
@@ -96,21 +92,18 @@ export function App() {
   const mapIndex = useMapIndex();
   const locationId = state.status?.state === "inRaid" ? state.status.locationId : null;
   const mapName = (id: string | null) => (id ? (findMap(mapIndex, id)?.config.name ?? id) : "unknown map");
-  // A location's 3D map (maps/3d) wins over its 2D one (maps/2d); with neither, a world grid.
+  // The location's map (maps/3d); without one, a grid of world coordinates.
   const [mapPrefs, setMapPrefs] = useMapPrefs();
-  const mapEntry = locationId ? findMap(mapIndex, locationId, mapPrefs.prefer2d) : undefined;
-  const map = useMap2D(mapEntry?.kind === "2d" ? mapEntry : null);
-  const map3d = mapEntry?.kind === "3d" ? mapEntry : null;
-  const radar3d = useRef<Radar3DHandle>(null);
+  const map = (locationId ? findMap(mapIndex, locationId) : undefined) ?? null;
+  const radar = useRef<RadarHandle>(null);
   const [layers, toggleLayer] = useLayers();
   const [follow, setFollow] = useState(true);
-  // While following on the 3D map: the map turns with the local player's view direction.
+  // While following: the map turns with the local player's view direction.
   const [followHeading, setFollowHeading] = useState(false);
-  const heading = follow && followHeading && !!map3d;
+  const heading = follow && followHeading;
   useEffect(() => {
     if (!follow) setFollowHeading(false);
   }, [follow]);
-  const [camera] = useState(() => Object.assign(new View(), { zoom: 0.75 }));
   const [hovered, setHovered] = useState<Selection | null>(null);
   const [listPrefs, setListPrefs] = useListPrefs();
   const list = useListRows(state, catalog, listPrefs.filters);
@@ -188,12 +181,7 @@ export function App() {
     };
   }, [state, filtered, list.rows, highlighted.colors]);
 
-  // Floor picked by hand, per map: a new map starts on auto.
-  const [floorPick, setFloorPick] = useState<{ map: LoadedMap | null; layer: number | null }>({ map: null, layer: null });
-  const manualLayer = floorPick.map === map ? floorPick.layer : null;
   const local = state.players.find((p) => p.local && p.pos);
-  const autoLayer = useAutoLayer(map, local?.pos?.[1] ?? null);
-  const layer = map ? (manualLayer ?? autoLayer ?? 0) : 0;
 
   // Ids restart every raid: a selection from another raid (or recording) would point at something else.
   const raid = `${review?.info.name ?? "live"}:${state.status?.state === "inRaid" ? state.raid : null}`;
@@ -201,7 +189,7 @@ export function App() {
   const selection = picked.raid === raid ? picked.sel : null;
   const select = (sel: Selection | null) => setPicked({ raid, sel });
 
-  /** Selects something and brings it into view: centred, on its floor (back to auto on ours). */
+  /** Selects something and brings it into view: centred. */
   const showOnMap = (sel: Selection) => {
     select(sel);
     centerOn(selectedPosition(sel, state));
@@ -219,54 +207,26 @@ export function App() {
   const centerOn = (pos: [number, number, number] | null) => {
     if (!pos) return;
     setFollow(false);
-    if (map3d) return radar3d.current?.centerOn(pos);
-    const [u, v] = worldToPixel(map?.transform ?? NO_MAP_TRANSFORM, pos[0], pos[2]);
-    camera.centerU = u;
-    camera.centerV = v;
-    if (map && map.config.layers.length > 1) {
-      const floor = selectLayer(map.config.layers, pos[1], null, map.config.layerHysteresis);
-      setFloorPick({ map, layer: floor === autoLayer ? null : floor });
-    }
+    radar.current?.centerOn(pos);
   };
 
-  // Calibration: stand somewhere recognisable in game, click that spot on the map image: the click's
-  // image pixel is paired with the local player's current world position. Two points give a
-  // similarity transform; three or more a least-squares affine fit. Paste the output into map.json.
-  const [calibrating, setCalibrating] = useState(false);
-  const [calibPoints, setCalibPoints] = useState<ControlPoint[]>([]);
-  const [calibError, setCalibError] = useState<string | null>(null);
-
-  const addCalibrationPoint = (x: number, y: number, view: View) => {
-    if (!map) return setCalibError("No map loaded for this location. Create its map folder first (see docs/maps.md).");
-    if (!local?.pos) return setCalibError("No local player position yet: be in a raid first.");
-    const [u, v] = view.toMap(x, y);
-    const point: ControlPoint = { world: [round(local.pos[0], 2), round(local.pos[2], 2)], pixel: [round(u, 1), round(v, 1)] };
-    setCalibPoints((pts) => [...pts, point]);
-    setCalibError(null);
-  };
-
-  const onTap = (x: number, y: number, view: View) => {
-    if (calibrating) addCalibrationPoint(x, y, view);
-    else select(pick(flatProjector(view, map?.transform ?? NO_MAP_TRANSFORM), shown, layers, x, y, highlighted.colors));
-  };
-
-  // 3D map debugging: with the coordinate pick on, a click that hits no marker records the world
+  // Map debugging: with the coordinate pick on, a click that hits no marker records the world
   // position of the map surface under it, to describe where something on the map is wrong.
   const [debugPicks, setDebugPicks] = useState<{ pos: WorldPos; mesh: string }[]>([]);
-  const onTap3d = (x: number, y: number) => {
-    const radar = radar3d.current;
-    if (!radar) return;
-    const hit = pick(radar.projector(), shown, layers, x, y, highlighted.colors);
-    const surface = !hit && mapPrefs.coordinatePick ? radar.pickSurface(x, y) : null;
+  const onTap = (x: number, y: number) => {
+    const r = radar.current;
+    if (!r) return;
+    const hit = pick(r.projector(), shown, layers, x, y, highlighted.colors);
+    const surface = !hit && mapPrefs.coordinatePick ? r.pickSurface(x, y) : null;
     if (surface) setDebugPicks((picks) => [...picks, surface]);
     else select(hit);
   };
   const pickOutput = () => {
     const r = (v: WorldPos) => v.map((c) => round(c, 2));
-    const pose = radar3d.current?.pose();
+    const pose = radar.current?.pose();
     return JSON.stringify(
       {
-        map: map3d?.folder ?? null,
+        map: map?.folder ?? null,
         camera: pose ? { position: r(pose.position), target: r(pose.target) } : null,
         points: debugPicks.map((p, i) => ({ n: i + 1, world: r(p.pos), mesh: p.mesh })),
       },
@@ -324,8 +284,6 @@ export function App() {
   };
 
   const scene: Scene = {
-    map,
-    layer,
     players: shown.players,
     catalog,
     exfils: shown.exfils,
@@ -338,15 +296,9 @@ export function App() {
     selected: selectedPosition(selection, state),
     hovered: listShown ? selectedPosition(hovered, state) : null,
     highlights: highlighted.colors,
-    calibrationPixels: calibPoints.map((p) => p.pixel),
-    debugPoints: map3d && mapPrefs.coordinatePick ? debugPicks.map((p) => p.pos) : [],
+    debugPoints: map && mapPrefs.coordinatePick ? debugPicks.map((p) => p.pos) : [],
     trails: trailScene(),
-    bodies: !!map3d && mapPrefs.bodies,
-  };
-
-  const toggleCalibrate = () => {
-    if (!calibrating) setFollow(false);
-    setCalibrating(!calibrating);
+    bodies: mapPrefs.bodies,
   };
 
   const panelBody = () => {
@@ -372,10 +324,6 @@ export function App() {
             onTrails={setTrailPrefs}
             loot={lootPrefs}
             onLoot={setLootPrefs}
-            floors={map?.config.layers.length ?? 0}
-            layer={layer}
-            manualLayer={manualLayer}
-            onPickFloor={(l) => setFloorPick({ map, layer: l })}
             layers={layers}
             onToggleLayer={toggleLayer}
           />
@@ -416,17 +364,10 @@ export function App() {
           <SettingsPanel
             prefs={mapPrefs}
             onPrefs={setMapPrefs}
-            shown={map3d ? "3d" : map ? "2d" : null}
-            stats={map3d ? mapStats : null}
+            mapShown={!!map}
+            stats={map ? mapStats : null}
             pickOutput={pickOutput()}
             onClearPicks={() => setDebugPicks([])}
-            calibrating={calibrating}
-            onToggleCalibrate={toggleCalibrate}
-            calibrationOutput={calibError ?? formatCalibration(calibPoints)}
-            onClearCalibration={() => {
-              setCalibPoints([]);
-              setCalibError(null);
-            }}
           />
         );
     }
@@ -444,7 +385,6 @@ export function App() {
             containers: list.rows.containers.length,
             exfils: list.rows.exfils.length,
             raids: !!review,
-            settings: calibrating,
           }}
         />
         {ui.open && (
@@ -452,25 +392,21 @@ export function App() {
             {panelBody()}
           </SidePanel>
         )}
-        <main className={s.main} data-style-switch={!!map3d} data-details={!!selection}>
-          {map3d ? (
-            <Suspense fallback={null}>
-              <Radar3D
-                ref={radar3d}
-                url={map3dUrl(map3d)}
-                scene={scene}
-                settings={mapPrefs}
-                follow={follow}
-                heading={heading}
-                onPan={() => setFollow(false)}
-                onTurn={() => setFollowHeading(false)}
-                onTap={onTap3d}
-                onStats={ui.open && ui.section === "settings" ? onMapStats : undefined}
-              />
-            </Suspense>
-          ) : (
-            <RadarCanvas view={camera} scene={scene} follow={follow} onPan={() => setFollow(false)} onTap={onTap} />
-          )}
+        <main className={s.main} data-style-switch={!!map} data-details={!!selection}>
+          <Suspense fallback={null}>
+            <Radar
+              ref={radar}
+              url={map ? mapUrl(map) : null}
+              scene={scene}
+              settings={mapPrefs}
+              follow={follow}
+              heading={heading}
+              onPan={() => setFollow(false)}
+              onTurn={() => setFollowHeading(false)}
+              onTap={onTap}
+              onStats={ui.open && ui.section === "settings" ? onMapStats : undefined}
+            />
+          </Suspense>
           {timeline && range && (
             <PlaybackBar
               range={range}
@@ -481,7 +417,7 @@ export function App() {
               onExitReplay={backToLive}
             />
           )}
-          {map3d && (
+          {map && (
             <StyleSwitch
               style={mapPrefs.style}
               palette={mapPrefs.palette}
@@ -489,8 +425,8 @@ export function App() {
               onChange={(style, palette) => setMapPrefs((p) => ({ ...p, style, palette }))}
             />
           )}
-          {/* Off: flies to the local player and follows. Following, on the 3D map: turns the map
-              with their view direction, or not. Moving the map by hand (or F) stops following. */}
+          {/* Off: flies to the local player and follows. Following: turns the map with their view
+              direction, or not. Moving the map by hand (or F) stops following. */}
           <button
             className={s.follow}
             aria-pressed={follow}
@@ -498,16 +434,13 @@ export function App() {
             title={
               !follow
                 ? "Follow the local player (F)"
-                : !map3d
-                  ? "Following you (F)"
-                  : heading
+                : heading
                     ? "Following your view direction: click for a fixed direction. Drag the map or press F to stop following."
                     : "Following you: click to follow your view direction too. Drag the map or press F to stop following."
             }
             onClick={() => {
               if (!follow) setFollow(true);
-              else if (map3d) setFollowHeading((h) => !h);
-              else setFollow(false);
+              else setFollowHeading((h) => !h);
             }}
           >
             {heading ? <Navigation size={20} /> : follow ? <LocateFixed size={20} /> : <Locate size={20} />}
@@ -534,9 +467,7 @@ export function App() {
       </div>
       <StatusBar
         state={state}
-        map={map3d ? { name: map3d.config.name, floors: 1 } : map ? { name: map.config.name, floors: map.config.layers.length } : null}
-        layer={layer}
-        manualLayer={manualLayer}
+        map={map?.config.name ?? null}
         catalog={catalogStatus}
         replay={review ? `${mapName(review.info.locationId)}${review.info.start ? ` · ${formatStart(review.info.start)}` : ""}` : null}
       >
@@ -548,11 +479,6 @@ export function App() {
         {filtered && (
           <StatusButton tone="link" title="The map shows filter matches only: open the list" onClick={() => setUi((u) => ({ ...u, open: true, section: "list" }))}>
             ● map filtered
-          </StatusButton>
-        )}
-        {calibrating && (
-          <StatusButton tone="warn" title="Open calibration settings" onClick={() => setUi((u) => ({ ...u, open: true, section: "settings" }))}>
-            ● calibrating · {calibPoints.length} {calibPoints.length === 1 ? "point" : "points"}
           </StatusButton>
         )}
       </StatusBar>

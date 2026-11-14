@@ -1,7 +1,7 @@
 // How things look, by what they are: the colours, sizes and emphasis of players, loot and exfils, in
-// one place. The map (2D, and the 3D map's marker overlay with its figures), trails and the list all
-// take their look from here. Highlights are drawn on top of this (render.ts), not part of it; when
-// things are shown at all (layers, zoom, labels) is another matter (render.ts, see docs).
+// one place. The map's markers (with their figures), trails and the list all take their look from
+// here. Highlights are drawn on top of this (render.ts), not part of it; when things are shown at
+// all (layers, zoom, labels) is another matter (render.ts, see docs).
 //
 // Players: each type has a colour and a prominence. The prominence decides everything else (size,
 // opacity, halo, label, draw order), so a type's look changes in one line of PLAYER_TYPES_LOOK.
@@ -13,13 +13,14 @@ import { ui } from "./theme";
 
 export const COLORS = {
   background: ui.bg,
+  /** The grid shown where there is no map. */
   grid: "#1f2a33",
-  gridLabel: "#4d5d6b",
   local: ui.accent,
   dead: "#6b6b6b",
   label: "#e8eef2",
   labelHalo: "rgba(8, 12, 16, 0.85)",
-  calibration: "#ff4fd8",
+  /** Points picked with the coordinate tool (map debugging). */
+  debug: "#ff4fd8",
   exfilOpen: ui.accent,
   exfilClosed: ui.danger,
   exfilPending: ui.warn,

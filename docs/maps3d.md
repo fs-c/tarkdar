@@ -379,7 +379,11 @@ mean nothing.
 7. **Category is per material slot**: about 5 % of renderers mix categories across submeshes.
    Submesh k uses material k; Unity repeats the last material.
 8. **Category ids are positions in `classify.CATEGORIES`**: append, never reorder.
-9. **Texture thumbnails are top row first**; terrain splat maps have row 0 at local z = 0.
+9. **Texture thumbnails are top row first**, the cached terrain splat maps too: their row 0 is the
+   terrain's far edge (local z = its size). The ground image built from them is turned over, so its
+   row 0 is at local z = 0. (Until 2026-11-14 it was not: every terrain slice had its ground mirrored
+   north-south, which showed as a hard edge where two slices meet, e.g. sea floor next to grass on
+   Shoreline.)
 10. **Visibility samples must be denser than the pixel grid** (0.7 × pixel) and cell-centred in
     the triangle, or holes in the depth buffer keep hidden geometry (never the reverse).
 11. **One BLAS thread per cell worker** (`hlod.bake` sets `OPENBLAS_NUM_THREADS=1`); otherwise the

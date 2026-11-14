@@ -156,8 +156,9 @@ def terrain_colors(splat_maps: list, layer_colors: list) -> np.ndarray | None:
     """Ground colour image of a terrain: its layers' mean colours blended by
     the splat (alpha) maps.
 
-    splat_maps: (H, W, 4) uint8 arrays; channel c of map k is the weight of
-    layer 4k + c. layer_colors: one (r, g, b) per layer (sRGB, 0..255) or None.
+    splat_maps: (H, W, 4) uint8 arrays as cached: top row first, which is the
+    terrain's far edge (local z = its size), like every decoded texture.
+    Channel c of map k is the weight of layer 4k + c. layer_colors: one (r, g, b) per layer (sRGB, 0..255) or None.
     Returns (H, W, 3) uint8, row 0 at the terrain's local z = 0, or None when
     there is nothing to blend.
     """
@@ -181,7 +182,7 @@ def terrain_colors(splat_maps: list, layer_colors: list) -> np.ndarray | None:
     out = np.empty_like(total)
     out[covered] = total[covered] / weight[covered, None]
     out[~covered] = total[covered].sum(axis=0) / weight[covered].sum()     # uncovered: the average ground
-    return np.clip(np.rint(out), 0, 255).astype(np.uint8)
+    return np.ascontiguousarray(np.clip(np.rint(out), 0, 255).astype(np.uint8)[::-1])
 
 
 CLIP_SLACK = 8.0     # metres a triangle may reach beyond the rectangle before it is cut

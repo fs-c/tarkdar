@@ -108,11 +108,12 @@ class TerrainColorTest(unittest.TestCase):
         colors = [[200, 0, 0, 255], [0, 100, 0], None, None, None, [10, 20, 30]]
         out = geometry.terrain_colors([a, b], colors)
         self.assertEqual(out.shape, (2, 2, 3))
-        np.testing.assert_array_equal(out[0, 0], [200, 0, 0])
-        np.testing.assert_array_equal(out[0, 1], [100, 50, 0])
-        np.testing.assert_array_equal(out[1, 0], [10, 20, 30])
+        # the splat maps are top row first, the result has row 0 at local z = 0: rows swap
+        np.testing.assert_array_equal(out[1, 0], [200, 0, 0])
+        np.testing.assert_array_equal(out[1, 1], [100, 50, 0])
+        np.testing.assert_array_equal(out[0, 0], [10, 20, 30])
         # uncovered pixels take the weighted average ground: (255*red + 100*red + 100*green + 40*c5) / 495
-        np.testing.assert_array_equal(out[1, 1], [144, 22, 2])
+        np.testing.assert_array_equal(out[0, 1], [144, 22, 2])
 
     def test_nothing_to_blend(self):
         empty = np.zeros((2, 2, 4), dtype=np.uint8)

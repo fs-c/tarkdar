@@ -16,7 +16,7 @@ import { type Scene, renderMarkers } from "../render";
 import { ui } from "../theme";
 import s from "./Radar.module.css";
 
-/** Turned less than this (radians) counts as north up. */
+/** Turned less than this (radians) from the map's usual orientation counts as not turned. */
 const NORTH_TOLERANCE = 0.01;
 
 export interface RadarHandle {
@@ -32,6 +32,11 @@ export interface RadarHandle {
 interface Props {
   /** Dataset folder URL (/maps/3d/<folder>); null: no map for this location, a grid. */
   url: string | null;
+  /**
+   * The map's usual orientation: the direction (degrees clockwise from north) at the top of the
+   * home view, e.g. 180 for maps commonly drawn south up (maps.ts, MapEntry). Default 0.
+   */
+  up?: number;
   scene: Scene;
   settings: MapSettings;
   /** Keep the local player centred. Turning it on flies there. */
@@ -71,7 +76,7 @@ const FOLLOW_SLACK = 4;
 const FLY_ZOOM_ABOVE = 600;
 
 
-export function Radar({ url, scene, settings, follow, heading, onPan, onTurn, onTap, onStats, ref }: Props) {
+export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, onTurn, onTap, onStats, ref }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const mapRef = useRef<Map3D | null>(null);
@@ -85,7 +90,7 @@ export function Radar({ url, scene, settings, follow, heading, onPan, onTurn, on
   const [interior, setInterior] = useState(false);
   const [pickedFloor, setPickedFloor] = useState<number | null>(null);
   const playerFloor = useRef<number | null>(null);
-  // Turned away from north: a button turns it back (its needle points north on screen).
+  // Turned away from the map's usual orientation: a button turns it back (its needle points north on screen).
   const [rotated, setRotated] = useState(false);
   const needleRef = useRef<SVGSVGElement>(null);
 
@@ -145,7 +150,8 @@ export function Radar({ url, scene, settings, follow, heading, onPan, onTurn, on
     map.onRender = () => {
       draw(); // same frame as the map, so markers never lag behind the camera
       const heading = map.heading();
-      const off = Math.abs(Math.atan2(Math.sin(heading), Math.cos(heading))) > NORTH_TOLERANCE;
+      const turned = heading - map.homeHeading();
+      const off = Math.abs(Math.atan2(Math.sin(turned), Math.cos(turned))) > NORTH_TOLERANCE;
       setRotated(off);
       if (needleRef.current) needleRef.current.style.transform = `rotate(${-heading}rad)`;
       latest.current.onStats?.(map.stats);
@@ -157,7 +163,7 @@ export function Radar({ url, scene, settings, follow, heading, onPan, onTurn, on
     setInterior(false);
     setPickedFloor(null);
     playerFloor.current = null;
-    map.load(url, (progress) => live && setStatus({ progress, error: null })).then(
+    map.load(url, (progress) => live && setStatus({ progress, error: null }), up).then(
       () => {
         if (!live) return;
         // Following someone: start close enough to read the surroundings, not on the whole map.
@@ -175,7 +181,7 @@ export function Radar({ url, scene, settings, follow, heading, onPan, onTurn, on
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- draw only reads refs
-  }, [url]);
+  }, [url, up]);
 
   useEffect(() => {
     if (status.progress === null) mapRef.current?.setSettings(settings);
@@ -316,12 +322,12 @@ export function Radar({ url, scene, settings, follow, heading, onPan, onTurn, on
       {rotated && (
         <button
           className={s.north}
-          title="Turn the map north up (stops following your view direction)"
+          title={`Turn the map ${up ? "back to its usual orientation" : "north up"} (stops following your view direction)`}
           onPointerDown={(e) => e.stopPropagation()}
           onPointerUp={(e) => e.stopPropagation()}
           onClick={() => {
             latest.current.onTurn();
-            mapRef.current?.turnTo(0);
+            mapRef.current?.turnTo(up);
           }}
         >
           <svg

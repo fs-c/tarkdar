@@ -18,6 +18,8 @@ describe("validEntry", () => {
   it("accepts a well-formed entry and rejects malformed ones", () => {
     const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(validEntry(good)).toBe(true);
+    expect(validEntry({ ...good, config: { ...good.config, up: 180 } })).toBe(true);
+    expect(validEntry({ ...good, config: { ...good.config, up: "180" } })).toBe(false);
     expect(validEntry({ ...good, config: { ids: ["bigmap"] } })).toBe(false);
     expect(validEntry({ ...good, config: { ...good.config, ids: "x" } })).toBe(false);
     expect(validEntry({ ...good, folder: undefined })).toBe(false);

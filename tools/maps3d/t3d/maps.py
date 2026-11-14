@@ -136,11 +136,12 @@ def _geometry_scenes(game: str, exclude: str | None = None):
 
 
 def _untuned(label: str, ids: list[str], folders: list[str], *, game: str | None = None,
-             indoor_optional: bool = True, exclude: str | None = None, interior: bool = False) -> dict:
+             indoor_optional: bool = True, exclude: str | None = None, interior: bool = False,
+             up: int = 0) -> dict:
     game = game or ids[0]
     return {"label": label, "tag": ids[0].upper(), "ids": ids, "indoorOptional": indoor_optional,
             "folders": folders, "game": game, "select": _geometry_scenes(game, exclude), "tuned": False,
-            "borders": True, "interior": interior}
+            "borders": True, "interior": interior, "up": up}
 
 
 # ids: the game's location ids this map is used for (matched case-insensitively
@@ -151,6 +152,9 @@ def _untuned(label: str, ids: list[str], folders: list[str], *, game: str | None
 # interior: the map is (mostly) indoors: the build keeps everything (no hidden-surface removal,
 #          indoor scenes included) and the viewer cuts the map open above the floor being
 #          looked at (web/src/map3d: Map3D.setCut).
+# up: the direction (degrees clockwise from north) at the top of the viewer's home view, to match
+#     the orientation common hand-drawn maps use (Woods and Shoreline are drawn south up). Default
+#     0, north up. Written to map.json.
 # borders: the map's *_LevelBorders scene (boxes around the playable area: the maps without
 #          heightmap terrain have one) says what the camera frames and where scenery begins.
 MAPS = {
@@ -163,8 +167,8 @@ MAPS = {
                 "interior": True},
     # Extracted, selection not tuned yet (`tuned: False`). Variants of a location (event, dark,
     # start) are their own presets until a build shows whether they differ from the main one.
-    "woods": _untuned("Woods", ["woods"], ["Woods"], indoor_optional=False),
-    "shoreline": _untuned("Shoreline", ["shoreline"], ["shorline"]),
+    "woods": _untuned("Woods", ["woods"], ["Woods"], indoor_optional=False, up=180),
+    "shoreline": _untuned("Shoreline", ["shoreline"], ["shorline"], up=180),
     "interchange": _untuned("Interchange", ["interchange"], ["Shopping_Mall"]),
     "reserve": _untuned("Reserve", ["RezervBase"], ["Reserve_Base"], indoor_optional=False),
     "lighthouse": _untuned("Lighthouse", ["Lighthouse"], ["Lighthouse"], indoor_optional=False),

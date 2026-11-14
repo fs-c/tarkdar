@@ -4,7 +4,15 @@
 /** A folder of maps/3d: a 3D dataset (map3d/dataset.ts). World coordinates are the game's. */
 export interface MapEntry {
   folder: string;
-  config: { name: string; ids: string[] };
+  config: {
+    name: string;
+    ids: string[];
+    /**
+     * The direction (degrees clockwise from north) at the top of the screen in the map's home
+     * view: 180 for maps that common hand-drawn maps show south up (Woods, Shoreline). Default 0.
+     */
+    up?: number;
+  };
 }
 
 export async function fetchMapIndex(): Promise<MapEntry[]> {
@@ -19,7 +27,8 @@ export function validEntry(e: unknown): e is MapEntry {
   const entry = e as Partial<MapEntry> | null;
   const c = entry?.config as Partial<MapEntry["config"]> | undefined;
   const ok =
-    typeof entry?.folder === "string" && !!c && typeof c.name === "string" && Array.isArray(c.ids) && c.ids.every((x) => typeof x === "string");
+    typeof entry?.folder === "string" && !!c && typeof c.name === "string" && Array.isArray(c.ids) && c.ids.every((x) => typeof x === "string") &&
+    (c.up === undefined || (typeof c.up === "number" && Number.isFinite(c.up)));
   if (!ok) console.warn(`maps: ignoring malformed map folder ${String(entry?.folder)}`, e);
   return ok;
 }

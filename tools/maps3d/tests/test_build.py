@@ -122,6 +122,7 @@ class SyntheticBuildTest(unittest.TestCase):
         self.assertEqual(build.map_config("customs", "Customs"), {"name": "Customs", "ids": ["bigmap"]})
         self.assertEqual(build.map_config("streets", "Streets")["ids"], ["TarkovStreets"])
         self.assertEqual(build.map_config("newmap", "New"), {"name": "New", "ids": ["newmap"]})
+        self.assertEqual(build.map_config("woods", "Woods"), {"name": "Woods", "ids": ["woods"], "up": 180})
 
     def test_identical_geometry_is_shared(self):
         a, b = named(quad_mesh(), "a"), named(quad_mesh(), "b")

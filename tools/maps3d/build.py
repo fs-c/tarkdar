@@ -358,7 +358,10 @@ def assemble(root: Path, map_name: str, profile: str, *, lod: int, terrain_step:
 def map_config(map_name: str, label: str) -> dict:
     """map.json of an overview folder: what the backend lists in /maps/index.json."""
     preset = MAPS.get(map_name, {})
-    return {"name": label, "ids": preset.get("ids", [map_name])}
+    config = {"name": label, "ids": preset.get("ids", [map_name])}
+    if preset.get("up"):
+        config["up"] = preset["up"]
+    return config
 
 
 def build(root: Path, map_name: str, out_dir: Path, profile: str, *, hlod_options: hlod.Options | None = None,

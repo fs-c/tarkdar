@@ -687,8 +687,11 @@ export class Stage {
     return this.radius / 2 / HALF_FOV_TAN;
   }
 
-  /** Top-down, north up (north is -z here: Unity's +z), framing the given bounds. */
-  frame(bounds: Bounds): void {
+  /**
+   * Top-down, framing the given bounds, with `heading` (radians clockwise from north) pointing up:
+   * the home view. 0 is north up (north is -z here: Unity's +z).
+   */
+  frame(bounds: Bounds, heading = 0): void {
     const center = new THREE.Vector3(
       (bounds.min[0] + bounds.max[0]) / 2,
       (bounds.min[1] + bounds.max[1]) / 2,
@@ -696,8 +699,13 @@ export class Stage {
     );
     this.radius = Math.max(bounds.max[0] - bounds.min[0], bounds.max[2] - bounds.min[2], 100);
     const distance = this.homeDistance;
-    // A hair off vertical: straight down has no "up", and this offset puts north at the top.
-    this.home = { position: new THREE.Vector3(center.x, center.y + distance, center.z + distance * 1e-4), target: center };
+    // A hair off vertical: straight down has no "up", and this offset puts `heading` at the top
+    // (the camera sits a little towards the opposite direction; see setHeading).
+    const lean = distance * 1e-4;
+    this.home = {
+      position: new THREE.Vector3(center.x - lean * Math.sin(heading), center.y + distance, center.z + lean * Math.cos(heading)),
+      target: center,
+    };
     this.controls.maxDistance = distance * MAX_SPAN_FACTOR;
     this.controls.minZoom = 1 / MAX_SPAN_FACTOR;
     this.controls.maxZoom = this.radius / MIN_SPAN;

@@ -397,6 +397,7 @@ export function App() {
             <Radar
               ref={radar}
               url={map ? mapUrl(map) : null}
+              up={map?.config.up}
               scene={scene}
               settings={mapPrefs}
               follow={follow}

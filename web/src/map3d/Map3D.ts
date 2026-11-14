@@ -103,6 +103,8 @@ export class Map3D {
   private readonly expectedTarget = new THREE.Vector3();
   /** The heading code left the camera at; a different one means the user turned the map. */
   private expectedHeading = 0;
+  /** Heading of the home view (radians clockwise from north). */
+  private up = 0;
   private byCode = false;
   private readonly turn = { goal: 0, active: false, time: 0 };
   private flight: { start: number; duration: number; from: THREE.Vector3; fromSpan: number; span: number | null; to: () => WorldPos | null } | null = null;
@@ -145,9 +147,14 @@ export class Map3D {
     this.requestRender();
   }
 
-  /** Loads a dataset folder (e.g. /maps/3d/customs), replacing the current map. null: no map, a grid. */
-  async load(base: string | null, onProgress?: (fraction: number) => void): Promise<void> {
+  /**
+   * Loads a dataset folder (e.g. /maps/3d/customs), replacing the current map. null: no map, a grid.
+   * `up`: the direction (degrees clockwise from north) at the top of the screen in the map's home
+   * view (resetView), e.g. 180 for maps commonly drawn south up.
+   */
+  async load(base: string | null, onProgress?: (fraction: number) => void, up = 0): Promise<void> {
     this.unload();
+    this.up = THREE.MathUtils.degToRad(up);
     if (base === null) return this.showGrid();
     const abort = (this.abort = new AbortController());
     const data = await loadMapData(base, onProgress, abort.signal);
@@ -191,7 +198,7 @@ export class Map3D {
   private start(stage: Stage, bounds: Bounds): void {
     this.stage = stage;
     this.resize();
-    stage.frame(bounds);
+    stage.frame(bounds, this.up);
     this.expectedTarget.copy(stage.controls.target);
     this.expectedHeading = stage.heading();
     // Only now: framing the map above also "changes" the camera, and that is not the user.
@@ -447,6 +454,11 @@ export class Map3D {
     return this.stage?.heading() ?? 0;
   }
 
+  /** Direction at the top of the home view (radians clockwise from north): the map's usual orientation. */
+  homeHeading(): number {
+    return this.stage ? this.up : 0;
+  }
+
   /**
    * Turns the view, smoothly, until `degrees` (clockwise from north, a player's yaw) points up.
    * Call it again whenever the direction changes: the view keeps following. Frames are rendered
@@ -519,7 +531,7 @@ export class Map3D {
     stage.move(motion.right * metres, motion.forward * metres); // "change": the user panned
   }
 
-  /** Back to the top-down, north-up view of the whole map. */
+  /** Back to the top-down home view of the whole map (north up, or the map's `up`). */
   resetView(): void {
     this.cancelFlight();
     this.own((stage) => stage.resetView());

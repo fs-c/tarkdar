@@ -14,7 +14,7 @@ players above the 3D terrain is 5 cm.
 
 ```
 maps/3d/<map>/            what the backend serves (build output, in the asset store, not in git)
-  map.json                name + location ids: makes the backend list the folder
+  map.json                name + location ids (+ `up`: home-view orientation): makes the backend list the folder
   index.json              dataset header
   chunk-0.t3d             geometry (compact: see "Dataset format")
   texture-N.png           terrain ground colour images
@@ -82,7 +82,9 @@ the count of each object type (`typeCounts`). Scenes do not reference NavMesh da
 - A location without a map shows a grid instead (`Map3D.load(null)`): lines every 50 m, stronger
   every 250 m, at height 0. Style, palette and the map debugging tools don't apply to it.
 - Drag moves the map, the wheel zooms, right-drag (two fingers) tilts and turns it, `0` resets to
-  top-down with north up, `+`/`-` zoom, `F` follows the local player.
+  top-down with north up (or the map's usual orientation: `up` in map.json, from `MAPS` in
+  `t3d/maps.py`; Woods and Shoreline are south up like the common hand-drawn maps; the compass
+  button turns back to it), `+`/`-` zoom, `F` follows the local player.
 - **Settings → Controls → WASD**: `W A S D` move along the ground (Shift: faster, speed follows the
   zoom), drag tilts and turns the camera, right-drag moves the map.
 - **Settings → Projection**: perspective (25° field of view) or orthographic (parallel: buildings

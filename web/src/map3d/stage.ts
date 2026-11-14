@@ -1,11 +1,16 @@
 // Renderer, camera, controls and the per-category materials of the 3D map. Nothing here renders
 // on its own: Map3D asks for a frame when something changed.
+//
+// A frame is drawn in one of two ways. Directly: the whole scene, as any 3D view. Or, when the
+// view is orthographic and straight down (the view during a raid), from tiles: a picture of the
+// map painted once and then only moved and turned (tiles.ts, and "Tiles" below).
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { Bounds } from "./dataset";
 import type { GroundMap } from "./dataset";
 import { COLOR_SCHEMES, type ColorGrade, PLAN_PALETTES, type PlanPalette } from "./settings";
+import { type FlatView, type Painter, snapShift, TileCache } from "./tiles";
 
 interface CategoryLook {
   color: number;
@@ -38,6 +43,20 @@ const MIN_SPAN = 6.6;
 /** Farthest zoom, in map sizes. */
 const MAX_SPAN_FACTOR = 2.5;
 
+// Tiles (tiles.ts).
+/** Tilted less than this (radians) the view counts as straight down: a 50 m tower leans by 10 cm. */
+const FLAT_TILT = 2e-3;
+/** After the zoom or the look of the map changed, tiles are painted once it has stayed the same for this long (ms). */
+const SETTLE = 120;
+/** A view that moves more than this many device pixels in a frame outruns the tiles: none are painted until it has been slower for CALM ms. */
+const FAST = 48;
+const CALM = 150;
+/** Tiles painted in a frame: within a frame that needs them to show the view, and between frames. */
+const PAINT_NOW = 2;
+const PAINT_AHEAD = 2;
+/** The direct rendering's own buffers are given back once frames have come from tiles for this long (ms). */
+const IDLE_TARGET = 3000;
+
 interface Uniforms {
   heights: { value: THREE.Vector2 };
   contours: { value: number };
@@ -56,6 +75,8 @@ interface Uniforms {
   floor: { value: number };
   /** PALETTE_KEYS colours, sRGB. */
   palette: { value: THREE.Vector3[] };
+  /** Texels per device pixel: more than 1 while a tile is painted larger than it is shown. */
+  texels: { value: number };
 }
 
 /** What a surface is in the plan style. */
@@ -101,8 +122,9 @@ const RELIEF = `
   diffuseColor.rgb *= mix(vec3(1.0), mix(vec3(0.78, 0.86, 0.84), vec3(1.16, 1.12, 0.98), level), relief);
   diffuseColor.rgb *= mix(1.0, mix(0.62, 1.0, smoothstep(0.75, 0.99, vMapUp)), relief);
   float c = vMapWorld.y / ${CONTOUR_INTERVAL.toFixed(1)};
-  float wMinor = fwidth(c);
-  float wMajor = fwidth(c / 5.0);
+  // Per device pixel, so the lines are as wide in a tile painted larger than it is shown.
+  float wMinor = fwidth(c) * uTexels;
+  float wMajor = fwidth(c / 5.0) * uTexels;
   float minor = 1.0 - smoothstep(0.0, 1.2, abs(fract(c - 0.5) - 0.5) / wMinor);
   float major = 1.0 - smoothstep(0.0, 1.6, abs(fract(c / 5.0 - 0.5) - 0.5) / wMajor);
   // No lines on nearly level ground (height noise would speckle it), and lines fade out
@@ -213,6 +235,7 @@ function customize(material: THREE.MeshStandardMaterial, uniforms: Uniforms, opt
     shader.uniforms.uGroundRect = uniforms.groundRect;
     shader.uniforms.uBuilding = uniforms.building;
     shader.uniforms.uPalette = uniforms.palette;
+    shader.uniforms.uTexels = uniforms.texels;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nvarying vec3 vMapWorld;\nvarying float vMapUp;")
       .replace(
@@ -226,7 +249,7 @@ function customize(material: THREE.MeshStandardMaterial, uniforms: Uniforms, opt
         vMapUp = normal.y;`,
       );
     const pars =
-      "\nvarying vec3 vMapWorld;\nvarying float vMapUp;\nuniform vec2 uHeights;\nuniform float uContours;\nuniform float uCut;" +
+      "\nvarying vec3 vMapWorld;\nvarying float vMapUp;\nuniform vec2 uHeights;\nuniform float uContours;\nuniform float uCut;\nuniform float uTexels;" +
       GRADE_PARS +
       PLAN_PARS;
     const steps =
@@ -254,7 +277,9 @@ function customize(material: THREE.MeshStandardMaterial, uniforms: Uniforms, opt
 // wherever the surface steps towards or away from the viewer by more than a few decimetres (a
 // roof edge against the street, a wall, a car), darker the higher the step. Depth-buffer values
 // of a plane are linear across the screen in both projections, so their second difference is
-// zero on any flat surface however it is tilted, and is the step in depth at an edge.
+// zero on any flat surface however it is tilted, and is the step in depth at an edge. The
+// difference is taken across one device pixel (uTexel), which is several texels when a tile is
+// painted larger than it is shown: the lines are as wide there, with soft edges.
 const OUTLINE_VERTEX = `
 varying vec2 vUv;
 void main() {
@@ -265,6 +290,7 @@ void main() {
 const OUTLINE_FRAGMENT = `
 uniform sampler2D tColor;
 uniform sampler2D tDepth;
+/** A device pixel in texture coordinates. */
 uniform vec2 uTexel;
 /** near, far, 1 = orthographic. */
 uniform vec3 uClip;
@@ -292,6 +318,16 @@ void main() {
   float edge = smoothstep(0.1 + 0.4 * pixel, 0.3 + 0.8 * pixel, metres) * mix(0.25, 0.8, smoothstep(0.4, 4.0, metres));
   gl_FragColor = vec4(mix(d >= 1.0 ? uBackground : color.rgb, uLine, edge), 1.0);
   #include <colorspace_fragment>
+}`;
+
+// A tile of the realistic style is painted as the screen would be (tone mapped, sRGB values):
+// this copies it into the tile's texture, which holds linear colours.
+const COPY_FRAGMENT = `
+uniform sampler2D tColor;
+varying vec2 vUv;
+void main() {
+  vec3 c = texture2D(tColor, vUv).rgb;
+  gl_FragColor = vec4(mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)), 1.0);
 }`;
 
 const PLAN_KINDS: Record<string, PlanKind | undefined> = {
@@ -349,12 +385,41 @@ export class Stage {
     groundRect: { value: new THREE.Vector3(0, 0, 1) },
     building: { value: buildingTexture(new Uint8Array([255]), 1, 1) },
     palette: { value: PALETTE_KEYS.map(() => new THREE.Vector3()) },
+    texels: { value: 1 },
   };
+  /** The plan style is not lit: without lights its shaders skip the lighting altogether. */
+  private readonly lights: THREE.Light[];
   /** The plan style's outlines: the map is rendered into `target`, `outline` draws it to the screen. */
   private target: THREE.WebGLRenderTarget | null = null;
   private readonly outline: THREE.ShaderMaterial;
+  private readonly copy: THREE.ShaderMaterial;
+  private readonly quad: THREE.Mesh;
   private readonly outlineScene = new THREE.Scene();
   private readonly outlineCamera = new THREE.Camera();
+
+  // ---- Tiles ----------------------------------------------------------------------------------
+  // A flat view (orthographic, straight down) is drawn from tiles whenever every tile in view is
+  // painted, and directly otherwise: so a frame never waits for tiles, and nothing is painted
+  // that would be thrown away (while zooming, while a colour is being dragged, in a fast pan).
+  // Tiles are painted a few per frame: by `render` when only a few are missing, otherwise by
+  // `paintTiles`, which Map3D calls on animation frames while `tilesPending`.
+  /** Off: every frame is drawn directly (measurements, comparisons). */
+  tileCache = true;
+  /** The last frame came from tiles. */
+  fromTiles = false;
+  private tiles: TileCache | null = null;
+  /** The view of the last frame if it was flat. */
+  private flat: FlatView | null = null;
+  /** Counts changes to what the map looks like: tiles painted before are stale. */
+  private content = 0;
+  /** No tile is painted before this time. */
+  private hold = 0;
+  private lastDirect = 0;
+  /** What a tile's scene is rendered into before it is finished into the tile; one per style. */
+  private tileScene: { plan: boolean; target: THREE.WebGLRenderTarget } | null = null;
+  private extent: Bounds = { min: [-Infinity, 0, -Infinity], max: [Infinity, 0, Infinity] };
+  private wireframe = false;
+
   private disposed = false;
   private home = { position: new THREE.Vector3(0, 1000, 1), target: new THREE.Vector3() };
 
@@ -381,13 +446,13 @@ export class Stage {
     this.controls.zoomSpeed = 1.6;
     this.setControlScheme("map");
 
-    this.scene.add(new THREE.HemisphereLight(0xf4f7fb, 0x3a4650, 1.55));
+    const sky = new THREE.HemisphereLight(0xf4f7fb, 0x3a4650, 1.55);
     const key = new THREE.DirectionalLight(0xfff3df, 2.25);
     key.position.set(0.75, 1.4, 0.55).multiplyScalar(1000);
-    this.scene.add(key);
     const fill = new THREE.DirectionalLight(0xbcd2e8, 0.65);
     fill.position.set(-0.8, 0.6, -0.7).multiplyScalar(1000);
-    this.scene.add(fill);
+    this.lights = [sky, key, fill];
+    this.scene.add(...this.lights);
 
     this.looks = categories.map((name) => LOOKS[name] ?? FALLBACK_LOOK);
     const material = (look: CategoryLook, colored: boolean, flatShading: boolean) =>
@@ -445,10 +510,29 @@ export class Stage {
       depthTest: false,
       depthWrite: false,
     });
-    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.outline);
-    quad.frustumCulled = false;
-    this.outlineScene.add(quad);
+    this.copy = new THREE.ShaderMaterial({
+      uniforms: { tColor: { value: null } },
+      vertexShader: OUTLINE_VERTEX,
+      fragmentShader: COPY_FRAGMENT,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.outline);
+    this.quad.frustumCulled = false;
+    this.outlineScene.add(this.quad);
     this.setPalette(PLAN_PALETTES.paper);
+  }
+
+  /** What the map looks like changed in a way this class cannot see (what is drawn, what is hidden). */
+  invalidate(): void {
+    this.content++;
+  }
+
+  /** The area (x and z) outside of which there is no map. */
+  setExtent(bounds: Bounds): void {
+    this.extent = bounds;
+    this.tiles?.dispose();
+    this.tiles = null;
   }
 
   material(category: number, colored: boolean, flat: boolean): THREE.MeshStandardMaterial {
@@ -466,6 +550,7 @@ export class Stage {
       m.vertexColors = on;
       m.needsUpdate = true;
     }
+    this.content++;
   }
 
   /** Material for a mesh with a draped colour image (terrain ground colour), graded like every other colour. */
@@ -485,6 +570,7 @@ export class Stage {
         texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
         target.map = texture;
         target.needsUpdate = true;
+        this.content++;
         this.onAssetLoaded();
       });
     }
@@ -493,10 +579,12 @@ export class Stage {
 
   setTerrainHeights(min: number, max: number): void {
     this.uniforms.heights.value.set(min, max);
+    this.content++;
   }
 
   setContours(on: boolean): void {
     this.uniforms.contours.value = on ? 1 : 0;
+    this.content++;
   }
 
   /** The ground heights the plan style measures structure against; null: everything counts as tall. */
@@ -510,6 +598,7 @@ export class Stage {
     this.uniforms.building.value = ground
       ? buildingTexture(ground.building, ground.columns, ground.rows)
       : buildingTexture(new Uint8Array([255]), 1, 1);
+    this.content++;
   }
 
   /**
@@ -519,6 +608,7 @@ export class Stage {
   setFloor(floor: number | null): void {
     this.uniforms.cut.value = floor === null ? NO_CUT : floor + CUT_ABOVE_FLOOR;
     this.uniforms.floor.value = floor === null ? -NO_CUT : floor;
+    this.content++;
   }
 
   /** The height above which nothing is drawn; Infinity without a cut. */
@@ -529,6 +619,8 @@ export class Stage {
   /** Plan style: flat colours by kind and height, with outlines. Otherwise the material colours. */
   setPlan(on: boolean): void {
     this.uniforms.plan.value = on ? 1 : 0;
+    for (const light of this.lights) light.visible = !on;
+    this.content++;
   }
 
   setPalette(palette: PlanPalette): void {
@@ -537,15 +629,19 @@ export class Stage {
       this.uniforms.palette.value[i]!.set((c >> 16) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255);
     });
     this.outline.uniforms.uLine!.value.set(palette.outline);
+    this.content++;
   }
 
   setWireframe(on: boolean): void {
     for (const m of [...this.materials.flat(2), ...this.textured.values()]) m.wireframe = on;
+    this.wireframe = on;
+    this.content++;
   }
 
   setGrade(grade: ColorGrade): void {
     this.renderer.toneMappingExposure = grade.exposure;
     this.uniforms.grade.value.set(grade.lift, grade.contrast, grade.saturation, grade.groundSaturation);
+    this.content++;
   }
 
   /**
@@ -690,34 +786,177 @@ export class Stage {
     }
   }
 
+  /** The view as tiles see it, or null if it is not one tiles can show. */
+  private flatView(): FlatView | null {
+    const camera = this.orthographic;
+    // A wireframe is lines one texel wide: not something to paint larger and filter down.
+    if (!this.tileCache || this.camera !== camera || this.wireframe || this.controls.getPolarAngle() > FLAT_TILT) return null;
+    camera.updateMatrixWorld();
+    const m = camera.matrixWorld.elements;
+    const right = Math.hypot(m[0]!, m[2]!), up = Math.hypot(m[4]!, m[6]!);
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const t = this.controls.target;
+    return {
+      x: t.x,
+      y: t.y,
+      z: t.z,
+      right: [m[0]! / right, m[2]! / right],
+      up: [m[4]! / up, m[6]! / up],
+      pixel: (camera.top - camera.bottom) / camera.zoom / size.y,
+      width: size.x,
+      height: size.y,
+      eye: camera.position.y,
+      near: camera.near,
+      far: camera.far,
+    };
+  }
+
   render(): void {
     this.updateClipPlanes();
-    if (this.uniforms.plan.value === 0) {
-      this.renderer.render(this.scene, this.camera);
+    const view = this.flatView();
+    const before = this.flat;
+    this.flat = view;
+    this.fromTiles = false;
+    if (!view) {
+      this.tiles?.clear();
+      this.renderDirect(null);
       return;
     }
-    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const now = performance.now();
+    const tiles = (this.tiles ??= new TileCache(this.paint, this.scene.background as THREE.Color, this.extent));
+    if (!tiles.look(view, this.content)) this.hold = now + SETTLE;
+    if (before && Math.hypot(view.x - before.x, view.z - before.z) > FAST * view.pixel) this.hold = Math.max(this.hold, now + CALM);
+    // A tile or two short (the view turned, or moved faster than tiles were painted ahead).
+    if (now >= this.hold && tiles.missingInView <= PAINT_NOW) tiles.paint(tiles.missingInView);
+    if (!tiles.ready) {
+      this.renderDirect(snapShift(view));
+      return;
+    }
+    tiles.draw(this.renderer, this.camera);
+    this.fromTiles = true;
+    if (this.target && now - this.lastDirect > IDLE_TARGET) {
+      this.target.depthTexture?.dispose();
+      this.target.dispose();
+      this.target = null;
+    }
+  }
+
+  /** Tiles that the last frame's view needs are not painted yet: `paintTiles` has work to do. */
+  get tilesPending(): boolean {
+    return this.flat !== null && this.tiles !== null && this.tiles.pending > 0;
+  }
+
+  /**
+   * Paints a few of the tiles the last frame's view needs. Returns true when that completed the
+   * view and the frame on screen was drawn directly: another frame shows it from the tiles.
+   */
+  paintTiles(): boolean {
+    const tiles = this.tiles;
+    if (!tiles || !this.flat || performance.now() < this.hold) return false;
+    const incomplete = !tiles.ready;
+    tiles.paint(PAINT_AHEAD);
+    return incomplete && tiles.ready && !this.fromTiles;
+  }
+
+  /** One tile: the scene from the tile's camera, then finished as a frame on screen would be. */
+  private readonly paint: Painter = (camera, into, scale, pixel) => {
+    const plan = this.uniforms.plan.value === 1;
+    if (this.tileScene && this.tileScene.plan !== plan) {
+      this.tileScene.target.depthTexture?.dispose();
+      this.tileScene.target.dispose();
+      this.tileScene = null;
+    }
+    if (!this.tileScene) {
+      let target: THREE.WebGLRenderTarget;
+      if (plan) {
+        target = this.sceneTarget(into.width, into.height);
+      } else {
+        // Rendered as the screen is: tone mapped, sRGB values, blended and resolved as such. That
+        // is what three.js does for a target marked like this. The values are stored as they are
+        // (RGBA8, in the multisampled buffer as well: the two have to match to be resolved).
+        target = new THREE.WebGLRenderTarget(into.width, into.height, { samples: 4, colorSpace: THREE.SRGBColorSpace, internalFormat: "RGBA8" });
+        (target as THREE.WebGLRenderTarget & { isXRRenderTarget: boolean }).isXRRenderTarget = true;
+      }
+      this.tileScene = { plan, target };
+    }
+    const { target } = this.tileScene;
+    this.uniforms.texels.value = scale;
+    this.renderer.setRenderTarget(target);
+    this.renderer.render(this.scene, camera);
+    this.uniforms.texels.value = 1;
+    if (plan) {
+      this.finish(target, into, camera, pixel, scale);
+    } else {
+      this.copy.uniforms.tColor!.value = target.texture;
+      this.quad.material = this.copy;
+      this.renderer.setRenderTarget(into);
+      this.renderer.render(this.outlineScene, this.outlineCamera);
+      this.renderer.setRenderTarget(null);
+    }
+  };
+
+  /** What the plan style's scene is rendered into: linear colours and the depth the outlines are found in. */
+  private sceneTarget(width: number, height: number): THREE.WebGLRenderTarget {
     // Half floats: linear colours in 8 bits would band in the dark palettes.
-    this.target ??= new THREE.WebGLRenderTarget(size.x, size.y, {
+    return new THREE.WebGLRenderTarget(width, height, {
       type: THREE.HalfFloatType,
       samples: 4,
-      depthTexture: new THREE.DepthTexture(size.x, size.y, THREE.UnsignedIntType),
+      depthTexture: new THREE.DepthTexture(width, height, THREE.UnsignedIntType),
     });
-    this.renderer.setRenderTarget(this.target);
-    this.renderer.render(this.scene, this.camera);
-    this.renderer.setRenderTarget(null);
+  }
+
+  /**
+   * The plan style's second pass: `source` with outlines, onto the screen (null) or into a tile.
+   * `pixel`: metres across a device pixel (at depth 1 in perspective); `texels`: texels of
+   * `source` across a device pixel.
+   */
+  private finish(
+    source: THREE.WebGLRenderTarget,
+    into: THREE.WebGLRenderTarget | null,
+    camera: THREE.PerspectiveCamera | THREE.OrthographicCamera,
+    pixel: number,
+    texels: number,
+  ): void {
     const u = this.outline.uniforms;
-    u.tColor!.value = this.target.texture;
-    u.tDepth!.value = this.target.depthTexture;
-    u.uTexel!.value.set(1 / size.x, 1 / size.y);
-    const parallel = this.camera === this.orthographic;
-    u.uClip!.value.set(this.camera.near, this.camera.far, parallel ? 1 : 0);
-    u.uPixel!.value = (parallel ? this.radius / this.orthographic.zoom : 2 * Math.tan(THREE.MathUtils.degToRad(this.perspective.fov / 2))) / size.y;
-    // The statistics are the map's, not the outline pass's.
-    const { calls, triangles } = this.renderer.info.render;
+    u.tColor!.value = source.texture;
+    u.tDepth!.value = source.depthTexture;
+    u.uTexel!.value.set(texels / source.width, texels / source.height);
+    u.uClip!.value.set(camera.near, camera.far, camera === this.perspective ? 0 : 1);
+    u.uPixel!.value = pixel;
+    this.quad.material = this.outline;
+    this.renderer.setRenderTarget(into);
     this.renderer.render(this.outlineScene, this.outlineCamera);
-    this.renderer.info.render.calls = calls;
-    this.renderer.info.render.triangles = triangles;
+    this.renderer.setRenderTarget(null);
+  }
+
+  /**
+   * The whole scene, as it is. `shift` (metres along x and z) moves the picture: a flat view is
+   * put on the pixel grid the tiles are on, so that it does not jump when tiles take over.
+   */
+  private renderDirect(shift: [number, number] | null): void {
+    const camera = this.camera;
+    const { x, z } = camera.position;
+    if (shift) camera.position.set(x - shift[0], camera.position.y, z - shift[1]);
+    this.lastDirect = performance.now();
+    if (this.uniforms.plan.value === 0) {
+      this.renderer.render(this.scene, camera);
+    } else {
+      const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+      this.target ??= this.sceneTarget(size.x, size.y);
+      this.renderer.setRenderTarget(this.target);
+      this.renderer.render(this.scene, camera);
+      const parallel = camera === this.orthographic;
+      const pixel = (parallel ? this.radius / this.orthographic.zoom : 2 * Math.tan(THREE.MathUtils.degToRad(this.perspective.fov / 2))) / size.y;
+      // The statistics are the map's, not the outline pass's.
+      const { calls, triangles } = this.renderer.info.render;
+      this.finish(this.target, null, camera, pixel, 1);
+      this.renderer.info.render.calls = calls;
+      this.renderer.info.render.triangles = triangles;
+    }
+    if (shift) {
+      camera.position.set(x, camera.position.y, z);
+      camera.updateMatrixWorld();
+    }
   }
 
   dispose(): void {
@@ -731,7 +970,11 @@ export class Stage {
     this.uniforms.building.value.dispose();
     this.target?.depthTexture?.dispose();
     this.target?.dispose();
+    this.tiles?.dispose();
+    this.tileScene?.target.depthTexture?.dispose();
+    this.tileScene?.target.dispose();
     this.outline.dispose();
+    this.copy.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

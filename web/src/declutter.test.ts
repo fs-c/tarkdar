@@ -34,7 +34,7 @@ const exfil: Exfil = { id: 1, kind: "regular", name: "Gate", status: 4, pos: [0,
 function draw(zoom: number, patch: Partial<Scene>) {
   const view = Object.assign(new View(), { width: 200, height: 200, zoom });
   const scene: Scene = {
-    map: null, layer: 0, players: [], catalog, exfils: [], explosives: { grenades: [], tripwires: [] }, loot: [],
+    map: null, layer: 0, players: [], catalog, exfils: [], explosives: { grenades: [], tripwires: [] }, vehicles: [], loot: [],
     layers: { loot: true, containers: true, exfils: true, explosives: true }, minLabelPrice: 0, lootDensity: "all",
     selected: null, hovered: null, highlights: new Map(), calibrationPixels: [], debugPoints: [], trails: null, bodies: false,
     ...patch,

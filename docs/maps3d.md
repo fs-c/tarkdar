@@ -25,8 +25,8 @@ tools/maps3d/             the pipeline (Python) and the measurement harness
                           classify.py, geometry.py, hlod.py (cells), visibility.py, dataset.py, maps.py
   tests/                  unittest
   cache/                  extraction cache (0.7 GB, in the asset store, not in git)
-  harness/                screenshots + image metrics against a full-detail reference
-web/src/map3d/            the renderer (three.js): container, dataset, Map3D, stage, instances, color
+  harness/                screenshots + image metrics against a full-detail reference; frame times
+web/src/map3d/            the renderer (three.js): container, dataset, Map3D, stage, tiles, instances, color
 web/src/components/Radar3D.tsx   the map plus the marker overlay
 ```
 
@@ -106,6 +106,9 @@ the count of each object type (`typeCounts`). Scenes do not reference NavMesh da
 - **The map is rendered only when its camera or a setting changes.** Marker updates redraw the
   overlay only; while following, the map is re-rendered at most 30 times a second. A still camera
   costs the GPU nothing, which matters when the radar runs next to the game.
+- **Orthographic and straight down** (the view during a raid) **is drawn from tiles**: a frame
+  costs a twentieth of any other view's, and edges and outlines are smooth. See "The top-down
+  view" below.
 - **Settings → 3D map**: material colours, trees, contour lines. **Map debugging**: coordinate pick
   (click the map: world position, the mesh under the cursor and the camera, as JSON to paste into
   a bug report), wireframe, render statistics.
@@ -197,7 +200,9 @@ bare ground are the same grey-beige. The plan style gets there from geometry alo
   pre-made ones (Paper, Atlas, Mono, and the dark Night, Midnight, Blueprint), and every colour
   can be changed, which makes it a custom palette, stored with the other settings. The plan style
   is neither lit nor tone mapped: a level surface has exactly the palette's colour, walls are a
-  little darker (`planShade`). The colour grade and exposure do not apply to it.
+  little darker (`planShade`). The colour grade and exposure do not apply to it. The lights are
+  switched off while it is shown (`Stage.setPlan`), so its shaders have no lighting in them: that
+  was 40 % of a frame.
 - **Terrain** has two flat colours, grass or bare ground, decided by the hue of the ground image,
   and only a hint of the relief shading. **Water** is one blue.
 - **Outlines** come from the depth buffer after the map is drawn: a line where the surface steps
@@ -220,6 +225,57 @@ bare ground are the same grey-beige. The plan style gets there from geometry alo
 It is single-valued: under a bridge the ground is the deck. Roofs one can walk onto from a slope
 count as ground. A dataset without a ground map (built before this) shows all structure as
 building in the plan style.
+
+## The top-down view
+
+With an orthographic camera looking straight down, moving and turning the camera only moves and
+turns the picture. So the picture is kept (`web/src/map3d/tiles.ts`, and "Tiles" in `stage.ts`):
+
+- **Tiles** are squares on a grid fixed to the world, 1024 texels each, painted once: the scene
+  from a camera over the tile, then finished as a frame on screen would be (the plan style's
+  outlines; tone mapping and sRGB for the realistic style). A frame is then one textured square
+  per tile in view, about 20 of them.
+- **They are painted at twice the size they are shown at** (two texels per device pixel in each
+  direction, on top of 4× multisampling) and filtered down when drawn. That is the antialiasing,
+  and it reaches what multisampling cannot: the outlines, which are found in the depth buffer,
+  and the colour steps of the plan style. The outline pass looks one device pixel to each side
+  (two texels), so lines are as wide as drawn directly; contour lines likewise (`uTexels`).
+  A view whose tiles would take more than 200 MB (larger than 3440 × 1440) is painted at one
+  texel per pixel: the same picture as drawn directly, but still only once.
+- **Texels fall on screen pixels** while north (or east, south, west) is up: the picture is moved
+  by up to half a pixel (`snapShift`). One bilinear tap per pixel is then exactly the mean of
+  its four texels, and the map moves in whole pixels: edges do not crawl while following. Turned
+  to any other angle the tiles are resampled.
+- **A tile is good for one zoom and one look** (style, palette, colours, floor, trees…). When
+  either changes, all tiles go; new ones are painted once it has stayed the same for 120 ms, so
+  nothing is painted for a zoom step that the next one replaces.
+- **A frame never waits for tiles.** If a tile in view is missing, the frame is drawn directly,
+  as any other view is (on the same pixel grid, so nothing jumps when the tiles take over).
+  Tiles are painted two per animation frame until the view has them, including a margin of 160
+  pixels around it: following a player, a new row of tiles is painted every 20 seconds or so,
+  before it is needed. Zooming and tilting are drawn directly.
+- Tilted by more than a tenth of a degree, in perspective, or in wireframe there are no tiles.
+  `0` goes back to straight down.
+
+On the machine this was built on (Radeon 610M integrated graphics, 1920 × 1080; `bench.mjs` in
+the harness), per frame while following a player, before and after:
+
+| | Customs | Streets |
+|---|---:|---:|
+| realistic, before | 19 to 25 ms | 14 to 19 ms |
+| plan, before (lit) | 25 to 31 ms | 21 to 27 ms |
+| plan, drawn directly now (unlit) | 15 to 18 ms | 13 to 17 ms |
+| either style, from tiles | 1.0 ms | 1.0 ms |
+| painting the tiles of a view, once per zoom | 120 to 170 ms | 110 to 140 ms |
+
+A frame is bound by pixels, not triangles, on such a GPU (2560 × 1440 took 38 to 46 ms), and an
+empty frame takes 1 ms there: the tiles are at the floor. Drawing the markers takes 0.4 ms of
+script per frame.
+
+What it costs: up to 200 MB of GPU memory for the tiles of a view at two texels per pixel
+(up to 100 MB at 1920 × 1080, 150 MB at 2560 × 1440) and 40 to 65 MB for the buffers a tile is
+painted in (the plan style's are the larger: half floats and a depth texture).
+The buffers of the direct rendering are given back after three seconds of frames from tiles.
 
 ## Dataset format
 
@@ -299,7 +355,10 @@ roads and tree markers, which the reference captures do not have: 0.912 and 0.94
 rendered side by side the two differ by SSIM 0.997, which is z-fighting speckle that falls
 differently.
 
-Frame rates were never measured on a GPU by the harness (the development container has none).
+Frame times are measured by `harness/bench.mjs` (`node bench.mjs --data customs --settings
+'{"style":"plan","orthographic":true}'`, `--no-tiles` for the direct rendering): see "The
+top-down view" for the numbers. It prints the GPU it ran on; without one (SwiftShader) the times
+mean nothing.
 
 ## Things that are easy to get wrong
 
@@ -342,8 +401,27 @@ Frame rates were never measured on a GPU by the harness (the development contain
 15. **The harness measures the realistic style.** `capture.mjs` renders the scene directly, without
     the outline pass; `shot.mjs` goes through `Map3D` and shows what the radar shows.
 16. **Plan colours reach the shader as sRGB values** (not `THREE.Color`, which would convert):
-    the plan formulas mix in sRGB. The standard material's lighting still runs and is then
-    overwritten at the end of the fragment shader.
+    the plan formulas mix in sRGB. The standard material's lighting code is still there and its
+    result is overwritten at the end of the fragment shader; with the lights off (`setPlan`) it
+    does nothing.
+
+28. **Whatever changes what the map looks like has to tell the tiles**: the setters of `Stage`
+    count it (`content`); a change made from outside (what is drawn, a group hidden) calls
+    `Stage.invalidate()`. Forgetting it shows as a top-down view that does not change until the
+    next zoom.
+29. **Anything in a shader that is measured in pixels** (line widths, `fwidth`, the outline's
+    neighbours) is in texels while a tile is painted, two per pixel: multiply by `uTexels`, or
+    lines come out half as wide in the top-down view as in a tilted one.
+30. **A tile of the realistic style is rendered as the screen is** (tone mapped sRGB values in an
+    8-bit buffer, blended as such): three.js does that for a render target marked
+    `isXRRenderTarget`, which `Stage.paint` sets. Tone mapping after the fact instead blends the
+    see-through tree markers in linear light, and they change shade when tiles take over. The
+    target also needs `internalFormat: "RGBA8"`, or its multisampled buffer gets another format
+    than its texture and cannot be resolved.
+31. **The direct rendering of a flat view has to stay on the tiles' pixel grid** (`snapShift` in
+    `Stage.renderDirect`), or the picture jumps by half a pixel each time tiles take over.
+32. **`bench.mjs` must wait for the GPU every few frames** (a `readPixels`): hundreds of frames
+    queued without it lose the WebGL context, and the numbers look wonderful.
 
 18. **The index codec may return a triangle starting at another of its corners** (same winding).
     Nothing may depend on which vertex of a triangle comes first; comparisons of two datasets
@@ -385,7 +463,8 @@ Customs cache when it is present (sizes, counts, categories).
 - Trees as markers only: "there is a tree there", not in the way.
 - Interiors of indoor maps: everything kept, cut open at one floor in the viewer (see "Indoor
   maps"). Interiors of buildings on outdoor maps: not yet.
-- No more time on optimization unless it is an easy win.
+- No more time on optimization unless it is an easy win. The exception is the view a raid is
+  played in (orthographic, straight down): that one is worth it, hence the tiles.
 - Readability comes from a second style on the same geometry, not from a second (2D) map: what a
   thing is follows from its height above the ground, so no map needs hand-made data for it.
 
@@ -399,6 +478,10 @@ Customs cache when it is present (sizes, counts, categories).
 - The viewer still holds a map as plain arrays (148 MB and 217 MB in the browser, about 125 MB
   and 190 MB of that on the GPU); only the file is compact.
 - The coordinate pick names the cell under the cursor, not the game object.
+- Outlines of a tilted or perspective view are not antialiased (they are found per pixel in the
+  resolved depth buffer); only the top-down view's are, through its tiles.
+- While zooming the top-down view is drawn directly: full cost per frame, and the smooth picture
+  comes back a third of a second after the zoom stops.
 - The edge between the game's terrain (ground colour image) and the backdrop around it (one
   colour) is visible. Streets has no game terrain: its ground is ordinary geometry.
 

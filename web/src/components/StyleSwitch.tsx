@@ -1,5 +1,6 @@
 // The map style switcher in the map's top right corner: a button showing the current style that
-// opens a row of the styles to its left, each with a small preview drawn in its own colours.
+// opens a row of the styles to its left, each a preview drawn in its own colours, the same size as
+// the button. Names are only in the tooltips.
 
 import { useEffect, useRef, useState } from "react";
 import { PLAN_PALETTES, type MapStyle, type PlanPalette, type PlanPaletteName, paletteOf } from "../map3d/settings";
@@ -71,13 +72,14 @@ export function StyleSwitch({ style, palette, custom, onChange }: Props) {
       role="radio"
       aria-checked={selected}
       className={s.option}
+      title={label}
+      aria-label={label}
       onClick={() => {
         pick();
         setOpen(false);
       }}
     >
       <Preview palette={colors} lines={lines} />
-      <span>{label}</span>
     </button>
   );
 

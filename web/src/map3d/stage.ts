@@ -407,6 +407,12 @@ export class Stage {
   tileCache = true;
   /** The last frame came from tiles. */
   fromTiles = false;
+  /**
+   * How far the last frame's picture was moved (metres along x and z) to put it on whole pixels
+   * (tiles.ts snapShift); zero unless the view is flat. What is drawn over the map has to move
+   * with it, or it wanders about its place on the map by half a pixel as the view moves.
+   */
+  snap: [number, number] = [0, 0];
   private tiles: TileCache | null = null;
   /** The view of the last frame if it was flat. */
   private flat: FlatView | null = null;
@@ -817,6 +823,7 @@ export class Stage {
     const before = this.flat;
     this.flat = view;
     this.fromTiles = false;
+    this.snap = view ? snapShift(view) : [0, 0];
     if (!view) {
       this.tiles?.clear();
       this.renderDirect(null);
@@ -829,7 +836,7 @@ export class Stage {
     // A tile or two short (the view turned, or moved faster than tiles were painted ahead).
     if (now >= this.hold && tiles.missingInView <= PAINT_NOW) tiles.paint(tiles.missingInView);
     if (!tiles.ready) {
-      this.renderDirect(snapShift(view));
+      this.renderDirect(this.snap);
       return;
     }
     tiles.draw(this.renderer, this.camera);

@@ -1,5 +1,8 @@
 // The 3D map as the radar uses it: loads a dataset, owns the camera, and renders only when
-// something changed (the camera moved, a setting changed, an image arrived). Without a dataset (a
+// something changed (the camera moved, a setting changed, an image arrived). Everything that
+// moves the camera over time (a flight, a turn, held keys, a caller following something through
+// `onFrame`) runs in one animation frame callback, which then renders once: a frame never shows
+// half of a change, and is never drawn twice. Without a dataset (a
 // location that has no map) it shows a grid of world coordinates, with the same camera. Markers are not
 // drawn here: the caller projects world positions through `projector()` onto its own canvas.
 //
@@ -45,6 +48,8 @@ const MOVE_SPEED = 0.7;
 const MOVE_FAST = 3;
 /** Following a direction: the remaining angle shrinks to 1/e in this many ms. */
 const TURN_TIME = 140;
+/** ... and this close (radians) it has arrived. */
+const TURN_ARRIVED = 2e-3;
 /** Categories that only make sense with textures; never drawn. */
 const HIDDEN = ["shadow", "decal", "background"];
 
@@ -66,6 +71,11 @@ export class Map3D {
   readonly stats: MapStats = { drawCalls: 0, triangles: 0, frameMs: 0, frames: 0, fromTiles: false };
   /** Called after every rendered frame (the camera may have moved: redraw the markers). */
   onRender: (() => void) | null = null;
+  /**
+   * Called at the start of every animation frame the map takes part in (`requestFrame`), before
+   * it renders: a camera change made here is on screen in this frame.
+   */
+  onFrame: ((now: number) => void) | null = null;
   /** The user moved the map by hand (so a caller that follows something can stop). */
   onUserPan: (() => void) | null = null;
   /** The user turned the map by hand (so a caller that follows a direction can stop). */
@@ -77,9 +87,16 @@ export class Map3D {
   /** The grid shown without a map. */
   private grid: THREE.GridHelper[] = [];
   private settings: MapSettings = DEFAULT_MAP_SETTINGS;
-  private frameRequested = 0;
+  /** The animation frame asked for (`tick`), or 0. */
+  private frame = 0;
+  /** Inside `tick`: what asks for a frame now is part of this one. */
+  private ticking = false;
+  /** Asked for during `tick`: another frame after this one. */
+  private again = false;
+  /** Something changed that the next frame has to render. */
+  private dirty = false;
   private tilesRequested = 0;
-  private readonly motion = { right: 0, forward: 0, fast: false, frame: 0, time: 0 };
+  private readonly motion = { right: 0, forward: 0, fast: false, active: false, time: 0 };
   private abort: AbortController | null = null;
   private readonly observer: ResizeObserver;
   /** Where the camera target was put by code; a different target means the user panned. */
@@ -87,8 +104,8 @@ export class Map3D {
   /** The heading code left the camera at; a different one means the user turned the map. */
   private expectedHeading = 0;
   private byCode = false;
-  private readonly turn = { goal: 0, frame: 0, time: 0 };
-  private flight: { frame: number; start: number; duration: number; from: THREE.Vector3; fromSpan: number; span: number | null; to: () => WorldPos | null } | null = null;
+  private readonly turn = { goal: 0, active: false, time: 0 };
+  private flight: { start: number; duration: number; from: THREE.Vector3; fromSpan: number; span: number | null; to: () => WorldPos | null } | null = null;
   private floor: number | null = null;
   private readonly scratch = new THREE.Vector3();
   private readonly scratch2 = new THREE.Vector3();
@@ -187,8 +204,7 @@ export class Map3D {
       }
       if (Math.abs(angleDifference(stage.heading(), this.expectedHeading)) > 1e-4) {
         this.expectedHeading = stage.heading();
-        cancelAnimationFrame(this.turn.frame);
-        this.turn.frame = 0;
+        this.turn.active = false;
         this.onUserTurn?.();
       }
       this.requestRender();
@@ -200,15 +216,15 @@ export class Map3D {
   unload(): void {
     this.abort?.abort();
     this.abort = null;
-    cancelAnimationFrame(this.frameRequested);
-    this.frameRequested = 0;
+    cancelAnimationFrame(this.frame);
+    this.frame = 0;
+    this.dirty = false;
+    this.again = false;
     cancelAnimationFrame(this.tilesRequested);
     this.tilesRequested = 0;
-    cancelAnimationFrame(this.motion.frame);
-    this.motion.frame = 0;
-    this.cancelFlight();
-    cancelAnimationFrame(this.turn.frame);
-    this.turn.frame = 0;
+    this.motion.active = false;
+    this.flight = null;
+    this.turn.active = false;
     this.instances?.dispose();
     for (const g of this.grid) g.dispose();
     this.grid = [];
@@ -268,19 +284,62 @@ export class Map3D {
     this.requestRender();
   }
 
-  /** Ask for a frame; several requests before the next animation frame make one. */
+  /** Ask for the map to be rendered; several requests before the next animation frame make one. */
   requestRender(): void {
-    if (this.frameRequested || !this.stage) return;
-    this.frameRequested = requestAnimationFrame(() => {
-      this.frameRequested = 0;
-      this.renderNow();
-    });
+    if (!this.stage) return;
+    this.dirty = true;
+    // During a frame: it renders at its end.
+    if (!this.ticking) this.schedule();
   }
+
+  /**
+   * Ask for an animation frame (`onFrame`) without asking for the map to be rendered: it is only
+   * if something changes the camera in that frame.
+   */
+  requestFrame(): void {
+    if (!this.stage) return;
+    if (this.ticking) this.again = true;
+    else this.schedule();
+  }
+
+  /** The frame asked for will render the map (and so call `onRender`). For use in `onFrame`. */
+  get renderDue(): boolean {
+    return this.dirty || this.flight !== null || this.turn.active || this.motion.active;
+  }
+
+  /** A map frame is cheap: a few tiles or a grid, not the whole scene. */
+  get cheapFrames(): boolean {
+    return this.stats.fromTiles || (this.stage !== null && this.data === null);
+  }
+
+  private schedule(): void {
+    if (!this.frame && this.stage) this.frame = requestAnimationFrame(this.tick);
+  }
+
+  /** One animation frame: every camera change that is due, then at most one rendering. */
+  private readonly tick = (now: number): void => {
+    this.frame = 0;
+    if (!this.stage) return;
+    this.ticking = true;
+    this.again = false;
+    try {
+      this.onFrame?.(now);
+      if (this.flight) this.flightStep(now);
+      if (this.turn.active) this.turnStep(now);
+      if (this.motion.active) this.moveStep(now);
+      if (this.dirty) this.renderNow();
+    } finally {
+      this.ticking = false;
+    }
+    // Still under way, or asked for while this frame was made.
+    if (this.dirty || this.again || this.flight || this.turn.active || this.motion.active) this.schedule();
+  };
 
   /** Render immediately (the measurement harness; everything else uses requestRender). */
   renderNow(): void {
     const stage = this.stage;
     if (!stage) return;
+    this.dirty = false;
     const t0 = performance.now();
     stage.render();
     const info = stage.renderer.info.render;
@@ -356,19 +415,19 @@ export class Map3D {
     // Longer for longer ways, measured in views: a hop across the screen, not across the map.
     const views = from.distanceTo(this.scratch.set(goal[0], goal[1], -goal[2])) / Math.max(fromSpan, 1);
     const duration = THREE.MathUtils.clamp(350 + 250 * views, 350, 1200);
-    this.flight = { frame: requestAnimationFrame(this.flightStep), start: performance.now(), duration, from, fromSpan, span, to };
+    this.flight = { start: performance.now(), duration, from, fromSpan, span, to };
+    this.requestFrame();
   }
 
   private cancelFlight(): void {
-    if (this.flight) cancelAnimationFrame(this.flight.frame);
     this.flight = null;
   }
 
-  private readonly flightStep = (now: number): void => {
+  private flightStep(now: number): void {
     const { flight, stage } = this;
     if (!flight || !stage) return;
     const goal = flight.to();
-    const t = goal ? Math.min(1, (now - flight.start) / flight.duration) : 1;
+    const t = goal ? THREE.MathUtils.clamp((now - flight.start) / flight.duration, 0, 1) : 1;
     const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
     if (goal) {
       const target = this.scratch.set(goal[0], goal[1], -goal[2]).lerp(flight.from, 1 - eased);
@@ -379,14 +438,9 @@ export class Map3D {
       if (flight.span !== null) stage.setSpan(flight.fromSpan * (flight.span / flight.fromSpan) ** eased);
       else stage.controls.update();
     }
-    // The flight may have been cancelled by the update above (it reports a change).
-    if (this.flight === flight) flight.frame = t < 1 ? requestAnimationFrame(this.flightStep) : 0;
     if (t >= 1 && this.flight === flight) this.flight = null;
-    // This frame, not the next one.
-    cancelAnimationFrame(this.frameRequested);
-    this.frameRequested = 0;
-    this.renderNow();
-  };
+    this.requestRender();
+  }
 
   /** Direction the top of the screen points to (radians clockwise from north); 0 before loading. */
   heading(): number {
@@ -400,28 +454,26 @@ export class Map3D {
    */
   turnTo(degrees: number): void {
     this.turn.goal = THREE.MathUtils.degToRad(degrees);
-    if (!this.turn.frame && this.stage) {
-      this.turn.time = performance.now();
-      this.turn.frame = requestAnimationFrame(this.turnStep);
-    }
+    if (this.turn.active || !this.stage) return;
+    // Pointing there already: no frame to make.
+    if (Math.abs(angleDifference(this.turn.goal, this.stage.heading())) < TURN_ARRIVED) return;
+    this.turn.active = true;
+    this.turn.time = performance.now();
+    this.requestFrame();
   }
 
-  private readonly turnStep = (now: number): void => {
+  private turnStep(now: number): void {
     const { turn, stage } = this;
-    turn.frame = 0;
     if (!stage) return;
     const heading = stage.heading();
     const difference = angleDifference(turn.goal, heading);
-    const arrived = Math.abs(difference) < 2e-3;
+    const arrived = Math.abs(difference) < TURN_ARRIVED;
     // The same share of the remaining angle per unit of time, whatever the frame rate.
     const share = arrived ? 1 : 1 - Math.exp(-Math.max(0, now - turn.time) / TURN_TIME);
     turn.time = now;
     this.own(() => stage.setHeading(heading + difference * share));
-    cancelAnimationFrame(this.frameRequested);
-    this.frameRequested = 0;
-    this.renderNow();
-    if (!arrived) turn.frame = requestAnimationFrame(this.turnStep);
-  };
+    if (arrived) turn.active = false;
+  }
 
   /** factor > 1 zooms in. */
   zoomBy(factor: number): void {
@@ -448,15 +500,16 @@ export class Map3D {
    */
   setMotion(right: number, forward: number, fast: boolean): void {
     Object.assign(this.motion, { right, forward, fast });
-    if ((right || forward) && !this.motion.frame && this.stage) {
+    const moving = right !== 0 || forward !== 0;
+    if (moving && !this.motion.active && this.stage) {
       this.motion.time = performance.now();
-      this.motion.frame = requestAnimationFrame(this.moveStep);
+      this.requestFrame();
     }
+    this.motion.active = moving && this.stage !== null;
   }
 
-  private readonly moveStep = (now: number): void => {
+  private moveStep(now: number): void {
     const { motion, stage } = this;
-    motion.frame = 0;
     const length = Math.hypot(motion.right, motion.forward);
     if (!stage || !length) return;
     const seconds = Math.min(0.1, Math.max(0, now - motion.time) / 1000);
@@ -464,12 +517,7 @@ export class Map3D {
     // Speed follows the zoom: the same share of the view per second at any height.
     const metres = (stage.span() * MOVE_SPEED * (motion.fast ? MOVE_FAST : 1) * seconds) / length;
     stage.move(motion.right * metres, motion.forward * metres); // "change": the user panned
-    // This frame, not the next one.
-    cancelAnimationFrame(this.frameRequested);
-    this.frameRequested = 0;
-    this.renderNow();
-    motion.frame = requestAnimationFrame(this.moveStep);
-  };
+  }
 
   /** Back to the top-down, north-up view of the whole map. */
   resetView(): void {
@@ -497,7 +545,10 @@ export class Map3D {
 
   // ---- projection -----------------------------------------------------------------------------
 
-  /** A snapshot of the current camera for drawing markers. Valid until the next frame. */
+  /**
+   * A snapshot of the current camera for drawing markers. Valid until the next frame. It shows
+   * positions where the last frame's picture has them: on whole pixels with it (Stage.snap).
+   */
   projector(): MapProjection {
     const stage = this.stage;
     if (!stage) return { width: 0, height: 0, toScreen: () => [NaN, NaN], pxPerMetre: () => 0, detail: 0, depth: () => 0 };
@@ -506,8 +557,9 @@ export class Map3D {
     const viewProjection = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
     const v = new THREE.Vector4();
+    const [snapX, snapZ] = stage.snap;
     const project = (x: number, y: number, z: number): [number, number] => {
-      v.set(x, y, z, 1).applyMatrix4(viewProjection);
+      v.set(x + snapX, y, z + snapZ, 1).applyMatrix4(viewProjection);
       if (v.w <= 0) return [NaN, NaN]; // behind the camera
       return [(v.x / v.w + 1) * 0.5 * width, (1 - v.y / v.w) * 0.5 * height];
     };

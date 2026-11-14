@@ -182,6 +182,23 @@ TEST_CASE("buildMapsIndex lists valid map folders of both kinds") {
     CHECK(server::buildMapsIndex(maps.path / "missing") == "[]");
 }
 
+TEST_CASE("protocol encoding: vehicles") {
+    eft::VehiclesSnapshot snap{.raidId = 2, .revision = 4, .vehicles = {}};
+    snap.vehicles.push_back({.id = 1, .kind = eft::Vehicle::Kind::Btr, .state = 2, .position = {1.234f, 2, -3},
+                             .yaw = 87.66f,
+                             .occupants = {{3, eft::VehicleOccupant::Seat::Gunner}, {7, eft::VehicleOccupant::Seat::Passenger}}});
+    const auto v = server::encodeVehicles(snap);
+    CHECK(contains(v, R"("type":"vehicles")"));
+    CHECK(contains(v, R"("kind":"btr")"));
+    CHECK(contains(v, R"("state":2)"));
+    CHECK(contains(v, R"("pos":[1.23,2,-3])"));
+    CHECK(contains(v, R"("yaw":87.7)"));
+    CHECK(contains(v, R"("player":3)"));
+    CHECK(contains(v, R"("seat":"gunner")"));
+    CHECK(contains(v, R"("player":7)"));
+    CHECK(contains(v, R"("seat":"passenger")"));
+}
+
 TEST_CASE("LiveFeed broadcasts only changes") {
     server::MessageHub hub;
     std::vector<std::string> types;
@@ -190,7 +207,7 @@ TEST_CASE("LiveFeed broadcasts only changes") {
     auto status = std::make_shared<eft::Status>();
     server::LiveFeed feed({.status = [&] { return std::shared_ptr<const eft::Status>(status); }, .world = &world}, hub);
 
-    CHECK(feed.poll() == 6);  // initial status + every (empty) world snapshot
+    CHECK(feed.poll() == 7);  // initial status + every (empty) world snapshot
     CHECK(feed.poll() == 0);
     world.players.publish(eft::PlayersSnapshot{.raidId = 1, .revision = 1, .players = {}});
     CHECK(feed.poll() == 1);
@@ -198,7 +215,7 @@ TEST_CASE("LiveFeed broadcasts only changes") {
     changed->state = eft::Status::State::InRaid;
     status = changed;
     CHECK(feed.poll() == 1);
-    CHECK(types == std::vector<std::string>{"status", "players", "exfils", "explosives", "loot", "equipment", "players", "status"});
+    CHECK(types == std::vector<std::string>{"status", "players", "exfils", "explosives", "vehicles", "loot", "equipment", "players", "status"});
 }
 
 TEST_CASE("LiveFeed sends skeletons with the players that have joints") {

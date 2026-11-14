@@ -16,6 +16,7 @@
 #include "game/eft/players/Players.hpp"
 #include "game/eft/world/Exfils.hpp"
 #include "game/eft/world/Explosives.hpp"
+#include "game/eft/world/Vehicles.hpp"
 #include "game/eft/world/Loot.hpp"
 #include "server/Feeds.hpp"
 #include "server/MessageHub.hpp"
@@ -136,9 +137,12 @@ int main(int argc, char** argv) {
     eft::WorldState world;
     eft::Lifecycle lifecycle(target, [&world](std::shared_ptr<const eft::RaidSession> session) {
         std::vector<std::unique_ptr<eft::RaidSubsystem>> subsystems;
-        subsystems.push_back(std::make_unique<eft::Players>(session, world));
+        auto players = std::make_unique<eft::Players>(session, world);
+        auto vehicles = std::make_unique<eft::Vehicles>(session, world, *players);
+        subsystems.push_back(std::move(players));
         subsystems.push_back(std::make_unique<eft::Exfils>(session, world));
         subsystems.push_back(std::make_unique<eft::Explosives>(session, world));
+        subsystems.push_back(std::move(vehicles));
         subsystems.push_back(std::make_unique<eft::Loot>(session, world));
         return subsystems;
     });

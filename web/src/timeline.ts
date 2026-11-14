@@ -9,6 +9,7 @@ import { isSentinelPos } from "./connection";
 import {
   type Exfil,
   type ExplosivesData,
+  type Vehicle,
   type LootDiffData,
   type LootEntry,
   JOINT_COUNT,
@@ -28,6 +29,7 @@ export interface TimelineState {
   playersAt: number;
   exfils: Exfil[];
   explosives: ExplosivesData;
+  vehicles: Vehicle[];
   loot: LootEntry[];
   equipment: Map<number, PlayerEquipment>;
 }
@@ -296,6 +298,7 @@ export class Timeline {
   private readonly statuses: Stamped<StatusData>[] = [];
   private readonly exfils: Stamped<Exfil[]>[] = [];
   private readonly explosives: Stamped<ExplosivesData>[] = [];
+  private readonly vehicles: Stamped<Vehicle[]>[] = [];
   private readonly equipment: Stamped<Map<number, PlayerEquipment>>[] = [];
   private readonly loot: LootVersion[] = [];
   /** The loot as of the last version. */
@@ -346,6 +349,9 @@ export class Timeline {
         break;
       case "explosives":
         this.explosives.push({ t, value: msg.data });
+        break;
+      case "vehicles":
+        this.vehicles.push({ t, value: msg.data.vehicles });
         break;
       case "equipment":
         this.equipment.push({ t, value: new Map(msg.data.players.map((p) => [p.id, p])) });
@@ -485,6 +491,7 @@ export class Timeline {
       playersAt,
       exfils: latest(this.exfils, t) ?? [],
       explosives: latest(this.explosives, t) ?? EMPTY_EXPLOSIVES,
+      vehicles: latest(this.vehicles, t) ?? [],
       loot: this.lootAt(t),
       equipment: latest(this.equipment, t) ?? EMPTY_EQUIPMENT,
     };

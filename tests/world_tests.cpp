@@ -3,6 +3,8 @@
 #include "game/eft/world/Exfils.hpp"
 #include "game/eft/world/Explosives.hpp"
 #include "game/eft/world/Loot.hpp"
+#include "game/eft/world/Vehicles.hpp"
+#include "game/eft/players/Players.hpp"
 
 #include <doctest/doctest.h>
 
@@ -27,7 +29,7 @@ std::shared_ptr<const eft::RaidSession> makeSession(FakeWorld& w) {
 }
 
 // Gives a managed component a native side, a named GameObject and a Transform at `pos`.
-void place(FakeWorld& w, Address managed, Vec3 pos, std::string_view name = "object") {
+void place(FakeWorld& w, Address managed, Vec3 pos, std::string_view name = "object", math::Quat rotation = {}) {
     auto& h = w.heap;
     const Address native = h.alloc(0x100), go = h.alloc(0x100), transform = h.alloc(0x100);
     const Address hierarchy = h.alloc(0x100), trs = h.alloc(sizeof(unity::TrsX)), parents = h.alloc(4);
@@ -43,7 +45,7 @@ void place(FakeWorld& w, Address managed, Vec3 pos, std::string_view name = "obj
     h.put<Address>(hierarchy + kUnity.hierarchyLocalTransforms, trs);
     h.put<Address>(hierarchy + kUnity.hierarchyParentIndices, parents);
     h.put<std::int32_t>(parents, -1);
-    h.put(trs, unity::TrsX{pos, 0, {}, {1, 1, 1}, 0});
+    h.put(trs, unity::TrsX{pos, 0, rotation, {1, 1, 1}, 0});
 }
 
 void move(FakeWorld& w, Address managed, Vec3 pos) {
@@ -52,7 +54,9 @@ void move(FakeWorld& w, Address managed, Vec3 pos) {
     const Address go = view.read<Address>(native + kUnity.componentGameObject);
     const Address transform = view.read<Address>(view.read<Address>(go + kUnity.gameObjectComponents) + kUnity.componentEntryComponent);
     const Address trs = view.read<Address>(view.read<Address>(transform + kUnity.transformHierarchy) + kUnity.hierarchyLocalTransforms);
-    w.heap.put(trs, unity::TrsX{pos, 0, {}, {1, 1, 1}, 0});
+    auto local = view.read<unity::TrsX>(trs);  // keeps the rotation
+    local.t = pos;
+    w.heap.put(trs, local);
 }
 
 // An item template with a MongoID string id.
@@ -295,4 +299,74 @@ TEST_CASE("Loot: a sudden drop to under half the cache isn't treated as removals
     loot.scan(t + std::chrono::seconds(3));
     loot.scan(t + std::chrono::seconds(6));
     CHECK(world.loot.get()->loot.size() == 40);
+}
+
+TEST_CASE("Vehicles: BTR position, heading, gunner and passengers") {
+    FakeWorld w;
+    w.newWorld(u"TarkovStreets", 0);
+    auto& h = w.heap;
+    const Address gunner = w.newObservedPlayer(4, true, u"Scav_3", Vec3{10, 4, 20});
+    const Address passenger = w.newObservedPlayer(1, false, u"Usec_5", Vec3{11, 3, 21});
+    const Address approaching = w.newObservedPlayer(2, false, u"Bear_1", Vec3{14, 1, 20});
+    w.setRosterList({w.localPlayer, gunner, passenger, approaching});
+
+    const auto session = makeSession(w);
+    eft::WorldState world;
+    eft::Players players(session, world);
+    for (int i = 0; i < 4; ++i) players.rosterTick(Clock::now() + std::chrono::milliseconds(20 * i));
+    REQUIRE(world.players.get()->players.size() == 4);
+    eft::Vehicles vehicles(session, world, players);
+
+    // No BtrController (a map without a BTR), then one without a view (not spawned): nothing.
+    vehicles.update();
+    CHECK(world.vehicles.get()->vehicles.empty());
+    const Address controller = h.alloc(0x100);
+    h.put<Address>(w.world + off::ClientLocalGameWorld::btrController, controller);
+    vehicles.update();
+    CHECK(world.vehicles.get()->vehicles.empty());
+
+    // Spawned, heading +x (90°), driving; gunner on the turret, one passenger inside, one approaching.
+    const Address view = h.object(h.klass("BTRView", "EFT.Vehicle"), 0x200);
+    const float s = std::sqrt(0.5f);
+    place(w, view, {10, 2, 20}, "BTR", math::Quat{0, s, 0, s});
+    h.put<std::uint8_t>(view + off::BTRView::btrState, 2);
+    const Address turret = h.alloc(0x100);
+    h.put<Address>(view + off::BTRView::turret, turret);
+    h.put<Address>(turret + off::BTRTurretView::attachedBot, gunner);
+    h.put<std::uint8_t>(turret + off::BTRTurretView::attachedBot + 8, 1);
+    h.put<std::int32_t>(passenger + off::ObservedPlayerView::BtrState, 3);
+    h.put<std::int32_t>(approaching + off::ObservedPlayerView::BtrState, 1);
+    h.put<Address>(controller + off::BtrController::BtrView, view);
+    vehicles.update();
+    auto snap = world.vehicles.get();
+    REQUIRE(snap->vehicles.size() == 1);
+    const auto& btr = snap->vehicles[0];
+    CHECK(btr.kind == eft::Vehicle::Kind::Btr);
+    CHECK(btr.state == 2);
+    CHECK(near(btr.position, {10, 2, 20}));
+    CHECK(btr.yaw == doctest::Approx(90.0f).epsilon(0.001));
+    const auto idOf = [&](Address instance) {
+        for (const auto& r : *players.refs())
+            if (r.instance == instance) return r.id;
+        return 0u;
+    };
+    using Seat = eft::VehicleOccupant::Seat;
+    CHECK(btr.occupants == std::vector<eft::VehicleOccupant>{{idOf(gunner), Seat::Gunner}, {idOf(passenger), Seat::Passenger}});
+
+    // Tiny moves don't republish; the local player getting in (full Player) does.
+    const auto rev = snap->revision;
+    move(w, view, {10.05f, 2, 20});
+    vehicles.update();
+    CHECK(world.vehicles.get()->revision == rev);
+    h.put<std::int32_t>(w.localPlayer + off::Player::_btrState, 2);  // GoIn
+    vehicles.update();
+    snap = world.vehicles.get();
+    CHECK(snap->revision > rev);
+    REQUIRE(snap->vehicles[0].occupants.size() == 3);
+    CHECK(snap->vehicles[0].occupants[0] == eft::VehicleOccupant{idOf(w.localPlayer), Seat::Passenger});
+
+    // Despawned.
+    h.put<Address>(controller + off::BtrController::BtrView, 0);
+    vehicles.update();
+    CHECK(world.vehicles.get()->vehicles.empty());
 }

@@ -4,6 +4,7 @@
 import {
   type Exfil,
   type ExplosivesData,
+  type Vehicle,
   type LootEntry,
   type Message,
   PROTOCOL_VERSION,
@@ -27,6 +28,7 @@ export interface RadarState {
   playersAt: number; // message time of the last players update (ms)
   exfils: Exfil[];
   explosives: ExplosivesData;
+  vehicles: Vehicle[];
   loot: LootEntry[];
   equipment: Map<number, PlayerEquipment>;
 }
@@ -43,6 +45,7 @@ export const initialRadarState = (): RadarState => ({
   playersAt: 0,
   exfils: [],
   explosives: emptyExplosives(),
+  vehicles: [],
   loot: [],
   equipment: new Map(),
 });
@@ -130,6 +133,8 @@ export class Connection {
         return this.update({ exfils: msg.data.exfils });
       case "explosives":
         return this.update({ explosives: msg.data });
+      case "vehicles":
+        return this.update({ vehicles: msg.data.vehicles });
       case "loot":
         return this.update({ loot: msg.data.loot.filter((l) => !isSentinelPos(l.pos)) });
       case "equipment":

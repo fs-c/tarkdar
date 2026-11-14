@@ -134,7 +134,7 @@ void Players::rosterTick(Clock::time_point now) {
 void Players::publishRefs() {
     std::vector<Ref> refs;
     refs.reserve(entries_.size());
-    for (const auto& [instance, e] : entries_) refs.push_back({e.id, e.layout.inventoryControllerField, e.dead});
+    for (const auto& [instance, e] : entries_) refs.push_back({e.id, instance, e.layout.kind, e.layout.inventoryControllerField, e.dead});
     std::sort(refs.begin(), refs.end(), [](const Ref& a, const Ref& b) { return a.id < b.id; });
     if (refs == lastRefs_) return;
     lastRefs_ = refs;

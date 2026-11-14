@@ -11,9 +11,11 @@
 #include "game/eft/world/Exfils.hpp"
 #include "game/eft/world/Explosives.hpp"
 #include "game/eft/world/Loot.hpp"
+#include "game/eft/world/Vehicles.hpp"
 
 #include <eft_offsets.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <format>
 #include <map>
@@ -375,6 +377,41 @@ void checkExplosives(Report& r, const std::shared_ptr<const eft::RaidSession>& s
     r.info(std::format("tripwires are type {} (verify on a map with tripwires)", eft::Explosives::kTripwireType));
 }
 
+void checkVehicles(Report& r, const std::shared_ptr<const eft::RaidSession>& session) {
+    r.section("Vehicles");
+    const auto& game = session->game;
+    const Address controller = eft::readPointer(
+        game, session->start.localGameWorld + off::ClientLocalGameWorld::btrController, mem::Freshness::Fresh);
+    const Address view = controller ? eft::readPointer(game, controller + off::BtrController::BtrView, mem::Freshness::Fresh) : 0;
+    if (!view) {
+        r.info(controller ? "BTR not spawned (BtrController.BtrView is null)" : "no BtrController (normal on maps without a BTR)");
+        return;
+    }
+    eft::WorldState world;
+    eft::Players players(session, world);
+    const auto t = Clock::now();
+    for (int i = 0; i < 16; ++i) players.rosterTick(t + std::chrono::milliseconds(20 * i));
+    eft::Vehicles vehicles(session, world, players);
+    vehicles.update();
+    const auto snap = world.vehicles.get();
+    if (snap->vehicles.empty()) {
+        r.fail("BTR view found but no vehicle read", "BtrView transform; BTRView.btrState");
+        return;
+    }
+    const auto& v = snap->vehicles.front();
+    r.ok(std::format("BTR at ({:.1f}, {:.1f}, {:.1f}) heading {:.0f}, state {} (0 stopped, 1 stopped/paid, 2 driving)",
+                     v.position.x, v.position.y, v.position.z, v.yaw, v.state));
+    const auto ps = world.players.get();
+    for (const auto& o : v.occupants) {
+        const auto p = std::find_if(ps->players.begin(), ps->players.end(), [&](const auto& x) { return x.id == o.playerId; });
+        r.info(std::format("{} #{} {}", o.seat == eft::VehicleOccupant::Seat::Gunner ? "gunner" : "passenger", o.playerId,
+                           p == ps->players.end() ? "?" : p->local ? "(local player)" : "voice '" + p->voice + "'"));
+    }
+    if (std::none_of(v.occupants.begin(), v.occupants.end(),
+                     [](const auto& o) { return o.seat == eft::VehicleOccupant::Seat::Gunner; }))
+        r.info("no gunner matched (BTRView.turret → BTRTurretView._bot)");
+}
+
 void checkLoot(Report& r, const std::shared_ptr<const eft::RaidSession>& session) {
     r.section("Loot");
     eft::WorldState world;
@@ -447,9 +484,10 @@ int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out) {
         checkSkeleton(r, session);
         checkExfils(r, session);
         checkExplosives(r, session);
+        checkVehicles(r, session);
         checkLoot(r, session);
     } else {
-        r.info("skipping players, exfils, explosives and loot: they need a raid");
+        r.info("skipping players, exfils, explosives, vehicles and loot: they need a raid");
     }
 
     r.section("Summary");

@@ -9,6 +9,7 @@ import { type LoadedMap, findMap, map3dUrl, selectLayer } from "../maps";
 import { type Highlight, type Match, allRows } from "../highlight/match";
 import { useHighlights } from "../highlight/useHighlights";
 import { isFiltered, rowKeys } from "../list/rows";
+import { withoutGunners } from "../vehicles";
 import { useListPrefs, useListRows } from "../list/useListRows";
 import { type Selection, pick, selectedPosition, selectionKey } from "../pick";
 import { usePlayback } from "../playback";
@@ -48,13 +49,14 @@ export function App() {
   const timeline = review?.timeline ?? live.timeline;
   const range = timeline && !Number.isNaN(timeline.start) ? timeline.range() : null;
   const playback = usePlayback(range, !review, review ? `rec:${review.info.name}` : `live:${timeline?.raid ?? "-"}`);
+  // Vehicle gunners (the BTR's) are part of the vehicle, not shown as players anywhere.
   const state: RadarState = useMemo(() => {
     // Live and at "now": the stream's state as is.
-    if (!timeline || !range) return conn;
+    if (!timeline || !range) return withoutGunners(conn);
     // Live and at "now": the stream's state as is, but players come from the timeline (it knows who extracted).
-    if (!review && playback.cursor === null) return { ...conn, ...timeline.playersAtTime(range[1]) };
+    if (!review && playback.cursor === null) return withoutGunners({ ...conn, ...timeline.playersAtTime(range[1]) });
     const at = timeline.stateAt(playback.cursor ?? range[1]);
-    return review ? { ...conn, connected: true, protocolMismatch: false, ...at } : { ...conn, ...at };
+    return withoutGunners(review ? { ...conn, connected: true, protocolMismatch: false, ...at } : { ...conn, ...at });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the timeline changes in place (liveVersion)
   }, [conn, timeline, review, playback.cursor, liveVersion]);
   /** The shown moment (the newest when live). */
@@ -277,7 +279,9 @@ export function App() {
   const onMapStats = (st: MapStats) => {
     if (performance.now() - lastStats.current < 500) return;
     lastStats.current = performance.now();
-    setMapStats(`${st.drawCalls} draw calls · ${(st.triangles / 1e6).toFixed(1)}M triangles · ${st.frames} frames drawn`);
+    // A top-down orthographic view is drawn from tiles: a few squares, not the map's triangles.
+    const drawn = st.fromTiles ? `${st.drawCalls} tiles` : `${st.drawCalls} draw calls · ${(st.triangles / 1e6).toFixed(1)}M triangles`;
+    setMapStats(`${drawn} · ${st.frames} frames drawn`);
   };
 
   const playbackRef = useRef(playback);
@@ -326,6 +330,7 @@ export function App() {
     catalog,
     exfils: shown.exfils,
     explosives: shown.explosives,
+    vehicles: state.vehicles,
     loot: shown.loot,
     layers,
     minLabelPrice: lootPrefs.minLabelPrice,

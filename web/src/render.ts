@@ -4,7 +4,7 @@ import { type Affine, pixelsPerMetre, worldToPixel } from "./calibration";
 import { LabelPlacer, type Rect, candidatesAround } from "./labels";
 import { type LoadedMap, selectLayer } from "./maps";
 import { type ItemCatalog, containerName, exfilStatus, formatPrice, valueTier } from "./items";
-import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type WorldPos } from "./protocol";
+import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type Vehicle, type WorldPos } from "./protocol";
 import { type PlayerTypeInfo, bossGroups, playerType } from "./roles";
 import { COLORS, ITEM_LOOK, LOOT_LOOK, type PlayerLook, exfilColor, playerLook } from "./style";
 import { EXFIL_STATUS_DETAIL, LABEL_DETAIL, LABEL_RANK, type LootDensity, itemMarkerShown } from "./declutter";
@@ -30,6 +30,7 @@ export interface Scene {
   catalog: ItemCatalog;
   exfils: Exfil[];
   explosives: ExplosivesData;
+  vehicles: Vehicle[];
   loot: LootEntry[];
   layers: Layers;
   /** Items worth less than this (₽) get no label. */
@@ -90,7 +91,7 @@ export function render(ctx: CanvasRenderingContext2D, view: View, scene: Scene):
 }
 
 /**
- * Everything that moves: loot, exfils, explosives, trails, players, selection. Drawn in screen
+ * Everything that moves: loot, exfils, explosives, vehicles, trails, players, selection. Drawn in screen
  * space through the projector, so it is the same code over the 2D image and over the 3D map.
  */
 export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene): void {
@@ -103,6 +104,8 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
     grenades: scene.explosives.grenades.filter((g) => hl.has(`grenade:${g.id}`)),
     tripwires: scene.explosives.tripwires.filter((w) => hl.has(`tripwire:${w.id}`)),
   });
+
+  for (const v of scene.vehicles) drawVehicle(ctx, pr, v, labels);
 
   if (scene.trails) drawTrails(ctx, pr, scene);
 
@@ -667,6 +670,49 @@ function drawExfil(ctx: CanvasRenderingContext2D, pr: Projector, e: Exfil, label
   const full = `${e.name}${e.kind === "secret" ? " (secret)" : ` · ${status.label}`}`;
   const texts = pr.detail >= EXFIL_STATUS_DETAIL ? [full, e.name] : [e.name];
   labels.push({ x, y, texts, font: "11px sans-serif", color, gap: 10, rank: LABEL_RANK.exfil, priority: 0, forced: true, fixed: true });
+}
+
+/** BTR hull footprint (m): half width, half length. */
+const BTR_HALF_SIZE = [1.45, 3.8] as const;
+/** Zoomed out, the hull is drawn at least this long (px). */
+const VEHICLE_MIN_LENGTH_PX = 22;
+
+/** The hull's footprint, turned to its heading, with a notch at the front; labelled with who's aboard. */
+function drawVehicle(ctx: CanvasRenderingContext2D, pr: Projector, v: Vehicle, labels: LabelRequest[]): void {
+  const [cx, cy] = pr.toScreen(v.pos);
+  if (!onScreen(pr, cx, cy, 100)) return;
+  const yaw = (v.yaw * Math.PI) / 180;
+  const [hw, hl] = BTR_HALF_SIZE;
+  // Corners in the world (x right, z forward, turned by yaw), then on screen.
+  const world = (right: number, forward: number): [number, number] =>
+    pr.toScreen([
+      v.pos[0] + right * Math.cos(yaw) + forward * Math.sin(yaw),
+      v.pos[1],
+      v.pos[2] - right * Math.sin(yaw) + forward * Math.cos(yaw),
+    ]);
+  let points = [world(-hw, hl * 0.7), world(0, hl), world(hw, hl * 0.7), world(hw, -hl), world(-hw, -hl)];
+  const [fx, fy] = world(0, hl);
+  const [bx, by] = world(0, -hl);
+  const length = Math.hypot(fx - bx, fy - by);
+  if (length < VEHICLE_MIN_LENGTH_PX) {
+    const k = VEHICLE_MIN_LENGTH_PX / Math.max(length, 1e-3);
+    points = points.map(([x, y]) => [cx + (x - cx) * k, cy + (y - cy) * k]);
+  }
+  ctx.beginPath();
+  points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  ctx.fillStyle = COLORS.vehicle;
+  ctx.globalAlpha = 0.25;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = COLORS.vehicle;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  const aboard = v.occupants.filter((o) => o.seat === "passenger").length;
+  const name = v.state === 2 ? "BTR" : "BTR (stopped)";
+  const texts = aboard ? [`${name} · ${aboard} aboard`, `BTR · ${aboard}`] : [name, "BTR"];
+  labels.push({ x: cx, y: cy, texts, font: "bold 11px sans-serif", color: COLORS.vehicle, gap: 14, rank: LABEL_RANK.exfil, priority: 1, forced: true, fixed: true });
 }
 
 function drawExplosives(ctx: CanvasRenderingContext2D, pr: Projector, ex: ExplosivesData): void {

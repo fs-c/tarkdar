@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-// Snapshots of non-player raid state: exfils, explosives, loot.
+// Snapshots of non-player raid state: exfils, explosives, vehicles, loot.
 namespace radar::eft {
 
 struct Exfil {
@@ -42,6 +42,31 @@ struct ExplosivesSnapshot {
     std::uint64_t revision = 0;
     std::vector<Grenade> grenades;
     std::vector<Tripwire> tripwires;
+};
+
+// A vehicle on the map (so far only the BTR). Occupants are players by PlayerState::id.
+struct VehicleOccupant {
+    enum class Seat { Gunner, Passenger };
+    std::uint32_t playerId = 0;
+    Seat seat = Seat::Passenger;
+    friend bool operator==(const VehicleOccupant&, const VehicleOccupant&) = default;
+};
+
+struct Vehicle {
+    enum class Kind { Btr };
+    std::uint32_t id = 0;
+    Kind kind = Kind::Btr;
+    // The vehicle's own state. BTR: EBtrState, 0 stopped, 1 stopped (paid ride), 2 driving.
+    std::int32_t state = 0;
+    math::Vec3 position;
+    float yaw = 0;  // heading in degrees, same convention as PlayerState::yaw (0 = +z, 90 = +x)
+    std::vector<VehicleOccupant> occupants{};  // ordered by player id
+};
+
+struct VehiclesSnapshot {
+    std::uint64_t raidId = 0;
+    std::uint64_t revision = 0;
+    std::vector<Vehicle> vehicles;
 };
 
 struct LootEntry {

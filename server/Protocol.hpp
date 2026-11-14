@@ -26,6 +26,7 @@ inline constexpr int kRecordingFormat = 1;
 [[nodiscard]] std::optional<std::string> encodeSkeletons(const eft::PlayersSnapshot& players);
 [[nodiscard]] std::string encodeExfils(const eft::ExfilsSnapshot& exfils);
 [[nodiscard]] std::string encodeExplosives(const eft::ExplosivesSnapshot& explosives);
+[[nodiscard]] std::string encodeVehicles(const eft::VehiclesSnapshot& vehicles);
 [[nodiscard]] std::string encodeLoot(const eft::LootSnapshot& loot);
 // Recordings only: the first line of a raid recording.
 [[nodiscard]] std::string encodeRecordingHeader(const eft::Status& status);

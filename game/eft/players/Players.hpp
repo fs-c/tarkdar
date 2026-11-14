@@ -71,6 +71,18 @@ public:
     };
     [[nodiscard]] std::vector<BuildFailureInfo> buildFailures() const;
 
+    // The built players' objects, for other subsystems and the equipment task that read per-player
+    // state of their own (published by the roster task; any thread may read it).
+    struct Ref {
+        std::uint32_t id = 0;  // PlayerState::id
+        Address instance = 0;
+        PlayerKind kind = PlayerKind::Client;
+        Address inventoryControllerField = 0;
+        bool dead = false;
+        friend bool operator==(const Ref&, const Ref&) = default;
+    };
+    [[nodiscard]] std::shared_ptr<const std::vector<Ref>> refs() const { return refs_.get(); }
+
 private:
     struct Entry {
         std::uint32_t id = 0;
@@ -100,13 +112,6 @@ private:
         std::string error;
     };
 
-    // What the equipment task needs to know about a player.
-    struct Ref {
-        std::uint32_t id = 0;
-        Address inventoryControllerField = 0;
-        bool dead = false;
-        friend bool operator==(const Ref&, const Ref&) = default;
-    };
     struct EquipmentState {
         sched::Clock::time_point lastRead{};
         bool read = false;
@@ -128,7 +133,7 @@ private:
     std::uint64_t revision_ = 0;
     std::size_t buildCursor_ = 0;
 
-    // Shared between the live tasks (writer) and the equipment task (reader).
+    // Written by the live tasks; read by the equipment task and other subsystems (refs()).
     sched::Published<std::vector<Ref>> refs_;
     std::vector<Ref> lastRefs_;  // live thread only
     // Equipment task only.

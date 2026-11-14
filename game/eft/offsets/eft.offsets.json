@@ -3,7 +3,7 @@
   "note": "Initial values: live-EFT reference values from MeatyEFTRelease cac603e. Expect different values for SPT builds; regenerate with tools/update-offsets.py.",
   "build": {
     "GameAssembly.dll": {
-      "peTimestamp": "0x6AE87AA9",
+      "peTimestamp": "0x6AF739B7",
       "imageSize": "0x79C2000"
     },
     "UnityPlayer.dll": {
@@ -299,15 +299,6 @@
       "value": "0x60"
     },
     {
-      "group": "BTRView",
-      "name": "previousPosition",
-      "class": "EFT.Vehicle.BTRView",
-      "field": "_previousPosition",
-      "static": false,
-      "required": false,
-      "value": "0xB4"
-    },
-    {
       "group": "BTRTurretView",
       "name": "attachedBot",
       "class": "EFT.Vehicle.BTRTurretView",
@@ -315,6 +306,33 @@
       "static": false,
       "required": false,
       "value": "0x60"
+    },
+    {
+      "group": "BTRView",
+      "name": "btrState",
+      "class": "EFT.Vehicle.BTRView",
+      "field": "_btrState",
+      "static": false,
+      "required": false,
+      "value": "0x9C"
+    },
+    {
+      "group": "Player",
+      "name": "_btrState",
+      "class": "EFT.Player",
+      "field": "_btrState",
+      "static": false,
+      "required": false,
+      "value": "0xC28"
+    },
+    {
+      "group": "ObservedPlayerView",
+      "name": "BtrState",
+      "class": "EFT.NextObservedPlayer.ObservedPlayerView",
+      "field": "<BtrState>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x80"
     },
     {
       "group": "Player",

@@ -123,6 +123,20 @@ the `players` message (same `rev`, sent right before it; not sent while no playe
 ```
 Thrown grenades (all types alike) until they explode, and armed tripwires.
 
+### `vehicles`
+```json
+{ "vehicles": [ { "id": 1, "kind": "btr", "state": 2, "pos": [128.3, 2.8, 251.4], "yaw": -96.0,
+                  "occupants": [ { "player": 1, "seat": "passenger" }, { "player": 21, "seat": "gunner" } ] } ] }
+```
+Vehicles on the map; so far only the BTR, from when it spawns until it's gone. Empty on maps without one.
+- **`state`:** the vehicle's own state. BTR: 0 stopped, 1 stopped (paid ride), 2 driving.
+- **`yaw`:** heading in degrees, same convention as a player's `yaw` (0 = +z, 90 = +x).
+- **`occupants`:** players aboard, by player `id`. `gunner`: the bot on the BTR's turret (an ordinary
+  player in `players`, usually with a scav voice). `passenger`: players getting in, sitting inside or
+  getting out.
+- Sent when something changes; a moving vehicle at most every 100 ms (moves under 0.1 m and turns
+  under 1° aren't sent).
+
 ### `loot`
 ```json
 { "loot": [ { "id": 7, "kind": "container", "tpl": "578f8782245977354405a1e3", "obj": "container_safe", "pos": [3.0, 1.0, 3.0] } ] }
@@ -178,7 +192,7 @@ stream, with these differences:
   ```
 - **`skeletons`** is throttled harder than `players` (at most 5 per second); the ones in between are
   dropped. Recordings from before it existed have none.
-- `status`, `exfils`, `explosives` and `equipment` are written as sent. The last line is the
+- `status`, `exfils`, `explosives`, `vehicles` and `equipment` are written as sent. The last line is the
   `status` that ended the raid (unless the backend stopped mid-raid).
 - A last line may be cut off (a raid in progress, or a crash): readers skip lines that don't parse.
 

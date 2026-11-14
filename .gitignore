@@ -21,3 +21,8 @@ node_modules/
 /maps/
 
 .claude/worktrees/
+
+# Dotfiles are ignored by default; allow the ones that belong in the repo explicitly.
+.*
+!.gitignore
+!.gitmodules

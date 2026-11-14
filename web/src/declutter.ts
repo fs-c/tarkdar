@@ -2,8 +2,8 @@
 // and in which order labels claim their space. How things look is style.ts; whether a kind of thing
 // shows at all is the layer toggles and the list's filters; highlights always show.
 //
-// "Detail" is the projector's level of detail: the 2D map's zoom (screen px per map image px), and
-// the same scale on the 3D map (see Map3D's DETAIL_PX_PER_METRE: 1 ≈ 4 screen px per metre).
+// "Detail" is the projector's level of detail (see Map3D's DETAIL_PX_PER_METRE: 1 ≈ 4 screen px per
+// metre).
 
 import type { ValueTier } from "./items";
 

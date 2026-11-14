@@ -1,5 +1,6 @@
 // The 3D map as the radar uses it: loads a dataset, owns the camera, and renders only when
-// something changed (the camera moved, a setting changed, an image arrived). Markers are not
+// something changed (the camera moved, a setting changed, an image arrived). Without a dataset (a
+// location that has no map) it shows a grid of world coordinates, with the same camera. Markers are not
 // drawn here: the caller projects world positions through `projector()` onto its own canvas.
 //
 // An orthographic view straight down is drawn from tiles (stage.ts, tiles.ts): a frame is then
@@ -10,7 +11,7 @@
 // as in protocol.ts). Internally z is negated (three.js is right-handed).
 
 import * as THREE from "three";
-import { loadMapData, type MapData } from "./dataset";
+import { type Bounds, loadMapData, type MapData } from "./dataset";
 import { InstanceRenderer } from "./instances";
 import { DEFAULT_MAP_SETTINGS, type MapSettings, PLAN_PALETTES } from "./settings";
 import { Stage } from "./stage";
@@ -37,7 +38,7 @@ export interface MapProjection {
   depth(pos: WorldPos): number;
 }
 
-/** Screen pixels per metre that count as the 2D view's zoom 1 (label thresholds, see Projector). */
+/** Screen pixels per metre that count as level of detail 1 (label thresholds, see Projector). */
 const DETAIL_PX_PER_METRE = 4;
 /** WASD movement: view heights per second, and the factor with Shift held. */
 const MOVE_SPEED = 0.7;
@@ -46,6 +47,14 @@ const MOVE_FAST = 3;
 const TURN_TIME = 140;
 /** Categories that only make sense with textures; never drawn. */
 const HIDDEN = ["shadow", "decal", "background"];
+
+/** No map: the area framed (world x and z, metres), and the grid (lines every GRID_STEP metres, stronger every GRID_MAJOR). */
+const NO_MAP_BOUNDS = { min: [-500, 0, -500], max: [500, 0, 500] } as const;
+const GRID_SIZE = 10_000;
+const GRID_STEP = 50;
+const GRID_MAJOR = 250;
+const GRID_COLOR = 0x1f2a33;
+const GRID_MAJOR_COLOR = 0x2b3945;
 
 /** a - b, in (-pi, pi]. */
 function angleDifference(a: number, b: number): number {
@@ -65,6 +74,8 @@ export class Map3D {
   private stage: Stage | null = null;
   private data: MapData | null = null;
   private instances: InstanceRenderer | null = null;
+  /** The grid shown without a map. */
+  private grid: THREE.GridHelper[] = [];
   private settings: MapSettings = DEFAULT_MAP_SETTINGS;
   private frameRequested = 0;
   private tilesRequested = 0;
@@ -90,8 +101,9 @@ export class Map3D {
     this.observer.observe(container);
   }
 
+  /** Ready to show: the dataset is loaded, or there is none (the grid). */
   get loaded(): boolean {
-    return this.data !== null;
+    return this.stage !== null;
   }
 
   /** An indoor map: only readable one floor at a time (setFloor). */
@@ -116,9 +128,10 @@ export class Map3D {
     this.requestRender();
   }
 
-  /** Loads a dataset folder (e.g. /maps/3d/customs), replacing the current map. */
-  async load(base: string, onProgress?: (fraction: number) => void): Promise<void> {
+  /** Loads a dataset folder (e.g. /maps/3d/customs), replacing the current map. null: no map, a grid. */
+  async load(base: string | null, onProgress?: (fraction: number) => void): Promise<void> {
     this.unload();
+    if (base === null) return this.showGrid();
     const abort = (this.abort = new AbortController());
     const data = await loadMapData(base, onProgress, abort.signal);
     if (abort.signal.aborted) return;
@@ -137,11 +150,31 @@ export class Map3D {
     stage.setGround(data.ground);
     stage.setExtent(data.index.bounds);
 
-    this.stage = stage;
     this.data = data;
     this.instances = new InstanceRenderer(stage, data, base);
+    this.start(stage, data.index.focusBounds);
+  }
+
+  /** No map: lines along world x and z, at ground level. */
+  private showGrid(): void {
+    const stage = new Stage(this.container, [], this.background, () => this.requestRender());
+    stage.tileCache = false; // a few hundred lines: nothing to save
+    const grid = (step: number, color: number) => {
+      const helper = new THREE.GridHelper(GRID_SIZE, GRID_SIZE / step, color, color);
+      (helper.material as THREE.LineBasicMaterial).toneMapped = false;
+      return helper;
+    };
+    this.grid = [grid(GRID_STEP, GRID_COLOR), grid(GRID_MAJOR, GRID_MAJOR_COLOR)];
+    this.grid[1]!.renderOrder = 1; // over the minor lines it shares
+    stage.overlay.add(...this.grid);
+    this.start(stage, { min: [...NO_MAP_BOUNDS.min], max: [...NO_MAP_BOUNDS.max] });
+  }
+
+  /** Puts a stage on screen, its camera framing `bounds`. */
+  private start(stage: Stage, bounds: Bounds): void {
+    this.stage = stage;
     this.resize();
-    stage.frame(data.index.focusBounds);
+    stage.frame(bounds);
     this.expectedTarget.copy(stage.controls.target);
     this.expectedHeading = stage.heading();
     // Only now: framing the map above also "changes" the camera, and that is not the user.
@@ -177,6 +210,8 @@ export class Map3D {
     cancelAnimationFrame(this.turn.frame);
     this.turn.frame = 0;
     this.instances?.dispose();
+    for (const g of this.grid) g.dispose();
+    this.grid = [];
     this.stage?.dispose();
     this.instances = null;
     this.stage = null;
@@ -218,7 +253,8 @@ export class Map3D {
     stage.setContours(this.settings.contours);
     stage.setWireframe(this.settings.wireframe);
     stage.setGrade(this.settings);
-    stage.setPlan(this.settings.style === "plan");
+    // The plan style is outlines and colours by height: nothing to draw on a grid.
+    stage.setPlan(this.settings.style === "plan" && this.data !== null);
     // A stored palette may predate a colour added since.
     stage.setPalette({ ...PLAN_PALETTES.paper, ...this.settings.palette });
     stage.setControlScheme(this.settings.controls);

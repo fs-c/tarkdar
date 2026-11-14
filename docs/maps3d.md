@@ -1,8 +1,8 @@
 # 3D maps
 
-The radar draws a raid on a 3D map built from the game's own geometry when the location has one
-(`maps/3d/<folder>/`), and falls back to a calibrated 2D image (`maps/2d/`, see `docs/maps.md`)
-or a plain world grid otherwise. The 2D maps are meant to go once every location has a 3D map.
+The radar draws a raid on a 3D map built from the game's own geometry (`maps/3d/<folder>/`). A
+location without one gets a grid of world coordinates in the same viewer instead: same camera,
+controls and markers.
 
 Available: **Customs** (`bigmap`) and **Streets** (`TarkovStreets`, exteriors only).
 
@@ -27,7 +27,7 @@ tools/maps3d/             the pipeline (Python) and the measurement harness
   cache/                  extraction cache (0.7 GB, in the asset store, not in git)
   harness/                screenshots + image metrics against a full-detail reference; frame times
 web/src/map3d/            the renderer (three.js): container, dataset, Map3D, stage, tiles, instances, color
-web/src/components/Radar3D.tsx   the map plus the marker overlay
+web/src/components/Radar.tsx     the map plus the marker overlay
 ```
 
 ## Using it
@@ -79,8 +79,8 @@ the count of each object type (`typeCounts`). Scenes do not reference NavMesh da
 
 ## In the frontend
 
-- A location's 3D map wins over its 2D one; **Settings → Use the 2D map** switches back while both
-  exist.
+- A location without a map shows a grid instead (`Map3D.load(null)`): lines every 50 m, stronger
+  every 250 m, at height 0. Style, palette and the map debugging tools don't apply to it.
 - Drag moves the map, the wheel zooms, right-drag (two fingers) tilts and turns it, `0` resets to
   top-down with north up, `+`/`-` zoom, `F` follows the local player.
 - **Settings → Controls → WASD**: `W A S D` move along the ground (Shift: faster, speed follows the
@@ -99,10 +99,10 @@ the count of each object type (`typeCounts`). Scenes do not reference NavMesh da
 - **Settings → Style**: **Realistic** shows what the place looks like (the game's material
   colours, lit); **Plan** is drawn like a map, for reading a situation at a glance (below). Same
   camera, same geometry: switching costs one frame.
-- **Settings → 3D map colours**: colour schemes and sliders for the colour grade (below), live.
-- Markers (players, loot, exfils, explosives, trails, labels) are the 2D radar's, drawn on a canvas
-  over the map through a projection (`web/src/projector.ts`): same code on both kinds of map. They
-  show through buildings.
+- **Settings → Map colours**: colour schemes and sliders for the colour grade (below), live.
+- Markers (players, loot, exfils, explosives, trails, labels) are drawn on a canvas over the map
+  through the map's camera (`web/src/projector.ts`, `web/src/render.ts`). They show through
+  buildings.
 - **The map is rendered only when its camera or a setting changes.** Marker updates redraw the
   overlay only; while following, the map is re-rendered at most 30 times a second. A still camera
   costs the GPU nothing, which matters when the radar runs next to the game.
@@ -489,9 +489,7 @@ Customs cache when it is present (sizes, counts, categories).
 
 In the order it would pay off:
 
-1. **More maps** (needs the game): a preset per map, `make cache`, `make maps`, `make publish`;
-   then the 2D map of that location can go. When all are covered: delete `Radar2D`
-   (`RadarCanvas.tsx`), `calibration.ts`, `view.ts`, `maps/2d` and `docs/maps.md`.
+1. **More maps** (needs the game): a preset per map, `make cache`, `make maps`, `make publish`.
 2. **GPU memory**: hand the 16-bit positions to the GPU as they are (the scale goes into the
    instance matrix) instead of expanding them: 17 MB less on Customs, 24 MB on Streets. Cutting
    meshes at 65,535 vertices would halve the index memory as well, for 60 to 80 more draw calls.

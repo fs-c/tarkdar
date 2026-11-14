@@ -1,19 +1,13 @@
-// Map view of the side panel: which layers to draw (and, on 2D maps with several, which floor).
+// Map view of the side panel: which layers to draw, loot markers and labels, trails.
 
 import { DEFAULT_LOOT_DENSITY, LOOT_DENSITY, type LootDensity } from "../declutter";
 import type { LootPrefs, TrailPrefs } from "../hooks";
 import { formatPrice } from "../items";
 import type { Layers } from "../render";
-import { PanelBody, Section, Segmented, type SegmentedOption, ToggleRow } from "../ui";
+import { PanelBody, Section, Segmented, ToggleRow } from "../ui";
 import s from "./MapPanel.module.css";
 
 interface Props {
-  /** Number of map floors; the floor picker only shows from 2 (2D maps). */
-  floors: number;
-  /** Floor shown now, and the floor picked by hand (null: auto). */
-  layer: number;
-  manualLayer: number | null;
-  onPickFloor: (layer: number | null) => void;
   layers: Layers;
   onToggleLayer: (key: keyof Layers) => void;
   trails: TrailPrefs;
@@ -34,17 +28,8 @@ const LAYERS: { key: keyof Layers; label: string; hint: string }[] = [
 ];
 
 export function MapPanel(p: Props) {
-  const floorOptions: SegmentedOption<number | null>[] = [
-    { value: null, label: "Auto", title: "Follow the local player's floor" },
-    ...Array.from({ length: p.floors }, (_, i) => ({ value: i, label: i + 1, title: i === p.layer ? "Shown now" : undefined })),
-  ];
   return (
     <PanelBody>
-      {p.floors >= 2 && (
-        <Section title="Floor">
-          <Segmented label="Floor" options={floorOptions} value={p.manualLayer} marked={p.layer} onChange={p.onPickFloor} />
-        </Section>
-      )}
       <Section title="Layers">
         {LAYERS.map(({ key, label, hint }) => (
           <ToggleRow key={key} label={label} hint={hint} checked={p.layers[key]} onChange={() => p.onToggleLayer(key)} />

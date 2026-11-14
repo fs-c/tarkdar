@@ -10,17 +10,10 @@ const STATE_LABELS: Record<string, string> = {
   cooldown: "raid ended",
 };
 
-/** The shown map: its name and number of floors (a 3D map has one). */
-export interface MapStatus {
-  name: string;
-  floors: number;
-}
-
 export function statusParts(
   s: RadarState,
-  map: MapStatus | null,
-  layer: number,
-  manualLayer: number | null,
+  /** The shown map's name (null: none for this location). */
+  map: string | null,
   catalog: CatalogStatus,
   /** Replaying a recording: its name ("Customs · 10 Nov 19:03"). */
   replay: string | null = null,
@@ -35,9 +28,7 @@ export function statusParts(
   else if (state === "inRaid") parts.push(`in raid: ${s.status.locationId ?? "?"}`);
   else parts.push(STATE_LABELS[state] ?? state);
   if (state === "inRaid") {
-    if (!map) parts.push("no map for this location");
-    else if (map.floors > 1) parts.push(`${map.name}, floor ${layer + 1}/${map.floors}${manualLayer === null ? " (auto)" : ""}`);
-    else parts.push(map.name);
+    parts.push(map ?? "no map for this location");
     const alive = s.players.filter((p) => !p.dead && !p.absent).length;
     parts.push(`${alive} alive / ${s.players.length} players`);
     if (s.loot.length) parts.push(`${s.loot.length} loot`);
@@ -50,9 +41,7 @@ export function statusParts(
 
 interface Props {
   state: RadarState;
-  map: MapStatus | null;
-  layer: number;
-  manualLayer: number | null;
+  map: string | null;
   catalog: CatalogStatus;
   /** Replaying a recording: its name. */
   replay?: string | null;
@@ -60,8 +49,8 @@ interface Props {
   children?: React.ReactNode;
 }
 
-export function StatusBar({ state, map, layer, manualLayer, catalog, replay = null, children }: Props) {
-  const parts = statusParts(state, map, layer, manualLayer, catalog, replay);
+export function StatusBar({ state, map, catalog, replay = null, children }: Props) {
+  const parts = statusParts(state, map, catalog, replay);
   const warn = !state.connected || state.protocolMismatch;
   return (
     <footer className={s.bar} data-mode={warn ? "warn" : undefined}>
@@ -80,7 +69,7 @@ export function StatusText({ alert = false, children }: { alert?: boolean; child
 }
 
 interface StatusButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  /** warn: something's off (or on, like calibration); link: a way to a view. */
+  /** warn: something's off; link: a way to a view. */
   tone?: "warn" | "link";
 }
 

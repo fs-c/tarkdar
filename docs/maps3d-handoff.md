@@ -59,7 +59,7 @@ make harness-serve    # then: cd harness && node shot.mjs --data shoreline-smoke
 2. **Tune each outdoor map**: Woods, Shoreline, Interchange, Reserve, Lighthouse, Ground Zero,
    Terminal are built into `maps/3d/<map>` (local, not published) and have been looked at top-down
    only. Left per map: look at it in the radar, `make_views.py` + reference + `make measure`,
-   `make publish`, drop its 2D map, set `tuned`. Known so far:
+   `make publish`, set `tuned`. Known so far:
    - rocks have a stand-in colour (`build.ROCK_COLOR`): cache v4 has no thumbnail of the rock
      shaders' albedo slots. The extractor is fixed (version 5) for the next extraction;
    - Terminal builds without the `PortCutscene_*` scenes (story cutscenes staged on the map);
@@ -79,7 +79,6 @@ make harness-serve    # then: cd harness && node shot.mjs --data shoreline-smoke
    (item 4). The culling scenes are scripts only: no rooms or portals to use.
 6. **Housekeeping:** the published Customs and Streets builds predate the "optimize map size"
    commit (rebuild + `make publish`). `maps/3d/factory` has never been published.
-   When every location is covered, remove the 2D maps (see `docs/maps3d.md`).
 
 ## When the game is needed again
 

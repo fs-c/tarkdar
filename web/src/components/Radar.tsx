@@ -1,4 +1,5 @@
-// The 3D radar: the map (WebGL, map3d/Map3D) with a 2D canvas on top for everything that moves.
+// The radar: the map (WebGL, map3d/Map3D) with a 2D canvas on top for everything that moves.
+// A location without a map gets a grid of world coordinates instead, with the same camera.
 // The two are redrawn independently: the map only when its camera or settings change, the markers
 // whenever the scene does. A camera that stands still costs the GPU nothing.
 
@@ -11,12 +12,12 @@ import type { Projector } from "../projector";
 import type { WorldPos } from "../protocol";
 import { type Scene, renderMarkers } from "../render";
 import { ui } from "../theme";
-import s from "./Radar3D.module.css";
+import s from "./Radar.module.css";
 
 /** Turned less than this (radians) counts as north up. */
 const NORTH_TOLERANCE = 0.01;
 
-export interface Radar3DHandle {
+export interface RadarHandle {
   /** Flies there. */
   centerOn(pos: WorldPos): void;
   /** The current camera, for hit-testing markers. */
@@ -27,8 +28,8 @@ export interface Radar3DHandle {
 }
 
 interface Props {
-  /** Dataset folder URL (/maps/3d/<folder>). */
-  url: string;
+  /** Dataset folder URL (/maps/3d/<folder>); null: no map for this location, a grid. */
+  url: string | null;
   scene: Scene;
   settings: MapSettings;
   /** Keep the local player centred. Turning it on flies there. */
@@ -43,7 +44,7 @@ interface Props {
   onTap: (x: number, y: number) => void;
   /** Render statistics after each map frame (debugging); omit to skip the bookkeeping. */
   onStats?: (stats: MapStats) => void;
-  ref?: Ref<Radar3DHandle>;
+  ref?: Ref<RadarHandle>;
 }
 
 /** Metres of ground across the view when a map opens while following the local player. */
@@ -62,13 +63,13 @@ const FOLLOW_INTERVAL = 33;
 const FLY_ZOOM_ABOVE = 600;
 
 
-export function Radar3D({ url, scene, settings, follow, heading, onPan, onTurn, onTap, onStats, ref }: Props) {
+export function Radar({ url, scene, settings, follow, heading, onPan, onTurn, onTap, onStats, ref }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const mapRef = useRef<Map3D | null>(null);
   const latest = useRef({ scene, follow, heading, onPan, onTurn, onTap, onStats, settings });
   const drawRequested = useRef(0);
-  const [status, setStatus] = useState<{ progress: number | null; error: string | null }>({ progress: 0, error: null });
+  const [status, setStatus] = useState<{ progress: number | null; error: string | null }>({ progress: url ? 0 : null, error: null });
   // Indoor maps are cut open at one floor: the local player's, or one picked by hand (a height).
   const [interior, setInterior] = useState(false);
   const [pickedFloor, setPickedFloor] = useState<number | null>(null);
@@ -121,7 +122,7 @@ export function Radar3D({ url, scene, settings, follow, heading, onPan, onTurn, 
     map.onUserPan = () => latest.current.onPan();
     map.onUserTurn = () => latest.current.onTurn();
     let live = true;
-    setStatus({ progress: 0, error: null });
+    setStatus({ progress: url ? 0 : null, error: null });
     setInterior(false);
     setPickedFloor(null);
     playerFloor.current = null;

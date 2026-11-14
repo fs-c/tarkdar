@@ -1,6 +1,7 @@
 {
+ "shared": ["recordings"],
  "store": {"prefix": "sha256/"},
- "track": ["dumps/il2cpp-dump.json", "recordings/2026-11-10_21-38-06_bigmap.jsonl.gz", "recordings/2026-11-10_22-17-39_bigmap.jsonl.gz", "maps/3d/**", "tools/maps3d/cache/manifest.json", "tools/maps3d/cache/**/*.pack.zst"],
+ "track": ["dumps/il2cpp-dump.json", "maps/3d/**", "tools/maps3d/cache/manifest.json", "tools/maps3d/cache/**/*.pack.zst"],
  "version": 1,
  "files": {
   "dumps/il2cpp-dump.json": {"sha256": "a6e7c0ddb4aa1ba9cd29c9d93af1b621df5f621d27fe34256a0b73955f91f47b", "size": 8514371},
@@ -68,8 +69,6 @@
   "maps/3d/woods/texture-190.png": {"sha256": "fe10e35dfcd3e82d837b78c0f227e6119c165490daf3421c14fd4a6f0b457a9b", "size": 811372},
   "maps/3d/woods/texture-191.png": {"sha256": "c9fc7143e85ac198d2a50fac1a75108eda2d9b44466b3395f2b027f6210c7498", "size": 766005},
   "maps/3d/woods/texture-192.png": {"sha256": "f0b87677474a2ae75afe72d1df6de8627906b4a5e5c235da97c81c11446e136d", "size": 854754},
-  "recordings/2026-11-10_21-38-06_bigmap.jsonl.gz": {"sha256": "f9e72aaea8fe8f51299b694a4997a1ee9948de43530a186ccfd24b62051fd760", "size": 1909489},
-  "recordings/2026-11-10_22-17-39_bigmap.jsonl.gz": {"sha256": "c6fb9400e1b2c10c44a3c509fa373e444a5b4ce8bb2c309eb16bf89f97322d2f", "size": 3531434},
   "tools/maps3d/cache/manifest.json": {"sha256": "539fab1c8b5bebf407a280d2d00a701788c8341affd0eb273c9d0dac58d7fc3d", "size": 945322},
   "tools/maps3d/cache/meshes/00.pack.zst": {"sha256": "a2e1fdaa03125d6e9444fb3ec3e99e64a78e897df1f58bcdb1bbc2a8866d6f70", "size": 4415265},
   "tools/maps3d/cache/meshes/01.pack.zst": {"sha256": "2459a5ce2bd5997ff40474098cd4786dc74f2538080df069d4f48e7f8a0221b5", "size": 5370869},

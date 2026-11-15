@@ -25,8 +25,8 @@ export interface RowBase {
   dist?: number;
   /** Height above the local player (m). */
   dh?: number;
-  /** Item templates the thing is (loose items) or carries (players and corpses: their equipment, as
-   *  far as it could be read). */
+  /** Templates the thing is (loose items, containers) or carries (players and corpses: their
+   *  equipment, as far as it could be read). */
   tpls: readonly string[];
   /** Roubles: a loose item's unit price; the equipment value of players and corpses. Undefined when
    *  unknown (unpriced, not read). */
@@ -172,7 +172,7 @@ export function lootRows(loot: LootEntry[], catalog: ItemCatalog): Pick<TabRows,
       });
     } else if (isContainerKind(l.kind)) {
       const name = l.kind === "container" ? (containerName(l.tpl) ?? "container") : l.kind;
-      containers.push({ ...base(sel, l.kind, l.pos, text(name, l.kind, l.tpl)), name, kind: l.kind });
+      containers.push({ ...base(sel, l.kind, l.pos, text(name, l.kind, l.tpl), l.tpl ? [l.tpl] : NO_TPLS), name, kind: l.kind });
     } else {
       const info = catalog.lookup(l.tpl);
       const kind = l.kind === "quest" ? "quest" : "item";

@@ -1,8 +1,8 @@
 // The global search's suggestions: what a query could mean, as highlight rules. Free text first (what
 // you typed, matched like the list's search), then the more specific readings: a value threshold,
-// kinds of players and things, item categories, single items.
+// kinds of players and things, kinds of container, item categories, single items.
 
-import type { ItemCatalog } from "../items";
+import { type ItemCatalog, containerTypes } from "../items";
 import type { SubjectKind } from "../list/rows";
 import { type PlayerType, SPECIAL_TYPES } from "../roles";
 import type { Match } from "./match";
@@ -10,7 +10,7 @@ import type { Match } from "./match";
 export interface Suggestion {
   /** Pill and list text. */
   label: string;
-  group: "Text" | "Value" | "Players" | "Things" | "Category" | "Item";
+  group: "Text" | "Value" | "Players" | "Things" | "Container" | "Category" | "Item";
   /** Secondary text: a category's parents, an item's full name. */
   detail?: string;
   match: Match;
@@ -49,6 +49,9 @@ const PRESETS: Preset[] = [
   things("Explosives", ["grenade", "tripwire"], "grenades tripwires mines"),
 ];
 
+const CONTAINER_TYPES = containerTypes();
+
+const MAX_CONTAINERS = 5;
 const MAX_CATEGORIES = 5;
 const MAX_ITEMS = 8;
 
@@ -81,6 +84,11 @@ export function suggest(query: string, catalog: ItemCatalog): Suggestion[] {
   }
 
   if (q.length >= 2) {
+    const kinds = CONTAINER_TYPES.filter((c) => rank(c.name, q) < 9)
+      .sort((a, b) => rank(a.name, q) - rank(b.name, q) || a.name.localeCompare(b.name))
+      .slice(0, MAX_CONTAINERS);
+    for (const c of kinds) out.push({ label: c.name, group: "Container", match: { subjects: ["container"], tpls: c.tpls } });
+
     const cats = catalog
       .categories()
       .filter((c) => c.name.toLowerCase().includes(q))

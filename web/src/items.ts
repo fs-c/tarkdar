@@ -102,6 +102,17 @@ export function containerName(templateId: string): string | undefined {
   return Object.hasOwn(CONTAINERS, templateId) ? CONTAINERS[templateId] : undefined;
 }
 
+/** The known kinds of container, by name: variants that share a name are one kind. */
+export function containerTypes(): { name: string; tpls: string[] }[] {
+  const byName = new Map<string, string[]>();
+  for (const [tpl, name] of Object.entries(CONTAINERS)) {
+    const tpls = byName.get(name);
+    if (tpls) tpls.push(tpl);
+    else byName.set(name, [tpl]);
+  }
+  return [...byName].map(([name, tpls]) => ({ name, tpls }));
+}
+
 /** Exit status → short label and colour class. */
 export function exfilStatus(status: number): { label: string; tone: "open" | "closed" | "pending" | "neutral" } {
   switch (status) {

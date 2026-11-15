@@ -21,7 +21,7 @@ const rows = allRows(
   buildRows(
     {
       players: [player(1, { local: true, ai: false, side: "usec" }), player(2, { role: 6 }), player(3, { ai: false, side: "bear" }), player(4, { role: 1 })],
-      loot: [loot(10, "item", "ledx"), loot(11, "item", "gpu"), loot(12, "item", "bolts"), loot(13, "quest", "x"), loot(20, "corpse", "", { contents: [{ tpl: "m4" }] }), loot(21, "airdrop", "")],
+      loot: [loot(10, "item", "ledx"), loot(11, "item", "gpu"), loot(12, "item", "bolts"), loot(13, "quest", "x"), loot(20, "corpse", "", { contents: [{ tpl: "m4" }] }), loot(21, "airdrop", ""), loot(22, "container", "578f8782245977354405a1e3"), loot(23, "container", "578f87b7245977356274f2cd")],
       exfils: [],
       explosives: { grenades: [], tripwires: [] },
       equipment: new Map([[1, { id: 1, slots: [{ tpl: "m4" }] }], [3, { id: 3, slots: [{ tpl: "m4" }] }]]),
@@ -36,6 +36,9 @@ describe("matching", () => {
     expect(keys({ categories: ["barter"] })).toEqual(["loot:10", "loot:11", "loot:12"]);
     expect(keys({ categories: ["weapons"] })).toEqual(["player:3", "loot:20"]);
     expect(keys({ categories: ["electronics", "medsupplies"] })).toEqual(["loot:10", "loot:11"]);
+  });
+  it("matches kinds of container by template", () => {
+    expect(keys({ subjects: ["container"], tpls: ["578f8782245977354405a1e3"] })).toEqual(["loot:22"]);
   });
   it("matches templates, player types, kinds of things, values and text", () => {
     expect(keys({ tpls: ["gpu"] })).toEqual(["loot:11"]);

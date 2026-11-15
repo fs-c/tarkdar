@@ -39,8 +39,8 @@ describe("buildRows", () => {
     expect(rows.containers.map((r) => [r.sel.id, r.kind])).toEqual([[20, "container"], [21, "corpse"]]);
   });
 
-  it("knows what players and corpses carry (and what it's worth); containers carry nothing", () => {
-    expect(rows.containers[0]).toMatchObject({ name: "Safe", subject: "container", tpls: [] });
+  it("knows what players and corpses carry (and what it's worth); containers are only their own kind", () => {
+    expect(rows.containers[0]).toMatchObject({ name: "Safe", subject: "container", tpls: ["578f8782245977354405a1e3"] });
     expect(rows.containers[0]!.value).toBeUndefined();
     expect(rows.containers[1]).toMatchObject({ subject: "corpse", tpls: ["m4", "helmet"], value: 100_000 });
     expect(rows.players[2]).toMatchObject({ subject: "player", tpls: ["m4"], value: 40_000 });

@@ -37,6 +37,13 @@ describe("suggest", () => {
     expect(suggest("graphics", catalog).find((s) => s.group === "Item")?.match).toEqual({ tpls: ["gpu", "gpu2"] });
   });
 
+  it("offers kinds of container, their variants as one", () => {
+    expect(groups("safe")).toEqual(['Text:"safe"', "Container:Safe"]);
+    const box = suggest("weapon", catalog).find((s) => s.group === "Container");
+    expect(box).toMatchObject({ label: "Weapon Box", match: { subjects: ["container"] } });
+    expect(box?.match.tpls).toHaveLength(4);
+  });
+
   it("gives a category's parents as detail", () => {
     expect(suggest("electronics", catalog).find((s) => s.group === "Category")).toMatchObject({ detail: "Barter items", match: { categories: ["elec"] } });
   });

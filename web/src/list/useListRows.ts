@@ -67,9 +67,9 @@ export interface ListRows {
 }
 
 /** Rows per category, each rebuilt only when its source changes (loot rarely, players many times a second). */
-export function useListRows(state: RadarState, catalog: ItemCatalog, filters: ListFilters): ListRows {
+export function useListRows(state: RadarState, catalog: ItemCatalog, questLabels: ReadonlyMap<string, string>, filters: ListFilters): ListRows {
   const players = useMemo(() => playerRows(state.players, state.equipment, catalog), [state.players, state.equipment, catalog]);
-  const loot = useMemo(() => lootRows(state.loot, catalog), [state.loot, catalog]);
+  const loot = useMemo(() => lootRows(state.loot, catalog, questLabels), [state.loot, catalog, questLabels]);
   const exfils = useMemo(() => exfilRows(state.exfils), [state.exfils]);
   const explosives = useMemo(() => explosiveRows(state.explosives), [state.explosives]);
   return useMemo(() => {

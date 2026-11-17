@@ -1,15 +1,17 @@
 // Quest data from tarkov.dev's JSON API ("tasks" feed), cached in the browser like the item catalogue,
 // and which quest items the local player still needs.
 //
-// Only what the quest item filter needs is kept: per quest, its "find quest item" objectives (objective
-// id → the quest item's template id). Objective ids are the game's condition ids, so together with the
+// Only what the quest item filter and labels need is kept: per quest, its "find quest item" objectives
+// (objective id → the quest item's template id), and English names (the `tasks_en` feed: names in `tasks`
+// are translation keys like "<id> name") of the quests that have any and of the quest items, which the
+// item catalogue doesn't have. Objective ids are the game's condition ids, so together with the
 // backend's `quests` message (quests in progress and their completed conditions) they tell which quest
 // items on the map are still wanted. SPT uses the live game's quest ids.
 
 import { FEED_BASE } from "./catalog";
 import type { LootEntry, QuestState } from "./protocol";
 
-const STORAGE_KEY = "radar.quests.v2";
+const STORAGE_KEY = "radar.quests.v3";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** EQuestStatus: started (and not yet ready to hand in). */
@@ -17,6 +19,13 @@ export const QUEST_STARTED = 2;
 
 /** Quest id → its find-quest-item objectives: [objective id, quest item template id]. */
 export type SlimTasks = Record<string, [string, string][]>;
+
+export interface QuestNames {
+  /** Quest id → name, for quests with quest items to find. */
+  quests: Record<string, string>;
+  /** Quest item template id → short name. */
+  items: Record<string, string>;
+}
 
 export interface QuestDataStatus {
   state: "loading" | "ready" | "stale" | "unavailable";
@@ -37,6 +46,24 @@ export function slimTasks(tasksFeed: unknown): SlimTasks {
       if (o?.type === "findQuestItem" && typeof o.id === "string" && typeof o.questItem === "string") finds.push([o.id, o.questItem]);
     }
     out[id] = finds;
+  }
+  return out;
+}
+
+/** The English names of the quests with quest items to find, and of the quest items. Anything without a
+ *  translation is left out (it gets a less specific label). */
+export function questNames(tasksFeed: unknown, translationsFeed: unknown, tasks: SlimTasks): QuestNames {
+  const data = (tasksFeed as { data?: { tasks?: Record<string, { name?: unknown }>; questItems?: Record<string, { shortName?: unknown }> } })?.data;
+  const en = (translationsFeed as { data?: Record<string, string> })?.data ?? {};
+  const translated = (key: unknown) => (typeof key === "string" && typeof en[key] === "string" && en[key] ? en[key] : null);
+  const out: QuestNames = { quests: {}, items: {} };
+  for (const [id, finds] of Object.entries(tasks)) {
+    const name = finds.length ? translated(data?.tasks?.[id]?.name ?? `${id} name`) : null;
+    if (name) out.quests[id] = name;
+  }
+  for (const [tpl, item] of Object.entries(data?.questItems ?? {})) {
+    const name = translated(item?.shortName);
+    if (name) out.items[tpl] = name;
   }
   return out;
 }
@@ -90,6 +117,32 @@ export function withoutUnneededQuestItems(loot: LootEntry[], needed: NeededQuest
   return loot.every(keep) ? loot : loot.filter(keep);
 }
 
+/**
+ * Quest item template id → its label: the name of the quest it's for. Started quests that still need it
+ * come first; failing that (not started, or no quest state), every quest with a find objective for it.
+ * Several quests are joined with " / ". A quest item without a named quest gets its own name, if known.
+ */
+export function questItemLabels(quests: readonly QuestState[] | null, tasks: SlimTasks | null, names: QuestNames | null): Map<string, string> {
+  const labels = new Map<string, string>();
+  if (!tasks || !names) return labels;
+  const add = (into: Map<string, Set<string>>, tpl: string, quest: string) => {
+    if (!Object.hasOwn(names.quests, quest)) return;
+    let set = into.get(tpl);
+    if (!set) into.set(tpl, (set = new Set()));
+    set.add(names.quests[quest]!);
+  };
+  const open = new Map<string, Set<string>>();
+  for (const q of quests ?? []) {
+    if (q.status !== QUEST_STARTED || !Object.hasOwn(tasks, q.id)) continue;
+    for (const [objective, tpl] of tasks[q.id]!) if (!q.done?.includes(objective)) add(open, tpl, q.id);
+  }
+  const any = new Map<string, Set<string>>();
+  for (const [quest, finds] of Object.entries(tasks)) for (const [, tpl] of finds) add(any, tpl, quest);
+  for (const [tpl, all] of any) labels.set(tpl, [...(open.get(tpl) ?? all)].join(" / "));
+  for (const [tpl, name] of Object.entries(names.items)) if (!labels.has(tpl)) labels.set(tpl, name);
+  return labels;
+}
+
 interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -98,12 +151,13 @@ interface StorageLike {
 interface CachedTasks {
   fetchedAt: number;
   tasks: SlimTasks;
+  names: QuestNames;
 }
 
 function readCache(storage: StorageLike): CachedTasks | null {
   try {
     const c = JSON.parse(storage.getItem(STORAGE_KEY) ?? "null") as CachedTasks | null;
-    return c && typeof c.fetchedAt === "number" && c.tasks && typeof c.tasks === "object" ? c : null;
+    return c && typeof c.fetchedAt === "number" && c.tasks && typeof c.tasks === "object" && c.names?.quests && c.names.items ? c : null;
   } catch {
     return null;
   }
@@ -115,26 +169,31 @@ function readCache(storage: StorageLike): CachedTasks | null {
  */
 export async function loadQuestData(
   opts: { now?: number; storage?: StorageLike; fetchFn?: typeof fetch } = {},
-): Promise<{ tasks: SlimTasks | null; status: QuestDataStatus }> {
+): Promise<{ tasks: SlimTasks | null; names: QuestNames | null; status: QuestDataStatus }> {
   const now = opts.now ?? Date.now();
   const storage = opts.storage ?? localStorage;
   const fetchFn = opts.fetchFn ?? fetch.bind(globalThis);
   const cached = readCache(storage);
   const age = cached ? now - cached.fetchedAt : Infinity;
-  if (cached && age >= 0 && age < MAX_AGE_MS) return { tasks: cached.tasks, status: { state: "ready", fetchedAt: cached.fetchedAt } };
+  if (cached && age >= 0 && age < MAX_AGE_MS) return { tasks: cached.tasks, names: cached.names, status: { state: "ready", fetchedAt: cached.fetchedAt } };
   try {
-    const res = await fetchFn(`${FEED_BASE}/tasks`);
-    if (!res.ok) throw new Error(`tasks: HTTP ${res.status}`);
-    const tasks = slimTasks(await res.json());
+    const get = async (feed: string) => {
+      const res = await fetchFn(`${FEED_BASE}/${feed}`);
+      if (!res.ok) throw new Error(`${feed}: HTTP ${res.status}`);
+      return res.json();
+    };
+    const [feed, en] = await Promise.all([get("tasks"), get("tasks_en")]);
+    const tasks = slimTasks(feed);
+    const names = questNames(feed, en, tasks);
     try {
-      storage.setItem(STORAGE_KEY, JSON.stringify({ fetchedAt: now, tasks } satisfies CachedTasks));
+      storage.setItem(STORAGE_KEY, JSON.stringify({ fetchedAt: now, tasks, names } satisfies CachedTasks));
     } catch (e) {
       console.warn("couldn't cache quest data", e);
     }
-    return { tasks, status: { state: "ready", fetchedAt: now } };
+    return { tasks, names, status: { state: "ready", fetchedAt: now } };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
-    if (cached) return { tasks: cached.tasks, status: { state: "stale", fetchedAt: cached.fetchedAt, error } };
-    return { tasks: null, status: { state: "unavailable", fetchedAt: null, error } };
+    if (cached) return { tasks: cached.tasks, names: cached.names, status: { state: "stale", fetchedAt: cached.fetchedAt, error } };
+    return { tasks: null, names: null, status: { state: "unavailable", fetchedAt: null, error } };
   }
 }

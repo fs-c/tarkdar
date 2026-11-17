@@ -33,7 +33,7 @@ const exfil: Exfil = { id: 1, kind: "regular", name: "Gate", status: 4, pos: [0,
 /** Draws the scene at a level of detail (declutter.ts). */
 function draw(detail: number, patch: Partial<Scene>) {
   const scene: Scene = {
-    players: [], catalog, exfils: [], explosives: { grenades: [], tripwires: [] }, vehicles: [], loot: [],
+    players: [], catalog, exfils: [], explosives: { grenades: [], tripwires: [] }, vehicles: [], loot: [], questLabels: new Map(),
     layers: { loot: true, containers: true, exfils: true, explosives: true }, minLabelPrice: 0, lootDensity: "all",
     selected: null, hovered: null, highlights: new Map(), debugPoints: [], trails: null, bodies: false,
     ...patch,
@@ -62,6 +62,13 @@ describe("labels", () => {
     expect(draw(2, { loot: drops }).texts).toHaveLength(7);
     const quests = Array.from({ length: 7 }, (_, i) => loot(i, "quest"));
     expect(draw(2, { loot: quests }).texts.length).toBeLessThan(7);
+  });
+
+  it("label quest items with their quest, else generically, and highlighted ones too", () => {
+    const questLabels = new Map([["diary", "Missing Informant"]]);
+    expect(draw(2, { loot: [loot(1, "quest", "diary")], questLabels }).texts).toEqual(["Missing Informant"]);
+    expect(draw(2, { loot: [loot(1, "quest", "unknown")], questLabels }).texts).toEqual(["quest item"]);
+    expect(draw(2, { loot: [loot(1, "quest", "diary")], questLabels, highlights: new Map([["loot:1", "#f00"]]) }).texts).toEqual(["Missing Informant"]);
   });
 
   it("place the more important labels first", () => {

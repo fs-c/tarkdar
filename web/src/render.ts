@@ -24,6 +24,8 @@ export interface Scene {
   explosives: ExplosivesData;
   vehicles: Vehicle[];
   loot: LootEntry[];
+  /** Quest item template id → the quest it's for (quests.ts), its label. */
+  questLabels: ReadonlyMap<string, string>;
   layers: Layers;
   /** Items worth less than this (₽) get no label. */
   minLabelPrice: number;
@@ -426,7 +428,7 @@ function textWidth(ctx: CanvasRenderingContext2D, font: string, text: string): n
 const labelHeight = (font: string) => Number(/(\d+)px/.exec(font)?.[1] ?? 10) + 2;
 
 function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene, labels: LabelRequest[]): void {
-  const { loot, layers, catalog, minLabelPrice, highlights, lootDensity } = scene;
+  const { loot, layers, catalog, questLabels, minLabelPrice, highlights, lootDensity } = scene;
   const containerLabels = pr.detail >= LABEL_DETAIL.containers;
   const itemLabels = pr.detail >= LABEL_DETAIL.items;
   const label = (x: number, y: number, texts: string[], rank: number, priority: number, forced: boolean, color: string = COLORS.label) =>
@@ -438,7 +440,7 @@ function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene, la
     const [x, y] = pr.toScreen(l.pos);
     if (!onScreen(pr, x, y, 10)) continue;
     // Highlighted: labelled at any zoom, before the rest of the loot (but only where there's room).
-    if (highlight) label(x, y, highlightTexts(l, catalog), LABEL_RANK.highlighted, 0, false, highlight);
+    if (highlight) label(x, y, highlightTexts(l, catalog, questLabels), LABEL_RANK.highlighted, 0, false, highlight);
     switch (l.kind) {
       case "item": {
         const info = catalog.lookup(l.tpl);
@@ -464,7 +466,7 @@ function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene, la
         ctx.lineTo(x, y + size);
         ctx.lineTo(x - size, y);
         ctx.fill();
-        if (!highlight) label(x, y, ["quest item"], LABEL_RANK.questOrAirdrop, 2, false);
+        if (!highlight) label(x, y, questTexts(l.tpl, questLabels), LABEL_RANK.questOrAirdrop, 2, false);
         break;
       }
       case "container": {
@@ -544,17 +546,23 @@ function drawLabels(ctx: CanvasRenderingContext2D, labels: LabelRequest[]): void
 }
 
 /** A highlighted loot entry's label, most to least detailed. */
-function highlightTexts(l: LootEntry, catalog: ItemCatalog): string[] {
+function highlightTexts(l: LootEntry, catalog: ItemCatalog, questLabels: ReadonlyMap<string, string>): string[] {
   switch (l.kind) {
     case "item": {
       const info = catalog.lookup(l.tpl);
       if (!info) return ["item"];
       return info.price ? [`${info.shortName} ${formatPrice(info.price)}`, info.shortName] : [info.shortName];
     }
-    case "quest": return [catalog.lookup(l.tpl)?.shortName ?? "quest item", "quest item"];
+    case "quest": return questTexts(l.tpl, questLabels);
     case "container": return [containerName(l.tpl) ?? "container"];
     default: return [l.kind];
   }
+}
+
+/** A quest item's label: the quest it's for (long names give way to the generic one where there's no room). */
+function questTexts(tpl: string, questLabels: ReadonlyMap<string, string>): string[] {
+  const quest = questLabels.get(tpl);
+  return quest ? [quest, "quest item"] : ["quest item"];
 }
 
 /** Rings in their highlight's colour around highlighted things (players, loot, exfils, explosives). */

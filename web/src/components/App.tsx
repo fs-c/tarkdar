@@ -2,7 +2,7 @@ import { Locate, LocateFixed, Navigation } from "lucide-react";
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RadarState } from "../connection";
 import { isTyping, useCatalog, useConnection, useLayers, useLootPrefs, useMapIndex, useMapPrefs, usePersistentState, useQuestData, useTrailPrefs } from "../hooks";
-import { knownQuestItems, neededQuestItems, withoutUnneededQuestItems } from "../quests";
+import { knownQuestItems, neededQuestItems, questItemLabels, withoutUnneededQuestItems } from "../quests";
 import { describeEvent } from "../events";
 import type { MapStats } from "../map3d/Map3D";
 import { findMap, mapUrl } from "../maps";
@@ -62,9 +62,10 @@ export function App() {
   const [lootPrefs, setLootPrefs] = useLootPrefs();
 
   // Quest items nobody needs are left out everywhere (map, list, search), unless all are wanted.
-  const { tasks: questTasks, status: questDataStatus } = useQuestData();
+  const { tasks: questTasks, names: questNames, status: questDataStatus } = useQuestData();
   const knownQuest = useMemo(() => knownQuestItems(questTasks), [questTasks]);
   const neededQuest = useMemo(() => neededQuestItems(unfiltered.quests, questTasks), [unfiltered.quests, questTasks]);
+  const questLabels = useMemo(() => questItemLabels(unfiltered.quests, questTasks, questNames), [unfiltered.quests, questTasks, questNames]);
   const filterQuest = lootPrefs.questItems !== "all";
   const state: RadarState = useMemo(() => {
     const loot = withoutUnneededQuestItems(unfiltered.loot, filterQuest ? neededQuest : null, knownQuest);
@@ -124,7 +125,7 @@ export function App() {
   }, [follow]);
   const [hovered, setHovered] = useState<Selection | null>(null);
   const [listPrefs, setListPrefs] = useListPrefs();
-  const list = useListRows(state, catalog, listPrefs.filters);
+  const list = useListRows(state, catalog, questLabels, listPrefs.filters);
   const focusListSearch = useRef<() => void>(undefined);
 
   // Highlights (the global search): kept for the session. The search's preview counts as one.
@@ -308,6 +309,7 @@ export function App() {
     explosives: shown.explosives,
     vehicles: state.vehicles,
     loot: shown.loot,
+    questLabels,
     layers,
     minLabelPrice: lootPrefs.minLabelPrice,
     lootDensity: lootPrefs.density,

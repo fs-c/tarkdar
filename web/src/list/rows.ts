@@ -158,7 +158,8 @@ export function playerRows(players: Player[], equipment: Map<number, PlayerEquip
   });
 }
 
-export function lootRows(loot: LootEntry[], catalog: ItemCatalog): Pick<TabRows, "items" | "containers"> {
+/** `questLabels`: quest item template id → the quest it's for (quests.ts), the quest item's name. */
+export function lootRows(loot: LootEntry[], catalog: ItemCatalog, questLabels: ReadonlyMap<string, string> = new Map()): Pick<TabRows, "items" | "containers"> {
   const items: ItemRow[] = [];
   const containers: ContainerRow[] = [];
   for (const l of loot) {
@@ -176,7 +177,7 @@ export function lootRows(loot: LootEntry[], catalog: ItemCatalog): Pick<TabRows,
     } else {
       const info = catalog.lookup(l.tpl);
       const kind = l.kind === "quest" ? "quest" : "item";
-      const name = info?.name ?? (kind === "quest" ? "quest item" : l.tpl || "item");
+      const name = info?.name ?? (kind === "quest" ? (questLabels.get(l.tpl) ?? "quest item") : l.tpl || "item");
       items.push({
         ...base(sel, kind, l.pos, text(name, info?.shortName, l.tpl, kind), l.tpl ? [l.tpl] : NO_TPLS),
         value: info?.price,

@@ -20,7 +20,8 @@ export const EXFIL_STATUS_DETAIL = 0.5;
 
 /**
  * Loose item markers as you zoom out (a setting): the cheap ones go first. Each tier's marker shows
- * from its level of detail on. Quest items, containers and highlighted items aren't affected.
+ * from its level of detail on (as rules, rules/defaults.ts). Quest items, containers and highlighted
+ * items aren't affected.
  */
 export type LootDensity = "all" | "fewer" | "fewest";
 
@@ -31,10 +32,6 @@ export const LOOT_DENSITY: Record<LootDensity, { label: string; hint: string; fr
 };
 
 export const DEFAULT_LOOT_DENSITY: LootDensity = "fewer";
-
-export function itemMarkerShown(tier: ValueTier, detail: number, density: LootDensity): boolean {
-  return detail >= (LOOT_DENSITY[density] ?? LOOT_DENSITY[DEFAULT_LOOT_DENSITY]).from[tier];
-}
 
 /**
  * Who gets label space first (lower first; within a rank, higher `priority` first). Players and exfils

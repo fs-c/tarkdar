@@ -108,17 +108,21 @@ for a raid → in raid → cooldown → waiting for a raid.
 
 ## Frontend: what shows, and how
 
-Three separate concerns, each in one place:
-
-- **Filtering and highlighting** (`web/src/list/rows.ts`, `web/src/highlight/`). Everything the radar
-  knows becomes one row per thing (what it is, the items it is or carries, its value). The list's
-  controls filter, per tab; the map follows each tab's filter for its own kind of thing. The global
-  search highlights, across everything, and a highlight beats anything that hides (filters, layers).
-- **How things look** (`web/src/style.ts`): colours and sizes; each player type has a colour and a
-  prominence (minor, normal, special, boss, self) that decides the rest. Map, figures, trails and the
-  list all read it.
-- **What shows when** (`web/src/declutter.ts`): which markers and labels drop out as you zoom out, and
-  in which order labels claim screen space (one placement pass for all labels, `render.ts`).
+- **Rows** (`web/src/list/rows.ts`). Everything the radar knows becomes one row per thing (what it is,
+  the items it is or carries, its value). Display rules, highlights and list filters all match rows.
+- **Display rules** (`web/src/rules/`) decide how each thing looks and whether and when it shows: one
+  ordered list of rules, each a match (`web/src/highlight/match.ts`) and the style properties it sets
+  (visibility from a level of detail on, colour, emphasis, label, ring). A thing starts from its kind's
+  base style; every rule that matches sets its properties on top, later rules winning property by
+  property. Bottom to top: the built-in rules (today's looks by player type and item value, and the
+  Map panel's layers, loot density and label threshold), then highlights from the global search, so a
+  highlight beats anything that hides. Map, figures, trails, picking and the list all read the result.
+- **Not rules, on purpose:** each kind's shape and what an emphasis means for it (`web/src/style.ts`),
+  a thing's state (the dead are grey, those who left faded, an exfil's colour is its status), the local
+  player, and where labels go.
+- **List filters** (per tab) hide; the map follows each tab's filter for its own kind of thing.
+- **What shows when** (`web/src/declutter.ts`): the levels of detail behind loot density and labels,
+  and in which order labels claim screen space (one placement pass for all labels, `render.ts`).
 
 ## Offsets
 

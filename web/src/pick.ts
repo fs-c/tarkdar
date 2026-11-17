@@ -1,7 +1,7 @@
 // Hit-testing clicks on the radar: which marker (player, exfil, loot) is under the cursor.
 
 import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type WorldPos } from "./protocol";
-import type { Layers } from "./render";
+import { BASE, type Style } from "./rules/rules";
 import type { Projector } from "./projector";
 
 export type Selection =
@@ -20,14 +20,12 @@ export interface Pickable {
   explosives: ExplosivesData;
 }
 
-/** Loot on the map's containers layer (the list's containers tab): containers, airdrops, corpses. */
-export const isContainerLoot = (l: LootEntry): boolean => l.kind === "container" || l.kind === "airdrop" || l.kind === "corpse";
-
 /**
- * The nearest visible player, exfil or loot marker within a few pixels of screen position (x, y).
- * Highlighted things (`always`, by selection key) are visible whatever the layers say.
+ * The nearest player, exfil or loot marker within a few pixels of screen position (x, y), among those
+ * the display rules don't hide (`styles`, by selection key; at any zoom: a marker dropped when zoomed
+ * out can still be clicked).
  */
-export function pick(pr: Projector, src: Pickable, layers: Layers, x: number, y: number, always: ReadonlyMap<string, unknown> = new Map()): Selection | null {
+export function pick(pr: Projector, src: Pickable, styles: ReadonlyMap<string, Style>, x: number, y: number): Selection | null {
   let best: { sel: Selection; d: number } | null = null;
   const consider = (sel: Selection, pos: WorldPos | null | undefined, radius: number) => {
     if (!pos) return;
@@ -35,31 +33,33 @@ export function pick(pr: Projector, src: Pickable, layers: Layers, x: number, y:
     const d = Math.hypot(sx - x, sy - y);
     if (d <= radius && (!best || d < best.d)) best = { sel, d };
   };
+  const hidden = (sel: Selection, kind: keyof typeof BASE) => (styles.get(selectionKey(sel)) ?? BASE[kind]).show === null;
   for (const p of src.players) {
-    consider({ kind: "player", id: p.id }, p.pos, 12);
+    const sel: Selection = { kind: "player", id: p.id };
+    if (!p.local && hidden(sel, "player")) continue;
+    consider(sel, p.pos, 12);
     // Drawn as a figure (3D, close up): its chest and head count too.
     if (p.pos && p.joints)
       for (const j of [Joint.chest, Joint.head]) {
         const o = j * 3;
-        consider({ kind: "player", id: p.id }, [p.pos[0] + p.joints[o]!, p.pos[1] + p.joints[o + 1]!, p.pos[2] + p.joints[o + 2]!], 12);
+        consider(sel, [p.pos[0] + p.joints[o]!, p.pos[1] + p.joints[o + 1]!, p.pos[2] + p.joints[o + 2]!], 12);
       }
   }
-  const shown = (sel: Selection, layer: boolean) => layer || always.has(selectionKey(sel));
   for (const e of src.exfils) {
     const sel: Selection = { kind: "exfil", id: e.id };
-    if (shown(sel, layers.exfils)) consider(sel, e.pos, 12);
+    if (!hidden(sel, "exfil")) consider(sel, e.pos, 12);
   }
   for (const g of src.explosives.grenades) {
     const sel: Selection = { kind: "grenade", id: g.id };
-    if (shown(sel, layers.explosives)) consider(sel, g.pos, 10);
+    if (!hidden(sel, "grenade")) consider(sel, g.pos, 10);
   }
   for (const w of src.explosives.tripwires) {
     const sel: Selection = { kind: "tripwire", id: w.id };
-    if (shown(sel, layers.explosives)) consider(sel, midpoint(w.from, w.to), 10);
+    if (!hidden(sel, "tripwire")) consider(sel, midpoint(w.from, w.to), 10);
   }
   for (const l of src.loot) {
     const sel: Selection = { kind: "loot", id: l.id };
-    if (shown(sel, isContainerLoot(l) ? layers.containers : layers.loot)) consider(sel, l.pos, 8);
+    if (!hidden(sel, l.kind)) consider(sel, l.pos, 8);
   }
   return (best as { sel: Selection } | null)?.sel ?? null;
 }

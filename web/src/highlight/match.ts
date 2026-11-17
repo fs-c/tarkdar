@@ -1,9 +1,8 @@
-// Highlights: things picked out on the map and in the list, by rules made in the global search
-// (components/Highlights.tsx). A highlight never hides anything; it wins over what hides things (the
-// list's filters, the map's layers).
+// Matching things: the condition half of a display rule (rules/), and of a highlight, the rules made in
+// the global search (components/Highlights.tsx). A highlight never hides anything; it wins over what
+// hides things (the list's filters, the built-in rules that hide layers).
 //
-// A rule is a Match: every field given must hold (AND); a list field holds when any of its values
-// does (OR).
+// A Match: every field given must hold (AND); a list field holds when any of its values does (OR).
 
 import type { ItemCatalog } from "../items";
 import type { AnyRow, PlayerRow, RowBase, SubjectKind, TabRows } from "../list/rows";
@@ -21,6 +20,8 @@ export interface Match {
   playerTypes?: PlayerType[];
   /** Minimum value (roubles, see RowBase.value). Unknown values don't match. */
   minValue?: number;
+  /** Below this value (roubles). Unknown values count as 0 (unpriced items are cheap ones). */
+  maxValue?: number;
 }
 
 export interface Highlight {
@@ -48,6 +49,7 @@ export function matches(row: RowBase, m: Match, catalog: ItemCatalog): boolean {
   if (m.subjects && !m.subjects.includes(row.subject)) return false;
   if (m.playerTypes && (row.subject !== "player" || !m.playerTypes.includes((row as PlayerRow).type))) return false;
   if (m.minValue !== undefined && (row.value === undefined || row.value < m.minValue)) return false;
+  if (m.maxValue !== undefined && (row.value ?? 0) >= m.maxValue) return false;
   if (m.tpls && !row.tpls.some((t) => m.tpls!.includes(t))) return false;
   if (m.categories && !row.tpls.some((t) => catalog.lookup(t)?.categories?.some((c) => m.categories!.includes(c)))) return false;
   if (m.text !== undefined && !matchesText(row, m.text)) return false;
@@ -56,7 +58,7 @@ export function matches(row: RowBase, m: Match, catalog: ItemCatalog): boolean {
 
 /** Whether a match says anything at all (an empty one would match everything). */
 export const isEmptyMatch = (m: Match): boolean =>
-  !m.text?.trim() && !m.subjects && !m.categories && !m.tpls && !m.playerTypes && m.minValue === undefined;
+  !m.text?.trim() && !m.subjects && !m.categories && !m.tpls && !m.playerTypes && m.minValue === undefined && m.maxValue === undefined;
 
 export function allRows(rows: TabRows): AnyRow[] {
   return [...rows.players, ...rows.items, ...rows.containers, ...rows.exfils, ...rows.explosives];
@@ -64,22 +66,4 @@ export function allRows(rows: TabRows): AnyRow[] {
 
 export function matchingRows(rows: readonly AnyRow[], m: Match, catalog: ItemCatalog): AnyRow[] {
   return isEmptyMatch(m) ? [] : rows.filter((r) => matches(r, m, catalog));
-}
-
-export interface HighlightState {
-  /** Row key → the colour it's highlighted in (the first highlight that matches it, in pill order). */
-  colors: Map<string, string>;
-  /** Highlight id → the rows it matches (on or off). */
-  matched: Map<number, AnyRow[]>;
-}
-
-export function evaluateHighlights(rows: readonly AnyRow[], highlights: readonly Highlight[], catalog: ItemCatalog): HighlightState {
-  const colors = new Map<string, string>();
-  const matched = new Map<number, AnyRow[]>();
-  for (const h of highlights) {
-    const hits = matchingRows(rows, h.match, catalog);
-    matched.set(h.id, hits);
-    if (h.on) for (const r of hits) if (!colors.has(r.key)) colors.set(r.key, h.color);
-  }
-  return { colors, matched };
 }

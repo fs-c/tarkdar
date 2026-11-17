@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { darken } from "./render";
-import { COLORS, PLAYER_TYPES_LOOK, playerLook } from "./style";
+import { COLORS, playerLook } from "./style";
 
 describe("darken", () => {
   it("mixes #rrggbb towards black, leaves other formats alone", () => {
@@ -12,19 +12,22 @@ describe("darken", () => {
 });
 
 describe("player looks", () => {
-  it("follow prominence: special players get a halo and a named, coloured label; minor ones are dimmed", () => {
-    expect(playerLook("boss")).toMatchObject({ radius: 7, halo: { gap: 4, width: 2 }, namedLabel: true, labelColor: PLAYER_TYPES_LOOK.boss.color });
-    expect(playerLook("follower").halo).toEqual({ gap: 3, width: 1.5 });
-    expect(playerLook("ai-scav")).toMatchObject({ radius: 4, alpha: 0.55, dim: true, halo: null, namedLabel: false });
-    expect(playerLook("usec")).toMatchObject({ halo: null, order: 2, dim: false });
+  it("follow emphasis: strong and loud players get a halo and a named, coloured label; faint ones are dimmed", () => {
+    expect(playerLook("loud", "#f0f")).toMatchObject({ radius: 7, halo: { gap: 4, width: 2 }, namedLabel: true, labelColor: "#f0f" });
+    expect(playerLook("strong", "#f0f").halo).toEqual({ gap: 3, width: 1.5 });
+    expect(playerLook("faint", "#f0f")).toMatchObject({ radius: 4, alpha: 0.55, dim: true, halo: null, namedLabel: false });
+    expect(playerLook("normal", "#f0f")).toMatchObject({ halo: null, order: 2, dim: false, labelColor: COLORS.label });
+  });
+  it("draw the local player in its own colour, whatever the rules say", () => {
+    expect(playerLook("self", "#f0f").color).toBe(COLORS.local);
   });
   it("grey out the dead (drawn low, label in the plain colour) and fade those who left", () => {
-    expect(playerLook("boss", { dead: true })).toMatchObject({ color: COLORS.dead, labelColor: COLORS.label, order: 1 });
-    expect(playerLook("self", { dead: true }).order).toBe(4);
-    expect(playerLook("ai-scav", { absent: true }).alpha).toBeCloseTo(0.55 * 0.35);
+    expect(playerLook("loud", "#f0f", { dead: true })).toMatchObject({ color: COLORS.dead, labelColor: COLORS.label, order: 1 });
+    expect(playerLook("self", "", { dead: true }).order).toBe(4);
+    expect(playerLook("faint", "#f0f", { absent: true }).alpha).toBeCloseTo(0.55 * 0.35);
   });
-  it("sort bottom to top: minor, dead, normal, special and bosses, us", () => {
-    const order = (t: Parameters<typeof playerLook>[0], dead = false) => playerLook(t, { dead }).order;
-    expect([order("ai-scav"), order("usec", true), order("usec"), order("raider"), order("boss"), order("self")]).toEqual([0, 1, 2, 3, 3, 4]);
+  it("sort bottom to top: faint, dead, normal, strong and loud, us", () => {
+    const order = (e: Parameters<typeof playerLook>[0], dead = false) => playerLook(e, "#fff", { dead }).order;
+    expect([order("faint"), order("normal", true), order("normal"), order("strong"), order("loud"), order("self")]).toEqual([0, 1, 2, 3, 3, 4]);
   });
 });

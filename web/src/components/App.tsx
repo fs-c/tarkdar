@@ -7,7 +7,8 @@ import { describeEvent } from "../events";
 import type { MapStats } from "../map3d/Map3D";
 import { findMap, mapUrl } from "../maps";
 import { type Highlight, type Match, allRows } from "../highlight/match";
-import { useHighlights } from "../highlight/useHighlights";
+import { builtinRules } from "../rules/defaults";
+import { highlightId, highlightRules, useRules } from "../rules/useRules";
 import { isFiltered, rowKeys } from "../list/rows";
 import { withoutGunners } from "../vehicles";
 import { useListPrefs, useListRows } from "../list/useListRows";
@@ -131,7 +132,14 @@ export function App() {
   // Highlights (the global search): kept for the session. The search's preview counts as one.
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [preview, setPreview] = useState<Match | null>(null);
-  const highlighted = useHighlights(list.all, highlights, preview, catalog);
+  // The display rules (rules/): built-in ones (with the Map panel's settings), highlights on top.
+  const builtin = useMemo(
+    () => builtinRules({ layers, density: lootPrefs.density, minLabelPrice: lootPrefs.minLabelPrice }),
+    [layers, lootPrefs.density, lootPrefs.minLabelPrice],
+  );
+  const rules = useMemo(() => [...builtin, ...highlightRules(highlights, preview)], [builtin, highlights, preview]);
+  const styled = useRules(list.all, rules, catalog);
+  const highlightMatches = useMemo(() => new Map(highlights.map((h) => [h.id, styled.matched.get(highlightId(h.id)) ?? []])), [highlights, styled.matched]);
   const everything = useMemo(() => allRows(list.all), [list.all]);
 
   // Side panel: open or collapsed, and which section it shows (for "list", the list tab in listPrefs).
@@ -187,7 +195,7 @@ export function App() {
     const keys = rowKeys(list.rows);
     const has = (kind: Selection["kind"], id: number) => {
       const key = selectionKey({ kind, id });
-      return keys.has(key) || highlighted.colors.has(key);
+      return keys.has(key) || styled.rings.has(key);
     };
     return {
       players: state.players.filter((p) => p.local || has("player", p.id)),
@@ -198,7 +206,7 @@ export function App() {
         tripwires: state.explosives.tripwires.filter((w) => has("tripwire", w.id)),
       },
     };
-  }, [state, filtered, list.rows, highlighted.colors]);
+  }, [state, filtered, list.rows, styled.rings]);
 
   const local = state.players.find((p) => p.local && p.pos);
 
@@ -235,7 +243,7 @@ export function App() {
   const onTap = (x: number, y: number) => {
     const r = radar.current;
     if (!r) return;
-    const hit = pick(r.projector(), shown, layers, x, y, highlighted.colors);
+    const hit = pick(r.projector(), shown, styled.styles, x, y);
     const surface = !hit && mapPrefs.coordinatePick ? r.pickSurface(x, y) : null;
     if (surface) setDebugPicks((picks) => [...picks, surface]);
     else select(hit);
@@ -310,12 +318,9 @@ export function App() {
     vehicles: state.vehicles,
     loot: shown.loot,
     questLabels,
-    layers,
-    minLabelPrice: lootPrefs.minLabelPrice,
-    lootDensity: lootPrefs.density,
+    styles: styled.styles,
     selected: selectedPosition(selection, state),
     hovered: listShown ? selectedPosition(hovered, state) : null,
-    highlights: highlighted.colors,
     debugPoints: map && mapPrefs.coordinatePick ? debugPicks.map((p) => p.pos) : [],
     trails: trailScene(),
     bodies: mapPrefs.bodies,
@@ -333,7 +338,7 @@ export function App() {
             selection={selection}
             onActivate={showOnMap}
             onHover={setHovered}
-            highlights={highlighted.colors}
+            styles={styled.styles}
             focusRef={focusListSearch}
           />
         );
@@ -470,7 +475,7 @@ export function App() {
           <Highlights
             highlights={highlights}
             setHighlights={setHighlights}
-            matched={highlighted.matched}
+            matched={highlightMatches}
             rows={everything}
             catalog={catalog}
             local={local?.pos ?? null}

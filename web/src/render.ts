@@ -1,11 +1,13 @@
 // Draws the radar's markers (players, loot, exfils, ...) over the map, through its camera (projector.ts).
 
 import { LabelPlacer, type Rect, candidatesAround } from "./labels";
-import { type ItemCatalog, containerName, exfilStatus, formatPrice, valueTier } from "./items";
+import { type ItemCatalog, containerName, exfilStatus, formatPrice } from "./items";
 import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type Vehicle, type WorldPos } from "./protocol";
 import { type PlayerTypeInfo, bossGroups, playerType } from "./roles";
-import { COLORS, ITEM_LOOK, LOOT_LOOK, type PlayerLook, exfilColor, playerLook } from "./style";
-import { EXFIL_STATUS_DETAIL, LABEL_DETAIL, LABEL_RANK, type LootDensity, itemMarkerShown } from "./declutter";
+import { COLORS, DEFAULT_COLOR, EMPHASIS_SCALE, MARKER_SIZE, type PlayerLook, exfilColor, playerLook } from "./style";
+import { EXFIL_STATUS_DETAIL, LABEL_RANK } from "./declutter";
+import { BASE, type Style, isShown, labelAt } from "./rules/rules";
+import type { SubjectKind } from "./list/rows";
 import { type Timeline, isJump } from "./timeline";
 import type { Projector } from "./projector";
 import { midpoint } from "./pick";
@@ -26,16 +28,12 @@ export interface Scene {
   loot: LootEntry[];
   /** Quest item template id → the quest it's for (quests.ts), its label. */
   questLabels: ReadonlyMap<string, string>;
-  layers: Layers;
-  /** Items worth less than this (₽) get no label. */
-  minLabelPrice: number;
-  /** Which loose item markers drop out as you zoom out (declutter.ts). */
-  lootDensity: LootDensity;
+  /** Selection key → how it looks, whether and when it shows, its label (rules/: the display rules).
+   *  Things without one get their kind's base style. */
+  styles: ReadonlyMap<string, Style>;
   selected: [number, number, number] | null;
   /** Hovered in the list view: drawn as a soft highlight. */
   hovered: [number, number, number] | null;
-  /** Highlighted things (selection key → colour): ringed, labelled, and drawn even when their layer is off. */
-  highlights: ReadonlyMap<string, string>;
   /** World positions picked with the coordinate tool (3D map debugging), drawn numbered. */
   debugPoints: [number, number, number][];
   trails: TrailScene | null;
@@ -58,15 +56,15 @@ export interface TrailScene {
  * space through the projector.
  */
 export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene): void {
-  const hl = scene.highlights;
+  const styleOf = (key: string, kind: SubjectKind) => scene.styles.get(key) ?? BASE[kind];
   // Markers draw as they go; their labels are collected and placed at the end, all together.
   const labels: LabelRequest[] = [];
-  if (scene.layers.loot || scene.layers.containers || hl.size) drawLoot(ctx, pr, scene, labels);
-  for (const e of scene.exfils) if (scene.layers.exfils || hl.has(`exfil:${e.id}`)) drawExfil(ctx, pr, e, labels);
-  drawExplosives(ctx, pr, scene.layers.explosives ? scene.explosives : {
-    grenades: scene.explosives.grenades.filter((g) => hl.has(`grenade:${g.id}`)),
-    tripwires: scene.explosives.tripwires.filter((w) => hl.has(`tripwire:${w.id}`)),
-  });
+  drawLoot(ctx, pr, scene, labels);
+  for (const e of scene.exfils) {
+    const style = styleOf(`exfil:${e.id}`, "exfil");
+    if (isShown(style, pr.detail)) drawExfil(ctx, pr, e, style, labels);
+  }
+  drawExplosives(ctx, pr, scene.explosives, (kind, id) => styleOf(`${kind}:${id}`, kind));
 
   for (const v of scene.vehicles) drawVehicle(ctx, pr, v, labels);
 
@@ -74,15 +72,17 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
 
   const local = scene.players.find((p) => p.local && p.pos);
   const groups = bossGroups(scene.players);
-  const typed = scene.players.map((p) => {
-    const info = playerType(p, groups);
-    return { p, info, order: playerLook(info.type, p).order };
+  const typed = scene.players.flatMap((p) => {
+    const style = styleOf(`player:${p.id}`, "player");
+    if (!p.local && !isShown(style, pr.detail)) return [];
+    const look = lookOf(p, style);
+    return [{ p, info: playerType(p, groups), style, look }];
   });
-  // Drawn bottom to top (style.ts: minor, the dead, normal, special, us).
-  typed.sort((a, b) => a.order - b.order);
-  for (const { p, info } of typed) drawPlayer(ctx, pr, p, info, local?.pos?.[1] ?? null, scene.bodies, labels);
+  // Drawn bottom to top (style.ts: faint, the dead, normal, strong and loud, us).
+  typed.sort((a, b) => a.look.order - b.look.order);
+  for (const { p, info, style, look } of typed) drawPlayer(ctx, pr, p, info, look, style, local?.pos?.[1] ?? null, scene.bodies, labels);
 
-  if (hl.size) drawHighlights(ctx, pr, scene);
+  drawRings(ctx, pr, scene, styleOf);
   drawLabels(ctx, labels);
 
   if (scene.hovered) {
@@ -123,12 +123,16 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
   });
 }
 
+/** A player's look: from their style (the rules), or "self" for the local player. */
+function lookOf(p: Pick<Player, "local"> & Partial<Pick<Player, "dead" | "absent">>, style: Style): PlayerLook {
+  return playerLook(p.local ? "self" : style.emphasis, style.color ?? DEFAULT_COLOR, p);
+}
+
 const TRAIL_BUCKETS = 6;
 
 /** Trails fade with age (in TRAIL_BUCKETS steps). */
 function drawTrails(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene): void {
   const { timeline, at, since, selected } = scene.trails!;
-  const groups = bossGroups(scene.players);
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   for (const [id, from] of since) {
@@ -171,7 +175,7 @@ function drawTrails(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene):
       path.moveTo(a.x, a.y);
       path.lineTo(b.x, b.y);
     }
-    const look = playerLook(playerType(track.meta, groups).type);
+    const look = lookOf({ local: track.meta.local }, scene.styles.get(`player:${id}`) ?? BASE.player);
     ctx.strokeStyle = look.color;
     ctx.lineWidth = isSelected ? 2.5 : 1.5;
     const maxAlpha = isSelected ? 0.95 : look.trailAlpha;
@@ -189,6 +193,8 @@ function drawPlayer(
   pr: Projector,
   p: Player,
   info: PlayerTypeInfo,
+  look: PlayerLook,
+  style: Style,
   localY: number | null,
   bodies: boolean,
   labels: LabelRequest[],
@@ -197,8 +203,7 @@ function drawPlayer(
   let [x, y] = pr.toScreen(p.pos);
   if (!onScreen(pr, x, y)) return;
 
-  // Its look (style.ts): colour, size and emphasis by type, prominence and state.
-  const look = playerLook(info.type, p);
+  // Its look (style.ts): colour and emphasis from the rules, and its state.
   const { color } = look;
   ctx.globalAlpha = look.alpha;
   let r = look.radius;
@@ -255,7 +260,8 @@ function drawPlayer(
     drawHalo(ctx, x, y, r, look);
   }
 
-  if (!p.local) {
+  const shownLabel = labelAt(style, pr.detail);
+  if (!p.local && shownLabel) {
     let label = look.namedLabel ? `${info.label} ${p.id}` : `${p.id}`;
     if (localY !== null) {
       const dy = p.pos[1] - localY;
@@ -263,7 +269,7 @@ function drawPlayer(
     }
     labels.push({
       x, y, texts: [label], font: look.labelFont, color: look.labelColor, alpha: look.alpha,
-      gap: r + (look.halo ? 7 : 3), rank: LABEL_RANK.player, priority: look.order, forced: true, fixed: true,
+      gap: r + (look.halo ? 7 : 3), rank: LABEL_RANK.player, priority: look.order, forced: shownLabel.forced, fixed: true,
     });
   }
   ctx.globalAlpha = 1;
@@ -428,37 +434,20 @@ function textWidth(ctx: CanvasRenderingContext2D, font: string, text: string): n
 const labelHeight = (font: string) => Number(/(\d+)px/.exec(font)?.[1] ?? 10) + 2;
 
 function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene, labels: LabelRequest[]): void {
-  const { loot, layers, catalog, questLabels, minLabelPrice, highlights, lootDensity } = scene;
-  const containerLabels = pr.detail >= LABEL_DETAIL.containers;
-  const itemLabels = pr.detail >= LABEL_DETAIL.items;
-  const label = (x: number, y: number, texts: string[], rank: number, priority: number, forced: boolean, color: string = COLORS.label) =>
-    labels.push({ x, y, texts, font: LOOT_FONT, color, gap: LABEL_GAP, rank, priority, forced });
+  const { loot, catalog, questLabels, styles } = scene;
   for (const l of loot) {
-    const isContainer = l.kind === "container" || l.kind === "airdrop" || l.kind === "corpse";
-    const highlight = highlights.get(`loot:${l.id}`);
-    if (!highlight && (isContainer ? !layers.containers : !layers.loot)) continue;
+    const style = styles.get(`loot:${l.id}`) ?? BASE[l.kind];
+    if (!isShown(style, pr.detail)) continue;
     const [x, y] = pr.toScreen(l.pos);
     if (!onScreen(pr, x, y, 10)) continue;
-    // Highlighted: labelled at any zoom, before the rest of the loot (but only where there's room).
-    if (highlight) label(x, y, highlightTexts(l, catalog, questLabels), LABEL_RANK.highlighted, 0, false, highlight);
+    const color = style.color ?? DEFAULT_COLOR;
+    const size = (l.kind === "item" ? MARKER_SIZE.item : MARKER_SIZE[l.kind]) * EMPHASIS_SCALE[style.emphasis];
     switch (l.kind) {
-      case "item": {
-        const info = catalog.lookup(l.tpl);
-        const price = info?.price;
-        const tier = valueTier(price);
-        // Zoomed out, cheap items drop out (the loot density setting).
-        if (!highlight && !itemMarkerShown(tier, pr.detail, lootDensity)) break;
-        const marker = ITEM_LOOK[tier];
-        ctx.fillStyle = marker.color;
-        ctx.fillRect(x - marker.size / 2, y - marker.size / 2, marker.size, marker.size);
-        if (info && itemLabels && !highlight && (price ?? 0) >= minLabelPrice) {
-          const texts = info.price ? [`${info.shortName} ${formatPrice(info.price)}`, formatPrice(info.price)] : [info.shortName];
-          label(x, y, texts, LABEL_RANK.item, info.price ?? 0, false);
-        }
+      case "item":
+        ctx.fillStyle = color;
+        ctx.fillRect(x - size / 2, y - size / 2, size, size);
         break;
-      }
-      case "quest": {
-        const { color, size } = LOOT_LOOK.quest;
+      case "quest":
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.moveTo(x, y - size);
@@ -466,27 +455,17 @@ function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene, la
         ctx.lineTo(x, y + size);
         ctx.lineTo(x - size, y);
         ctx.fill();
-        if (!highlight) label(x, y, questTexts(l.tpl, questLabels), LABEL_RANK.questOrAirdrop, 2, false);
         break;
-      }
-      case "container": {
-        const { color, size } = LOOT_LOOK.container;
+      case "container":
         ctx.strokeStyle = color;
         ctx.lineWidth = 1.5;
         ctx.strokeRect(x - size, y - size, size * 2, size * 2);
-        const name = containerName(l.tpl);
-        if (name && containerLabels && !highlight) label(x, y, [name], LABEL_RANK.container, 0, false);
         break;
-      }
-      case "airdrop": {
-        const { color, size } = LOOT_LOOK.airdrop;
+      case "airdrop":
         ctx.fillStyle = color;
         ctx.fillRect(x - size, y - size, size * 2, size * 2);
-        if (!highlight) label(x, y, ["airdrop"], LABEL_RANK.questOrAirdrop, 1, true);
         break;
-      }
-      case "corpse": {
-        const { color, size } = LOOT_LOOK.corpse;
+      case "corpse":
         ctx.strokeStyle = color;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
@@ -496,7 +475,39 @@ function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene, la
         ctx.lineTo(x - size, y + size);
         ctx.stroke();
         break;
+    }
+    const label = (texts: string[], rank: number, priority: number, forced: boolean, color: string = COLORS.label) =>
+      labels.push({ x, y, texts, font: LOOT_FONT, color, gap: LABEL_GAP, rank, priority, forced });
+    // Ringed (highlighted): labelled at any zoom in the ring's colour, before the rest of the loot (but
+    // only where there's room).
+    if (style.ring) {
+      label(ringTexts(l, catalog, questLabels), LABEL_RANK.highlighted, 0, false, style.ring);
+      continue;
+    }
+    const shown = labelAt(style, pr.detail);
+    if (!shown) continue;
+    switch (l.kind) {
+      case "item": {
+        const info = catalog.lookup(l.tpl);
+        if (!info) break;
+        const texts = info.price ? [`${info.shortName} ${formatPrice(info.price)}`, formatPrice(info.price)] : [info.shortName];
+        label(texts, LABEL_RANK.item, info.price ?? 0, shown.forced);
+        break;
       }
+      case "quest":
+        label(questTexts(l.tpl, questLabels), LABEL_RANK.questOrAirdrop, 2, shown.forced);
+        break;
+      case "container": {
+        const name = containerName(l.tpl);
+        if (name) label([name], LABEL_RANK.container, 0, shown.forced);
+        break;
+      }
+      case "airdrop":
+        label(["airdrop"], LABEL_RANK.questOrAirdrop, 1, shown.forced);
+        break;
+      case "corpse":
+        label(["corpse"], LABEL_RANK.container, 0, shown.forced);
+        break;
     }
   }
 }
@@ -545,8 +556,8 @@ function drawLabels(ctx: CanvasRenderingContext2D, labels: LabelRequest[]): void
   ctx.lineJoin = "miter";
 }
 
-/** A highlighted loot entry's label, most to least detailed. */
-function highlightTexts(l: LootEntry, catalog: ItemCatalog, questLabels: ReadonlyMap<string, string>): string[] {
+/** A ringed (highlighted) loot entry's label, most to least detailed. */
+function ringTexts(l: LootEntry, catalog: ItemCatalog, questLabels: ReadonlyMap<string, string>): string[] {
   switch (l.kind) {
     case "item": {
       const info = catalog.lookup(l.tpl);
@@ -565,15 +576,14 @@ function questTexts(tpl: string, questLabels: ReadonlyMap<string, string>): stri
   return quest ? [quest, "quest item"] : ["quest item"];
 }
 
-/** Rings in their highlight's colour around highlighted things (players, loot, exfils, explosives). */
-function drawHighlights(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene): void {
-  const hl = scene.highlights;
-  const ring = (pos: WorldPos | null | undefined, color: string | undefined, radius: number) => {
-    if (!pos || !color) return;
+/** Rings in their style's ring colour (highlights) around things that have one. */
+function drawRings(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene, styleOf: (key: string, kind: SubjectKind) => Style): void {
+  const ring = (pos: WorldPos | null | undefined, style: Style, radius: number) => {
+    if (!pos || !style.ring || !isShown(style, pr.detail)) return;
     const [x, y] = pr.toScreen(pos);
     if (!onScreen(pr, x, y, radius + 4)) return;
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
+    ctx.strokeStyle = style.ring;
+    ctx.fillStyle = style.ring;
     ctx.globalAlpha = 0.16;
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -582,32 +592,36 @@ function drawHighlights(ctx: CanvasRenderingContext2D, pr: Projector, scene: Sce
     ctx.lineWidth = 2;
     ctx.stroke();
   };
-  for (const l of scene.loot) ring(l.pos, hl.get(`loot:${l.id}`), 9);
-  for (const e of scene.exfils) ring(e.pos, hl.get(`exfil:${e.id}`), 12);
-  for (const g of scene.explosives.grenades) ring(g.pos, hl.get(`grenade:${g.id}`), 10);
-  for (const w of scene.explosives.tripwires) ring(midpoint(w.from, w.to), hl.get(`tripwire:${w.id}`), 10);
-  for (const p of scene.players) ring(p.pos, hl.get(`player:${p.id}`), 12);
+  for (const l of scene.loot) ring(l.pos, styleOf(`loot:${l.id}`, l.kind), 9);
+  for (const e of scene.exfils) ring(e.pos, styleOf(`exfil:${e.id}`, "exfil"), 12);
+  for (const g of scene.explosives.grenades) ring(g.pos, styleOf(`grenade:${g.id}`, "grenade"), 10);
+  for (const w of scene.explosives.tripwires) ring(midpoint(w.from, w.to), styleOf(`tripwire:${w.id}`, "tripwire"), 10);
+  for (const p of scene.players) if (!p.local) ring(p.pos, styleOf(`player:${p.id}`, "player"), 12);
 }
 
-function drawExfil(ctx: CanvasRenderingContext2D, pr: Projector, e: Exfil, labels: LabelRequest[]): void {
+function drawExfil(ctx: CanvasRenderingContext2D, pr: Projector, e: Exfil, style: Style, labels: LabelRequest[]): void {
   if (!e.pos) return;
   const [x, y] = pr.toScreen(e.pos);
   if (!onScreen(pr, x, y, 150)) return;
   const status = exfilStatus(e.status);
-  const color = exfilColor(e.kind, status.tone);
+  // Its own colour tells its status, unless a rule gives it one.
+  const color = style.color ?? exfilColor(e.kind, status.tone);
+  const k = EMPHASIS_SCALE[style.emphasis];
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(x, y, 7, 0, Math.PI * 2);
+  ctx.arc(x, y, 7 * k, 0, Math.PI * 2);
   ctx.stroke();
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+  ctx.arc(x, y, 2.5 * k, 0, Math.PI * 2);
   ctx.fill();
+  const shown = labelAt(style, pr.detail);
+  if (!shown) return;
   // Zoomed out: just the name (the colour still tells the status).
   const full = `${e.name}${e.kind === "secret" ? " (secret)" : ` · ${status.label}`}`;
   const texts = pr.detail >= EXFIL_STATUS_DETAIL ? [full, e.name] : [e.name];
-  labels.push({ x, y, texts, font: "11px sans-serif", color, gap: 10, rank: LABEL_RANK.exfil, priority: 0, forced: true, fixed: true });
+  labels.push({ x, y, texts, font: "11px sans-serif", color, gap: 10, rank: LABEL_RANK.exfil, priority: 0, forced: shown.forced, fixed: true });
 }
 
 /** BTR hull footprint (m): half width, half length. */
@@ -653,28 +667,32 @@ function drawVehicle(ctx: CanvasRenderingContext2D, pr: Projector, v: Vehicle, l
   labels.push({ x: cx, y: cy, texts, font: "bold 11px sans-serif", color: COLORS.vehicle, gap: 14, rank: LABEL_RANK.exfil, priority: 1, forced: true, fixed: true });
 }
 
-function drawExplosives(ctx: CanvasRenderingContext2D, pr: Projector, ex: ExplosivesData): void {
-  ctx.strokeStyle = COLORS.danger;
-  ctx.fillStyle = COLORS.danger;
+function drawExplosives(ctx: CanvasRenderingContext2D, pr: Projector, ex: ExplosivesData, styleOf: (kind: "grenade" | "tripwire", id: number) => Style): void {
   for (const w of ex.tripwires) {
+    const style = styleOf("tripwire", w.id);
+    if (!isShown(style, pr.detail)) continue;
     const [x1, y1] = pr.toScreen(w.from);
     const [x2, y2] = pr.toScreen(w.to);
+    ctx.strokeStyle = ctx.fillStyle = style.color ?? COLORS.danger;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(x2, y2, 3, 0, Math.PI * 2);
+    ctx.arc(x2, y2, 3 * EMPHASIS_SCALE[style.emphasis], 0, Math.PI * 2);
     ctx.fill();
   }
   // Grenades: a dot plus a ring sized to roughly a frag's danger radius (~8 m) on the map.
   for (const g of ex.grenades) {
+    const style = styleOf("grenade", g.id);
+    if (!isShown(style, pr.detail)) continue;
     const ring = Math.max(6, 8 * pr.pxPerMetre(g.pos));
     const [x, y] = pr.toScreen(g.pos);
     if (!onScreen(pr, x, y, ring)) continue;
+    ctx.strokeStyle = ctx.fillStyle = style.color ?? COLORS.danger;
     ctx.beginPath();
-    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.arc(x, y, 3 * EMPHASIS_SCALE[style.emphasis], 0, Math.PI * 2);
     ctx.fill();
     ctx.lineWidth = 1.5;
     ctx.globalAlpha = 0.6;

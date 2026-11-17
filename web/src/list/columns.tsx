@@ -10,8 +10,10 @@ import {
   sortFn_text,
   tableFeatures,
 } from "@tanstack/react-table";
+import { useContext } from "react";
 import { formatPrice } from "../items";
-import { playerLook } from "../style";
+import { COLORS, DEFAULT_COLOR } from "../style";
+import { RowStyles } from "./styles";
 import { PLAYER_TYPES } from "../roles";
 import { Price } from "../ui";
 import s from "./columns.module.css";
@@ -60,7 +62,24 @@ export function heightText(dh: number | undefined): string {
   return dh > 0 ? `▲${Math.round(dh)}` : `▼${Math.round(-dh)}`;
 }
 
-const dotColor = (r: PlayerRow) => playerLook(r.type, { dead: r.state === "dead" }).color;
+/** A player's colour, as on the map: from the rules; ours; grey when dead (`dead`). */
+function usePlayerColor(r: PlayerRow, dead = false): string {
+  const styles = useContext(RowStyles);
+  if (dead && r.state === "dead") return COLORS.dead;
+  return r.local ? COLORS.local : (styles.get(r.key)?.color ?? DEFAULT_COLOR);
+}
+
+function PlayerDot({ row }: { row: PlayerRow }) {
+  return <span className={s.dot} style={{ background: usePlayerColor(row, true) }} />;
+}
+
+function PlayerType({ row }: { row: PlayerRow }) {
+  return (
+    <span title={row.typeDetail} className={row.type === "boss" ? s.boss : undefined} style={{ color: usePlayerColor(row) }}>
+      {row.typeLabel}
+    </span>
+  );
+}
 /** Sorts by type (PLAYER_TYPES order), then label. */
 const typeSortKey = (r: PlayerRow) => `${String(PLAYER_TYPES.indexOf(r.type)).padStart(2, "0")} ${r.typeLabel}`;
 
@@ -75,7 +94,7 @@ const players: TabDef<PlayerRow> = {
       header: "player",
       cell: (c) => (
         <span className={c.row.original.state === "alive" ? undefined : "muted"}>
-          <span className={s.dot} style={{ background: dotColor(c.row.original) }} />
+          <PlayerDot row={c.row.original} />
           {c.row.original.name}
         </span>
       ),
@@ -84,14 +103,7 @@ const players: TabDef<PlayerRow> = {
       id: "type",
       header: "type",
       sortFn: "text",
-      cell: (c) => {
-        const r = c.row.original;
-        return (
-          <span title={r.typeDetail} className={r.type === "boss" ? s.boss : undefined} style={{ color: playerLook(r.type).color }}>
-            {r.typeLabel}
-          </span>
-        );
-      },
+      cell: (c) => <PlayerType row={c.row.original} />,
     }),
     p.accessor("state", { header: "state", sortFn: "text" }),
     p.accessor((r) => r.value, { id: "value", header: "gear ₽", cell: (c) => <Price>{price(c.getValue())}</Price>, sortUndefined: "last", sortDescFirst: true }),

@@ -9,6 +9,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { RadarState } from "../connection";
 import { type TabDef, TABS, features } from "../list/columns";
 import { DEFAULT_FILTERS, type RowBase, type TabFilter, type TabRows, isTabFiltered, selectionKey, tabOf, withDistances } from "../list/rows";
+import { RowStyles } from "../list/styles";
+import type { Style } from "../rules/rules";
 import type { ListPrefs, ListRows } from "../list/useListRows";
 import type { Selection } from "../pick";
 import { Button, Chip, cx, selectableRow } from "../ui";
@@ -28,13 +30,13 @@ interface Props {
   /** Row clicked or stepped to: select it and bring it into view on the map. */
   onActivate: (sel: Selection) => void;
   onHover: (sel: Selection | null) => void;
-  /** Row key → highlight colour. */
-  highlights: ReadonlyMap<string, string>;
+  /** Row key → its style (the display rules): colours, dimming, highlight rings. */
+  styles: ReadonlyMap<string, Style>;
   /** Set by the panel: focuses its search (the L key). */
   focusRef: React.RefObject<(() => void) | undefined>;
 }
 
-export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate, onHover, highlights, focusRef }: Props) {
+export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate, onHover, styles, focusRef }: Props) {
   const { tab } = prefs;
   const filter = prefs.filters[tab];
   const { totals } = list;
@@ -82,10 +84,11 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
   useEffect(() => () => onHover(null), []); // closing the list ends any hover
 
   const empty = totals[tab] === 0 ? "nothing here (yet)" : "no matches";
-  const common = { empty, sorting: prefs.sorting[tab], onSortingChange, selectedKey: selKey, onActivate, onHover, stepRef, highlights };
+  const common = { empty, sorting: prefs.sorting[tab], onSortingChange, selectedKey: selKey, onActivate, onHover, stepRef, styles };
   const filtered = isTabFiltered(filter);
 
   return (
+    <RowStyles.Provider value={styles}>
     <div className={s.list}>
       <div className={s.filters}>
         <input
@@ -134,6 +137,7 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
         <span className="muted">{filtered && "map shows matches only · "}click: show on map · ↑↓ step · L close</span>
       </div>
     </div>
+    </RowStyles.Provider>
   );
 }
 
@@ -149,10 +153,10 @@ interface TableProps<R extends RowBase> {
   onHover: (sel: Selection | null) => void;
   /** Set by the table: step the selection through its (sorted) rows. */
   stepRef: React.RefObject<((dir: 1 | -1) => void) | undefined>;
-  highlights: ReadonlyMap<string, string>;
+  styles: ReadonlyMap<string, Style>;
 }
 
-function TabTable<R extends RowBase>({ def, rows, empty, sorting, onSortingChange, selectedKey, onActivate, onHover, stepRef, highlights }: TableProps<R>) {
+function TabTable<R extends RowBase>({ def, rows, empty, sorting, onSortingChange, selectedKey, onActivate, onHover, stepRef, styles }: TableProps<R>) {
   const table = useTable({
     features,
     columns: def.columns,
@@ -231,14 +235,17 @@ function TabTable<R extends RowBase>({ def, rows, empty, sorting, onSortingChang
       <div style={{ height: virtualizer.getTotalSize() - HEADER_HEIGHT, position: "relative" }}>
         {virtualizer.getVirtualItems().map((item) => {
           const row = sorted[item.index]!;
-          const hl = highlights.get(row.id);
+          const style = styles.get(row.id);
+          const hl = style?.ring;
+          // Dimmed: faint players (plain AI scavs, by default), as on the map.
+          const dim = row.original.subject === "player" && style?.emphasis === "faint";
           return (
             <div
               key={row.id}
               role="row"
               aria-selected={row.id === selectedKey}
               data-selected={row.id === selectedKey}
-              data-dim={!!row.original.dim}
+              data-dim={dim}
               data-hl={!!hl}
               className={cx(s.grid, s.row, selectableRow)}
               style={{ ...grid, height: ROW_HEIGHT, transform: `translateY(${item.start - HEADER_HEIGHT}px)`, ...(hl && { "--hl": hl }) }}

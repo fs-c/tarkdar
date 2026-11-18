@@ -30,12 +30,34 @@ bool isOpticCamera(std::string_view name) { return containsIgnoreCase(name, "Opt
 
 CameraView viewOf(const unity::CameraSample& s) { return {s.viewProjection, s.position, s.fieldOfView, s.aspect}; }
 
+class Reader final : public CameraReader {
+public:
+    Reader(std::shared_ptr<const RaidSession> session, Address fps, Address optic)
+        : session_(std::move(session)), cameras_(session_->game.mem, kCameraLayout), fps_(fps), optic_(optic) {}
+    std::uint64_t raidId() const override { return session_->id; }
+    std::optional<CameraView> fps() const override { return read(fps_); }
+    std::optional<CameraView> optic() const override { return read(optic_); }
+
+private:
+    std::optional<CameraView> read(Address camera) const {
+        if (!camera) return std::nullopt;
+        const auto s = cameras_.sample(camera);
+        return s ? std::optional(viewOf(*s)) : std::nullopt;
+    }
+    std::shared_ptr<const RaidSession> session_;
+    unity::Cameras cameras_;
+    Address fps_, optic_;
+};
+
 }  // namespace
 
 CameraTracker::CameraTracker(std::shared_ptr<const RaidSession> session, WorldState& world)
     : session_(std::move(session)), game_(session_->game), world_(world), cameras_(game_.mem, kCameraLayout) {}
 
-CameraTracker::~CameraTracker() { world_.camera.publish(CameraSnapshot{}); }
+CameraTracker::~CameraTracker() {
+    world_.cameraReader.publish(CameraReaderRef{});
+    world_.camera.publish(CameraSnapshot{});
+}
 
 void CameraTracker::registerTasks(sched::TaskRunner& live, sched::TaskRunner& background) {
     background.add("camera.resolve", {.interval = kResolveCheck, .runOnStart = true}, [this] { refresh(Clock::now()); });
@@ -221,7 +243,16 @@ void CameraTracker::tick(Clock::time_point now) {
         optic_.view.reset();
         optic_.failingSince = {};
     }
+    publishReader();
     if (!next.sameState(last_)) publish(std::move(next));
+}
+
+void CameraTracker::publishReader() {
+    const std::pair cameras{fps_.camera, optic_.camera};
+    if (cameras == readerCameras_) return;
+    readerCameras_ = cameras;
+    world_.cameraReader.publish(CameraReaderRef{
+        fps_.camera ? std::make_shared<const Reader>(session_, fps_.camera, optic_.camera) : nullptr});
 }
 
 void CameraTracker::publish(CameraSnapshot next) {

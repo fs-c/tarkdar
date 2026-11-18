@@ -33,6 +33,11 @@ void printUsage(const char* argv0) {
                  "  --no-record           don't record raids\n"
                  "  --keep-recordings <n> keep only the newest <n> recordings\n"
                  "\n"
+                 "Overlay (Wayland; configured in the frontend: Settings, Overlay):\n"
+                 "  --overlay             draw the player's view in a transparent window over the game's picture\n"
+                 "  --overlay-output <n>  the monitor to cover (Wayland output name, e.g. DP-1)\n"
+                 "  --overlay-font <file> TrueType font for its labels\n"
+                 "\n"
                  "  --verbose             debug logging\n",
                  argv0, argv0);
 }
@@ -121,6 +126,14 @@ std::optional<Options> parseOptions(int argc, char** argv, std::string& error) {
                 return std::nullopt;
             }
             opt.keepRecordings = n;
+        } else if (arg == "--overlay") {
+            opt.overlay = true;
+        } else if (arg == "--overlay-output") {
+            VALUE_OR_FAIL(v);
+            opt.overlayOutput = *v;
+        } else if (arg == "--overlay-font") {
+            VALUE_OR_FAIL(v);
+            opt.overlayFont = *v;
         } else if (arg == "--record" || arg == "--replay") {
             error = std::string(arg) + " is gone: raids are recorded automatically (--recordings, --no-record), "
                                         "and replayed in the frontend (--offline without a game)";
@@ -131,6 +144,17 @@ std::optional<Options> parseOptions(int argc, char** argv, std::string& error) {
         }
 #undef VALUE_OR_FAIL
     }
+    if (opt.overlay && (opt.offline || opt.noServer)) {
+        error = "--overlay needs the live mode with the server (it's configured from the frontend)";
+        return std::nullopt;
+    }
+#ifndef RADAR_HAVE_OVERLAY_WINDOW
+    if (opt.overlay) {
+        error = "--overlay: this build has no overlay window (configure with the Wayland, EGL and OpenGL ES "
+                "development files installed; see overlay/CMakeLists.txt)";
+        return std::nullopt;
+    }
+#endif
     if (opt.offline && !opt.vmm.device.empty()) {
         error = "--offline and --device are mutually exclusive";
         return std::nullopt;

@@ -179,6 +179,12 @@ TEST_CASE("CameraTracker follows the FPS camera, aiming and the scope") {
         REQUIRE(snap->fps->position);
         CHECK(near(*snap->fps->position, {5, 1.6f, 5}));
         CHECK(snap->fps->fieldOfView == doctest::Approx(75));
+        // The reader reads the same camera on demand.
+        auto reader = world.cameraReader.get()->reader;
+        REQUIRE(reader);
+        CHECK(reader->raidId() == 3);
+        REQUIRE(reader->fps());
+        CHECK(near(*reader->fps()->position, {5, 1.6f, 5}));
         CHECK_FALSE(snap->aiming);
         CHECK(snap->sights.empty());
         CHECK_FALSE(snap->optic);
@@ -215,6 +221,7 @@ TEST_CASE("CameraTracker follows the FPS camera, aiming and the scope") {
         CHECK(world.camera.get()->fps);
         tracker.tick(later + eft::CameraTracker::kFailureGrace);
         CHECK_FALSE(world.camera.get()->fps);
+        CHECK_FALSE(world.cameraReader.get()->reader);  // nothing to read: no reader
 
         // Its replacement is picked up at once: the live task asks for a look-up.
         const auto fps2 = w.addCamera("FPS Camera", {7, 1.6f, 7});
@@ -222,9 +229,13 @@ TEST_CASE("CameraTracker follows the FPS camera, aiming and the scope") {
         tracker.tick(later + eft::CameraTracker::kFailureGrace + milliseconds(16));
         REQUIRE(world.camera.get()->fps);
         CHECK(near(*world.camera.get()->fps->position, {7, 1.6f, 7}));
+        reader = world.cameraReader.get()->reader;
+        REQUIRE(reader);
+        CHECK(near(*reader->fps()->position, {7, 1.6f, 7}));
         (void)fps2;
     }
     CHECK_FALSE(world.camera.get()->fps);  // cleared at raid end
+    CHECK_FALSE(world.cameraReader.get()->reader);
 }
 
 TEST_CASE("encodeCamera") {

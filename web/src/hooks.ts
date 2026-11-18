@@ -16,6 +16,8 @@ export interface LiveState {
   live: LiveTimeline;
   /** Changes whenever the live timeline does. */
   liveVersion: number;
+  /** For sending to the backend (the overlay's configuration). */
+  conn: Connection;
 }
 
 const backfill: Backfill = {
@@ -36,7 +38,7 @@ export function useConnection(url: string): LiveState {
   }, [conn]);
   const state = useSyncExternalStore(conn.subscribe, conn.getState);
   const liveVersion = useSyncExternalStore(live.subscribe, live.getVersion);
-  return { state, live, liveVersion };
+  return { state, live, liveVersion, conn };
 }
 
 // Item data (names, prices): loaded once per page load from tarkov.dev, cached for a day. Shared

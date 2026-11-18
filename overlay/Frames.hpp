@@ -1,0 +1,57 @@
+#pragma once
+
+#include "core/sched/Published.hpp"
+#include "core/sched/TaskRunner.hpp"
+#include "game/eft/model/WorldState.hpp"
+#include "overlay/Config.hpp"
+#include "overlay/DrawList.hpp"
+
+#include <deque>
+
+namespace radar::overlay {
+
+using eft::CameraSnapshot;
+using eft::CameraView;
+
+// The cameras as read at one moment.
+struct CameraReading {
+    sched::Clock::time_point at{};
+    std::optional<CameraView> fps{};
+    std::optional<CameraView> optic{};
+};
+
+// Recent camera readings, to draw with the one from `delay` ago (Config::delay).
+class CameraHistory {
+public:
+    static constexpr auto kKeep = std::chrono::seconds(1);
+
+    void add(CameraReading r);
+    void clear() { readings_.clear(); }
+    // The newest reading taken at or before `at`; the oldest if all are newer; nullopt if none.
+    [[nodiscard]] std::optional<CameraReading> at(sched::Clock::time_point at) const;
+
+private:
+    std::deque<CameraReading> readings_;
+};
+
+// Overlay frames: reads the cameras (CameraReader) when a frame is due and builds what to draw from
+// them, the overlay's configuration and the world's latest snapshots. Used by the window's thread only.
+class Frames {
+public:
+    Frames(const eft::WorldState& world, const sched::Published<Config>& config) : world_(world), config_(config) {}
+
+    // Whether frames have anything to draw (configured on, in a raid, with a camera to read). While
+    // not, the window can stop drawing.
+    [[nodiscard]] bool active() const;
+
+    // One frame for a surface of this size (logical pixels).
+    [[nodiscard]] DrawList frame(float width, float height, sched::Clock::time_point now);
+
+private:
+    const eft::WorldState& world_;
+    const sched::Published<Config>& config_;
+    CameraHistory history_;
+    std::uint64_t historyRaid_ = 0;
+};
+
+}  // namespace radar::overlay

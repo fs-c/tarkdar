@@ -10,7 +10,7 @@ change, e.g. `0.0.0.0:8080` for LAN access).
 
 | Route | Content |
 |---|---|
-| `GET /ws` | WebSocket: the message stream below. Server → client only for now. |
+| `GET /ws` | WebSocket: the message stream below, plus one client → server message (`overlay`). |
 | `GET /maps/index.json` | Generated list of the map folders under `maps/3d`: `[{"folder": "...", "config": {map.json contents}}]`, sorted by folder. See `docs/maps3d.md`. |
 | `GET /maps/3d/<folder>/<file>` | Map files: the 3D datasets. |
 | `GET /data/<path>` | Item/quest data files (not used yet). |
@@ -43,9 +43,10 @@ changes, at most about 30 times per second.
 
 ### `hello`
 ```json
-{ "protocol": 1, "live": true }
+{ "protocol": 1, "live": true, "overlay": false }
 ```
 - **`live`:** false when the backend has no memory source (`--offline`): only recordings to show.
+- **`overlay`:** the backend runs the overlay window (`--overlay`) and takes `overlay` messages.
 
 ### `status`
 ```json
@@ -201,6 +202,40 @@ few seconds; the message is sent when something changed.
 nodes] (if any) }`. Children are slot attachments (weapon mods, magazine cartridges, armour plates),
 plus grid contents (backpack, rig), slot items first. Names and prices come
 from item data, keyed by `tpl`.
+
+## Client → server
+
+### `overlay`
+The overlay's configuration (`overlay/Config.hpp`). The frontend sends it in its role of
+configuring the overlay; it's for the overlay only, and the backend doesn't use it for anything
+else. Only the `type` and `data` fields of the envelope are needed. It's ignored unless `hello`
+said `overlay: true`. The latest message wins, from whichever connection. Senders resend after
+reconnecting, because a new connection doesn't know what an earlier one sent.
+```json
+{ "type": "overlay", "data": {
+  "on": true, "raid": 3, "delayMs": 20, "grid": false, "lootRange": 150, "scopeRadius": 0.36,
+  "otherPlayers": "#e0e0e0",
+  "marks": [
+    { "kind": "player", "id": 2, "color": "#ff5a52", "label": "Killa", "emphasis": "loud" },
+    { "kind": "loot", "id": 40, "color": "#ffd84d", "label": "LEDX", "emphasis": "strong" },
+    { "kind": "exfil", "id": 1, "color": "#4cd964", "label": "ZB-1011", "emphasis": "normal" }
+  ] } }
+```
+- **`on`:** draw at all.
+- **`raid`:** the raid the marks' ids belong to. Marks for any other raid aren't drawn, because ids
+  restart every raid.
+- **`marks`:** what to draw, and how. `kind`: `player`, `loot` or `exfil`, with ids as in the
+  `players`, `loot` and `exfils` messages. `color`: `#rrggbb` or `#rrggbbaa`. `label`: drawn next
+  to the mark, followed by the distance. `emphasis`: `faint`, `normal`, `strong` or `loud` (line
+  widths and sizes). Up to 4096 marks; invalid marks are dropped.
+- **`otherPlayers`:** colour for living players that aren't among the marks (e.g. spawned since the
+  last message); `null`: those aren't drawn.
+- **`delayMs`:** draw with the camera as it was this long ago (0–500), so marks keep pace with a
+  picture that lags behind the game (Looking Glass, the compositor).
+- **`grid`:** dots on the ground around the player, for checking the alignment.
+- **`lootRange`:** metres; loot further away isn't drawn.
+- **`scopeRadius`:** the scope's picture while scoped: a circle with this radius, as a share of the
+  picture's height. Marks inside it are placed through the scope.
 
 ## Raid recordings
 

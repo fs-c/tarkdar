@@ -5,6 +5,7 @@
 #include "game/eft/model/Players.hpp"
 #include "game/eft/model/Quests.hpp"
 #include "game/eft/model/World.hpp"
+#include "overlay/Config.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -12,7 +13,8 @@
 #include <string_view>
 #include <vector>
 
-// Server → client messages (JSON text frames). Format documented in docs/protocol.md.
+// Server → client messages (JSON text frames), and the one client → server message (`overlay`).
+// Format documented in docs/protocol.md.
 namespace radar::server {
 
 inline constexpr int kProtocolVersion = 1;
@@ -20,7 +22,8 @@ inline constexpr int kProtocolVersion = 1;
 inline constexpr int kRecordingFormat = 1;
 
 // `live`: false when the backend serves recordings only (--offline).
-[[nodiscard]] std::string encodeHello(bool live = true);
+// `overlay`: whether this backend runs the overlay (and so takes `overlay` messages).
+[[nodiscard]] std::string encodeHello(bool live = true, bool overlay = false);
 [[nodiscard]] std::string encodeStatus(const eft::Status& status);
 [[nodiscard]] std::string encodePlayers(const eft::PlayersSnapshot& players);
 // The joints of every alive, present player that has them; nullopt if no player has any. Shares the
@@ -32,6 +35,10 @@ inline constexpr int kRecordingFormat = 1;
 [[nodiscard]] std::string encodeLoot(const eft::LootSnapshot& loot);
 [[nodiscard]] std::string encodeCamera(const eft::CameraSnapshot& camera);
 // Recordings only: the first line of a raid recording.
+// Client → server: the overlay's configuration from an `overlay` message (docs/protocol.md); nullopt
+// if the text isn't one or is malformed.
+[[nodiscard]] std::optional<overlay::Config> decodeOverlay(std::string_view text);
+
 [[nodiscard]] std::string encodeRecordingHeader(const eft::Status& status);
 // Recordings only: the loot changes since the previous loot (or lootDiff) line. `revision` is the
 // loot snapshot's revision.

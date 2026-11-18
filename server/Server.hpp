@@ -3,7 +3,10 @@
 #include "server/MessageHub.hpp"
 #include "server/Recorder.hpp"
 
+#include "overlay/Config.hpp"
+
 #include <cstdint>
+#include <functional>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -32,8 +35,12 @@ struct ServerConfig {
 //   GET /, /<path>        the frontend (files under webRoot; index.html for /)
 class Server {
 public:
+    // Receives the overlay's configuration from `overlay` messages (from any connection; the latest
+    // wins). Set only when the backend runs the overlay; hello tells clients whether it does.
+    using OverlaySink = std::function<void(overlay::Config)>;
+
     // `recorder` (optional) is asked for the active recording, which it flushes before it's served.
-    Server(ServerConfig config, MessageHub& hub, RaidRecorder* recorder = nullptr);
+    Server(ServerConfig config, MessageHub& hub, RaidRecorder* recorder = nullptr, OverlaySink overlay = {});
     ~Server();
 
     Server(const Server&) = delete;

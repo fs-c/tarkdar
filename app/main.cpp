@@ -20,9 +20,13 @@
 #include "game/eft/world/Quests.hpp"
 #include "game/eft/world/Vehicles.hpp"
 #include "game/eft/world/Loot.hpp"
+#include "overlay/Frames.hpp"
 #include "server/Feeds.hpp"
 #include "server/MessageHub.hpp"
 #include "server/Server.hpp"
+#ifdef RADAR_HAVE_OVERLAY_WINDOW
+#include "overlay/Window.hpp"
+#endif
 
 #include <atomic>
 #include <chrono>
@@ -108,9 +112,13 @@ int main(int argc, char** argv) {
         log::info("recording raids to {}", options->server.recordingsRoot.string());
     }
 
+    // The overlay's configuration, as the frontend last sent it; only the overlay reads it.
+    sched::Published<overlay::Config> overlayConfig;
     std::unique_ptr<server::Server> httpServer;
     if (!options->noServer && !options->once && !options->diagnose) {
-        httpServer = std::make_unique<server::Server>(options->server, hub, recorder.get());
+        server::Server::OverlaySink overlaySink;
+        if (options->overlay) overlaySink = [&overlayConfig](overlay::Config c) { overlayConfig.publish(std::move(c)); };
+        httpServer = std::make_unique<server::Server>(options->server, hub, recorder.get(), std::move(overlaySink));
         if (!httpServer->start()) return 1;
     }
 
@@ -155,6 +163,16 @@ int main(int argc, char** argv) {
 
     std::jthread lifecycleThread([&](std::stop_token stop) { lifecycle.run(stop); });
     std::jthread feedThread([&](std::stop_token stop) { feed.run(stop); });
+    overlay::Frames overlayFrames(world, overlayConfig);
+    std::jthread overlayThread;
+#ifdef RADAR_HAVE_OVERLAY_WINDOW
+    if (options->overlay)
+        overlayThread = std::jthread([&](std::stop_token stop) {
+            const overlay::WindowOptions windowOptions{.output = options->overlayOutput, .font = options->overlayFont};
+            if (auto r = overlay::runOverlayWindow(stop, windowOptions, overlayFrames); !r)
+                log::error("overlay: {}", r.error());
+        });
+#endif
 
     auto lastSummary = std::chrono::steady_clock::now();
     while (!gStop.load()) {
@@ -172,8 +190,10 @@ int main(int argc, char** argv) {
         }
     }
 
+    overlayThread.request_stop();
     feedThread.request_stop();
     lifecycleThread.request_stop();
+    if (overlayThread.joinable()) overlayThread.join();
     feedThread.join();
     lifecycleThread.join();
     if (recorder) recorder->finish();  // a raid in progress: keep what's there

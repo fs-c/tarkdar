@@ -2,6 +2,8 @@
 
 #include <crow/json.h>
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 
@@ -99,10 +101,11 @@ crow::json::wvalue lootEntry(const eft::LootEntry& l) {
 
 }  // namespace
 
-std::string encodeHello(bool live) {
+std::string encodeHello(bool live, bool overlay) {
     crow::json::wvalue data;
     data["protocol"] = kProtocolVersion;
     data["live"] = live;
+    data["overlay"] = overlay;
     return envelope("hello", 0, 0, std::move(data));
 }
 
@@ -356,6 +359,89 @@ std::optional<std::int64_t> messageTime(std::string_view message) {
     if (!json || json.t() != crow::json::type::Object || !json.has("t") || json["t"].t() != crow::json::type::Number)
         return std::nullopt;
     return json["t"].i();
+}
+
+namespace {
+
+std::optional<overlay::Color> parseColor(const crow::json::rvalue& v) {
+    if (v.t() != crow::json::type::String) return std::nullopt;
+    const std::string s = v.s();
+    if (s.size() != 7 && s.size() != 9) return std::nullopt;
+    if (s[0] != '#') return std::nullopt;
+    std::array<std::uint8_t, 4> c{0, 0, 0, 255};
+    for (std::size_t i = 0; i + 1 < s.size(); i += 2) {
+        unsigned value = 0;
+        for (const char ch : {s[i + 1], s[i + 2]}) {
+            const int digit = ch >= '0' && ch <= '9'   ? ch - '0'
+                              : ch >= 'a' && ch <= 'f' ? ch - 'a' + 10
+                              : ch >= 'A' && ch <= 'F' ? ch - 'A' + 10
+                                                       : -1;
+            if (digit < 0) return std::nullopt;
+            value = value * 16 + static_cast<unsigned>(digit);
+        }
+        c[i / 2] = static_cast<std::uint8_t>(value);
+    }
+    return overlay::Color{c[0], c[1], c[2], c[3]};
+}
+
+std::optional<double> number(const crow::json::rvalue& o, const char* key) {
+    if (!o.has(key) || o[key].t() != crow::json::type::Number) return std::nullopt;
+    const double v = o[key].d();
+    return std::isfinite(v) ? std::optional(v) : std::nullopt;
+}
+
+std::optional<bool> boolean(const crow::json::rvalue& o, const char* key) {
+    if (!o.has(key)) return std::nullopt;
+    if (o[key].t() == crow::json::type::True) return true;
+    if (o[key].t() == crow::json::type::False) return false;
+    return std::nullopt;
+}
+
+}  // namespace
+
+std::optional<overlay::Config> decodeOverlay(std::string_view text) {
+    constexpr std::size_t kMaxMarks = 4096;
+    constexpr std::size_t kMaxLabel = 80;
+    const auto msg = crow::json::load(text.data(), text.size());
+    if (!msg || msg.t() != crow::json::type::Object || !msg.has("type") || msg["type"].t() != crow::json::type::String ||
+        msg["type"].s() != "overlay" || !msg.has("data") || msg["data"].t() != crow::json::type::Object)
+        return std::nullopt;
+    const auto& d = msg["data"];
+    overlay::Config c;
+    c.on = boolean(d, "on").value_or(false);
+    if (const auto raid = number(d, "raid"); raid && *raid >= 0) c.raid = static_cast<std::uint64_t>(*raid);
+    if (const auto delay = number(d, "delayMs")) c.delay = std::chrono::milliseconds(std::clamp(static_cast<int>(*delay), 0, 500));
+    c.grid = boolean(d, "grid").value_or(false);
+    if (const auto range = number(d, "lootRange")) c.lootRange = static_cast<float>(std::clamp(*range, 0.0, 1000.0));
+    if (const auto radius = number(d, "scopeRadius")) c.scopeRadius = static_cast<float>(std::clamp(*radius, 0.0, 1.0));
+    if (d.has("otherPlayers")) c.otherPlayers = parseColor(d["otherPlayers"]);
+    if (d.has("marks") && d["marks"].t() == crow::json::type::List) {
+        for (const auto& m : d["marks"]) {
+            if (c.marks.size() >= kMaxMarks) break;
+            if (m.t() != crow::json::type::Object || !m.has("kind") || m["kind"].t() != crow::json::type::String) continue;
+            overlay::Mark mark;
+            const std::string kind = m["kind"].s();
+            if (kind == "player") mark.kind = overlay::MarkKind::Player;
+            else if (kind == "loot") mark.kind = overlay::MarkKind::Loot;
+            else if (kind == "exfil") mark.kind = overlay::MarkKind::Exfil;
+            else continue;
+            const auto id = number(m, "id");
+            const auto color = m.has("color") ? parseColor(m["color"]) : std::nullopt;
+            if (!id || *id < 0 || *id > 4294967295.0 || !color) continue;
+            mark.id = static_cast<std::uint32_t>(*id);
+            mark.color = *color;
+            if (m.has("label") && m["label"].t() == crow::json::type::String) mark.label = std::string(m["label"].s()).substr(0, kMaxLabel);
+            if (m.has("emphasis") && m["emphasis"].t() == crow::json::type::String) {
+                const std::string e = m["emphasis"].s();
+                mark.emphasis = e == "faint" ? overlay::Emphasis::Faint
+                                : e == "strong" ? overlay::Emphasis::Strong
+                                : e == "loud"   ? overlay::Emphasis::Loud
+                                                : overlay::Emphasis::Normal;
+            }
+            c.marks.push_back(std::move(mark));
+        }
+    }
+    return c;
 }
 
 }  // namespace radar::server

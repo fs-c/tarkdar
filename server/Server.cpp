@@ -72,14 +72,15 @@ struct Server::Impl {
     ServerConfig config;
     MessageHub& hub;
     RaidRecorder* recorder;
+    Server::OverlaySink overlay;
     RecordingIndex recordings;
     crow::SimpleApp app;
     std::future<void> running;
     std::mutex connMutex;
     std::unordered_map<crow::websocket::connection*, MessageHub::ClientId> connections;
 
-    Impl(ServerConfig c, MessageHub& h, RaidRecorder* r)
-        : config(std::move(c)), hub(h), recorder(r), recordings(config.recordingsRoot) {}
+    Impl(ServerConfig c, MessageHub& h, RaidRecorder* r, Server::OverlaySink o)
+        : config(std::move(c)), hub(h), recorder(r), overlay(std::move(o)), recordings(config.recordingsRoot) {}
 
     static crow::response file(const fs::path& root, std::string_view path) {
         const auto resolved = resolveUnder(root, path);
@@ -100,9 +101,10 @@ struct Server::Impl {
                               req.get_header_value("Host"));
                 return ok;
             })
-            .max_payload(64 * 1024)  // clients don't send anything meaningful yet
+            .max_payload(1024 * 1024)  // the overlay's configuration: up to a few thousand marks
             .onopen([this](crow::websocket::connection& conn) {
-                const auto id = hub.connect([&conn](const std::string& m) { conn.send_text(m); }, encodeHello(config.live));
+                const auto id = hub.connect([&conn](const std::string& m) { conn.send_text(m); },
+                                            encodeHello(config.live, static_cast<bool>(overlay)));
                 std::lock_guard lock(connMutex);
                 connections[&conn] = id;
                 log::info("server: client connected ({})", conn.get_remote_ip());
@@ -115,8 +117,11 @@ struct Server::Impl {
                 }
                 log::info("server: client disconnected");
             })
-            .onmessage([](crow::websocket::connection&, const std::string&, bool) {
-                // No client → server messages yet.
+            .onmessage([this](crow::websocket::connection&, const std::string& text, bool binary) {
+                // The only client → server message: the overlay's configuration (overlay/Config.hpp).
+                if (binary || !overlay) return;
+                if (auto c = decodeOverlay(text)) overlay(std::move(*c));
+                else log::debug("server: ignored a client message that isn't a valid overlay message");
             });
 
         CROW_ROUTE(app, "/maps/index.json")([this] {
@@ -149,8 +154,8 @@ struct Server::Impl {
     }
 };
 
-Server::Server(ServerConfig config, MessageHub& hub, RaidRecorder* recorder)
-    : impl_(std::make_unique<Impl>(std::move(config), hub, recorder)) {
+Server::Server(ServerConfig config, MessageHub& hub, RaidRecorder* recorder, OverlaySink overlay)
+    : impl_(std::make_unique<Impl>(std::move(config), hub, recorder, std::move(overlay))) {
     impl_->routes();
 }
 

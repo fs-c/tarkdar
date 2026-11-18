@@ -21,6 +21,11 @@ struct Options {
     bool offline = false;                // no memory source: serve the frontend and the recordings only
     bool noRecord = false;               // don't record raids
     std::optional<int> keepRecordings;   // delete older recordings beyond this many
+
+    // The overlay window (overlay/Config.hpp), configured from the frontend over the server.
+    bool overlay = false;
+    std::string overlayOutput;           // monitor (Wayland output name); empty: the compositor's choice
+    std::string overlayFont;             // TrueType file for labels; empty: a system font
 };
 
 // Parses the command line. On error, returns nullopt and sets `error` (empty for --help).

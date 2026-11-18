@@ -178,6 +178,8 @@ export interface HelloData {
   protocol: number;
   /** False when the backend has no memory source (--offline). Missing from old backends: live. */
   live?: boolean;
+  /** The backend runs the overlay (--overlay) and takes `overlay` messages. Missing: it doesn't. */
+  overlay?: boolean;
 }
 
 export type Message =
@@ -252,3 +254,31 @@ export function withoutContainerContents<M extends RecordedMessage>(m: M): M {
   }
   return m;
 }
+
+// ---- Client → server ----
+
+/** A thing for the overlay to mark: which one (as in this raid's messages) and how. */
+export interface OverlayMark {
+  kind: "player" | "loot" | "exfil";
+  id: number;
+  /** "#rrggbb" or "#rrggbbaa" */
+  color: string;
+  label: string;
+  emphasis: "faint" | "normal" | "strong" | "loud";
+}
+
+/** The overlay's configuration (docs/protocol.md, `overlay`): for the overlay only. */
+export interface OverlayData {
+  on: boolean;
+  /** The raid the marks' ids belong to. */
+  raid: number | null;
+  delayMs: number;
+  grid: boolean;
+  lootRange: number;
+  scopeRadius: number;
+  /** Players not among the marks are drawn in this colour; null: not drawn. */
+  otherPlayers: string | null;
+  marks: OverlayMark[];
+}
+
+export type ClientMessage = { type: "overlay"; data: OverlayData };

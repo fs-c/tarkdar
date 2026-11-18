@@ -3,6 +3,7 @@
 #include "core/math/Math.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -46,6 +47,24 @@ struct CameraSnapshot {
         return fps == o.fps && aiming == o.aiming && sights == o.sights && activeSight == o.activeSight &&
                magnification == o.magnification && scoped == o.scoped && optic == o.optic;
     }
+};
+
+// Reads the local player's cameras now, from any thread. For clients that must follow the camera as
+// closely as possible (the overlay reads it right before drawing each frame); everything else uses
+// CameraSnapshot. Keeps what it reads through (the raid's memory view) alive; it may outlive the
+// raid, but then reads fail or return garbage (the matrices are validated, so: nullopt).
+class CameraReader {
+public:
+    virtual ~CameraReader() = default;
+    [[nodiscard]] virtual std::uint64_t raidId() const = 0;
+    [[nodiscard]] virtual std::optional<CameraView> fps() const = 0;
+    // The scope's camera; only meaningful while CameraSnapshot::scoped.
+    [[nodiscard]] virtual std::optional<CameraView> optic() const = 0;
+};
+
+// The current reader; null outside a raid or before the first-person camera is found.
+struct CameraReaderRef {
+    std::shared_ptr<const CameraReader> reader;
 };
 
 }  // namespace radar::eft

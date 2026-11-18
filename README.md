@@ -21,6 +21,12 @@ cd web && npm install && npm test && npm run build
 Everything ends up in `build/bin/`: `radar-backend`, `vmm.so`, `leechcore.so` and
 `leechcore_device_qemu.so`.  They depend on being next to each other.
 
+**Overlay window** (`--overlay`, `docs/design.md`): built when the Wayland, EGL and OpenGL ES
+development files are found (Debian: `libwayland-dev wayland-protocols libegl-dev libgles-dev`;
+Arch: `wayland wayland-protocols mesa`). Force it with `-DRADAR_OVERLAY_WINDOW=ON` or turn it off
+with `OFF`. `build/bin/radar-overlay-demo` shows the window with a made-up scene, for checking it
+on the desktop without the game. Dear ImGui (`third_party/imgui`) draws the shapes and text.
+
 **Runtime files not in any source repo:** `info.db` and `libpdbcrust.so` from the official MemProcFS
 Linux release must sit in `build/bin/`. VMM uses them for Windows symbol and PDB parsing.
 `scripts/setup.sh` downloads them (the release matching the vendored MemProcFS version, for this

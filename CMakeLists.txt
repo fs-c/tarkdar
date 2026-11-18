@@ -34,6 +34,7 @@ target_compile_options(radar_warnings INTERFACE -Wall -Wextra -Wpedantic -Wshado
 add_subdirectory(core)
 add_subdirectory(game)
 add_subdirectory(server)
+add_subdirectory(overlay)
 add_subdirectory(app)
 
 option(RADAR_BUILD_TESTS "Build unit tests" ON)

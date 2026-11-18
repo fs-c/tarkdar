@@ -4,6 +4,8 @@ import { type RadarState, wsUrl } from "../connection";
 import { isTyping, useCatalog, useConnection, useLootPrefs, useMapIndex, useMapPrefs, usePersistentState, useQuestData, useTrailPrefs } from "../hooks";
 import { knownQuestItems, neededItems, neededQuestItems, questItemLabels, withoutUnneededQuestItems } from "../quests";
 import { describeEvent } from "../events";
+import { DEFAULT_OVERLAY_PREFS, type OverlayPrefs, overlayData, overlayMarks } from "../overlay/marks";
+import { useOverlaySync } from "../overlay/useOverlaySync";
 import type { MapStats, MapView } from "../map3d/Map3D";
 import { findMap, mapUrl } from "../maps";
 import { type Highlight, type Match, allRows } from "../highlight/match";
@@ -37,7 +39,7 @@ const Radar = lazy(() => import("./Radar").then((m) => ({ default: m.Radar })));
 
 
 export function App() {
-  const { state: conn, live, liveVersion } = useConnection(wsUrl());
+  const { state: conn, live, liveVersion, conn: connection } = useConnection(wsUrl());
 
   // What's shown: the live raid, or a recording opened from the Raids view; either at the cursor.
   const [review, setReview] = useState<{ info: RecordingInfo; timeline: Timeline } | null>(null);
@@ -149,6 +151,18 @@ export function App() {
   const styled = useRules(list.all, rules, catalog);
   const highlightMatches = useMemo(() => new Map(highlights.map((h) => [h.id, styled.matched.get(highlightId(h.id)) ?? []])), [highlights, styled.matched]);
   const everything = useMemo(() => allRows(list.all), [list.all]);
+
+  // The overlay (radar-backend --overlay): configured from here, from the live raid only (a replay
+  // or an earlier moment leaves it as it was).
+  const [overlayPrefs, setOverlayPrefs] = usePersistentState<OverlayPrefs>("radar.overlay", DEFAULT_OVERLAY_PREFS);
+  const overlayLive = conn.overlay && !review && playback.cursor === null;
+  const marksForOverlay = useMemo(() => (overlayLive ? overlayMarks(list.all, styled.styles) : []), [overlayLive, list.all, styled.styles]);
+  const overlayRaid = conn.status?.state === "inRaid" ? conn.raid : null;
+  const overlayConfig = useMemo(
+    () => (overlayLive ? overlayData(overlayPrefs, overlayRaid, marksForOverlay) : null),
+    [overlayLive, overlayPrefs, overlayRaid, marksForOverlay],
+  );
+  useOverlaySync(connection, conn.overlay, conn.connected, overlayConfig);
 
   // Side panel: open or collapsed, and which section it shows (for "list", the list tab in listPrefs).
   // The Raids view has two levels: the list of raids, and the shown raid's timeline.
@@ -415,6 +429,7 @@ export function App() {
             view={map ? mapView : null}
             pickOutput={pickOutput()}
             onClearPicks={() => setDebugPicks([])}
+            overlay={{ available: conn.overlay, prefs: overlayPrefs, onPrefs: setOverlayPrefs, marks: overlayConfig?.marks.length ?? null }}
           />
         );
     }

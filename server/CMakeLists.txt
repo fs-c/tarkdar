@@ -14,4 +14,4 @@ add_library(radar_server STATIC
     Server.cpp
 )
 find_package(ZLIB REQUIRED)
-target_link_libraries(radar_server PUBLIC radar_eft PRIVATE crow ZLIB::ZLIB radar_warnings)
+target_link_libraries(radar_server PUBLIC radar_eft radar_overlay PRIVATE crow ZLIB::ZLIB radar_warnings)

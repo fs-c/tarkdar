@@ -2,6 +2,7 @@
 
 import type { MapPrefs } from "../hooks";
 import type { MapView } from "../map3d/Map3D";
+import type { OverlayPrefs } from "../overlay/marks";
 import { COLOR_SCHEMES, type ColorGrade, type ColorSchemeName, PLAN_PALETTES, type PlanPalette, type PlanPaletteName, paletteOf, schemeOf } from "../map3d/settings";
 import { Actions, Button, PanelBody, Section, Segmented, SliderRow, ToggleRow } from "../ui";
 import s from "./SettingsPanel.module.css";
@@ -21,6 +22,8 @@ interface Props {
   /** Coordinate pick output to paste into a bug report. */
   pickOutput: string;
   onClearPicks: () => void;
+  /** The overlay: whether the backend runs it, its settings, and how many things it's told to mark. */
+  overlay: { available: boolean; prefs: OverlayPrefs; onPrefs: (p: OverlayPrefs) => void; marks: number | null };
 }
 
 const SCHEMES: { value: ColorSchemeName; label: string; title: string }[] = [
@@ -217,6 +220,7 @@ export function SettingsPanel(p: Props) {
           )}
         </Section>
       )}
+      <OverlaySection {...p.overlay} />
       <Section title="Experimental">
         <p className="muted">
           <a href="#pov">Player's view</a>: what the backend reads of the local player's camera and scope, as points
@@ -224,6 +228,41 @@ export function SettingsPanel(p: Props) {
         </p>
       </Section>
     </PanelBody>
+  );
+}
+
+/** The overlay's settings. They configure the backend's overlay window; the radar doesn't use them. */
+function OverlaySection({ available, prefs, onPrefs, marks }: Props["overlay"]) {
+  const set = <K extends keyof OverlayPrefs>(key: K, value: OverlayPrefs[K]) => onPrefs({ ...prefs, [key]: value });
+  return (
+    <Section title="Overlay">
+      <p className="muted">
+        The player's view drawn by the backend in a transparent window over the game&apos;s picture (Wayland: KDE Plasma,
+        wlroots compositors). It marks what the map shows, as the rules style it: players, exfils, and loot that stands
+        out.
+      </p>
+      {!available ? (
+        <p className="muted">Not running: start radar-backend with --overlay.</p>
+      ) : (
+        <>
+          <ToggleRow
+            label="Show the overlay"
+            hint={prefs.on ? `Configured from this browser${marks !== null ? `: ${marks} marked` : ""}` : "Settings from this browser; the last browser to change them wins"}
+            checked={prefs.on}
+            onChange={() => set("on", !prefs.on)}
+          />
+          <ToggleRow label="Other players" hint="Players the rules don't mark yet, in white" checked={prefs.otherPlayers} onChange={() => set("otherPlayers", !prefs.otherPlayers)} />
+          <ToggleRow label="Ground grid" hint="For checking the alignment" checked={prefs.grid} onChange={() => set("grid", !prefs.grid)} />
+          <SliderRow label="Delay (s)" value={prefs.delayMs / 1000} min={0} max={0.15} step={0.005} onChange={(v) => set("delayMs", Math.round(v * 1000))} />
+          <SliderRow label="Loot range (km)" value={prefs.lootRange / 1000} min={0.01} max={0.5} step={0.01} onChange={(v) => set("lootRange", Math.round(v * 1000))} />
+          <SliderRow label="Scope circle" value={prefs.scopeRadius} min={0.1} max={0.5} step={0.01} onChange={(v) => set("scopeRadius", v)} />
+          <p className="muted">
+            Delay: if marks run ahead of the picture as you turn, raise it until they stay on their targets. Scope circle: the
+            size of the scope&apos;s picture (share of the screen height); marks inside it are placed through the scope.
+          </p>
+        </>
+      )}
+    </Section>
   );
 }
 

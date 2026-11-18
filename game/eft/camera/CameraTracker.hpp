@@ -28,6 +28,8 @@ namespace radar::eft {
 // Aiming and sights: local player → Player.ProceduralWeaponAnimation → _isAiming, and _optics, a
 // List<SightNBone> (Mod: the SightComponent; Bone: the sight's transform). Zoom: see resolveSight.
 //
+// It also publishes WorldState::cameraReader, for reading the found cameras on demand from any thread.
+//
 // Two tasks:
 //  - live (kInterval): samples the FPS camera, and the optic camera while scoped; re-reads aiming
 //    and sights every kSightInterval (batched; the sights' zoom tables are cached per template);
@@ -86,6 +88,8 @@ private:
     bool sample(Tracked& t, sched::Clock::time_point now) const;
     [[nodiscard]] const std::vector<std::vector<float>>& zooms(Address sightTemplate) const;
     void publish(CameraSnapshot next);
+    // Publishes a reader for the cameras now tracked, if they changed.
+    void publishReader();
 
     std::shared_ptr<const RaidSession> session_;
     const Game& game_;
@@ -107,6 +111,7 @@ private:
     std::vector<SightState> sights_;
     mutable std::unordered_map<Address, std::vector<std::vector<float>>> zoomCache_;  // by SightModTemplate
     CameraSnapshot last_;
+    std::pair<Address, Address> readerCameras_{};  // fps, optic of the published reader
     std::uint64_t revision_ = 0;
 };
 

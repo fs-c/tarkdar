@@ -3,6 +3,7 @@
 
 import {
   type CameraData,
+  type ClientMessage,
   type Exfil,
   type ExplosivesData,
   type Vehicle,
@@ -27,6 +28,8 @@ export interface RadarState {
   protocolMismatch: boolean;
   /** False when the backend has no game to read (--offline): only recordings to show. */
   live: boolean;
+  /** The backend runs the overlay window (--overlay), which Settings can configure. */
+  overlay: boolean;
   status: StatusData | null;
   raid: number | null;
   players: Player[];
@@ -46,6 +49,7 @@ export const initialRadarState = (): RadarState => ({
   connected: false,
   protocolMismatch: false,
   live: true,
+  overlay: false,
   status: null,
   raid: null,
   players: [],
@@ -90,6 +94,13 @@ export class Connection {
     this.cameraListeners.add(listener);
     return () => this.cameraListeners.delete(listener);
   };
+
+  /** Sends a message to the backend (only `overlay` exists); false if not connected. */
+  send(msg: ClientMessage): boolean {
+    if (this.ws?.readyState !== WebSocket.OPEN) return false;
+    this.ws.send(JSON.stringify(msg));
+    return true;
+  }
 
   start(): void {
     this.running = true;
@@ -139,15 +150,15 @@ export class Connection {
   private handle(msg: Message): void {
     switch (msg.type) {
       case "hello":
-        return this.update({ protocolMismatch: msg.data.protocol !== PROTOCOL_VERSION, live: msg.data.live !== false });
+        return this.update({ protocolMismatch: msg.data.protocol !== PROTOCOL_VERSION, live: msg.data.live !== false, overlay: msg.data.overlay === true });
       case "status":
         if (msg.data.state !== "inRaid") {
           if (this.camera) {
             this.camera = null;
             for (const l of this.cameraListeners) l();
           }
-          const { connected, protocolMismatch, live } = this.state;
-          return this.update({ ...initialRadarState(), connected, protocolMismatch, live, status: msg.data });
+          const { connected, protocolMismatch, live, overlay } = this.state;
+          return this.update({ ...initialRadarState(), connected, protocolMismatch, live, overlay, status: msg.data });
         }
         return this.update({ status: msg.data });
       case "players":

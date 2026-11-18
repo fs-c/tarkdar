@@ -20,6 +20,8 @@ struct WorldState {
     sched::Published<EquipmentSnapshot> equipment;
     sched::Published<QuestsSnapshot> quests;
     sched::Published<CameraSnapshot> camera;
+    // Not a snapshot: a way to read the cameras on demand (see CameraReader).
+    sched::Published<CameraReaderRef> cameraReader;
 };
 
 }  // namespace radar::eft

@@ -21,6 +21,7 @@ which file does what) lives in the code and its comments.
 web frontend (TS)         maps, markers, filters, item/quest names and prices, raid history, settings
       │  WebSocket (JSON), HTTP (static files, maps, recordings)
 server/                   state stream, raid recordings
+overlay/                  the player's view in a window over the game's picture (opt-in: --overlay)
 game/eft/                 everything EFT-specific: names, offsets, raid lifecycle, subsystems
 core/unity, core/il2cpp   Unity engine structures; IL2CPP managed objects (game-agnostic)
 core/mem                  memory backend interface, Target (attaching)
@@ -34,6 +35,31 @@ code change in `game/eft/` (or in the frontend for item/quest data), behind stab
 template/quest/condition ids. The frontend owns names, prices, categories, loot filters, quest →
 zone mapping, and everything derived from history (trails, event log, replay). Nothing in the
 backend's reading depends on item data.
+
+**The overlay is a display client that runs inside the backend process.** `overlay/` draws the
+player's view in a transparent, click-through window over the game's picture: a Wayland
+layer-shell surface over the fullscreen Looking Glass client, on the host. It lives in the backend
+only so it can read the camera right before every frame it draws (`CameraReader`, published by
+`game/eft/camera/`). Going through the WebSocket would add a transport hop and the feed's polling
+delay, and marks would trail behind when the player turns. Positions come from `WorldState` as
+they are; at running speed, their age doesn't show.
+
+What the overlay marks, and how (colour, label, emphasis), is not decided by the backend. The
+frontend takes on a second job, configuring the overlay. It applies its own rules (the same ones
+the map uses) and sends the result in an `overlay` message: the one client → server message, for
+the overlay only. Nothing that reads the game depends on it, and the radar doesn't read it back.
+The backend still doesn't interpret game data for presentation. The overlay adds only geometry:
+where each marked thing is on screen now, and how far away it is.
+
+- **Frames:** drawn when the compositor's frame callback asks for one, without waiting for vsync;
+  nothing is drawn while the overlay is off or there's no camera.
+- **Delay:** Looking Glass shows the game's picture a little after the game rendered it, while
+  the camera is read as it is now. A configurable delay draws with the camera reading from that
+  long ago.
+- **Scope:** while scoped, marks inside a circle (the scope's picture, size configurable) are
+  placed through the scope's camera; marks outside it go through the first-person view.
+- **Window:** layer-shell is supported by KDE Plasma and the wlroots compositors, not GNOME.
+  `radar-overlay-demo` shows the window with a made-up scene, for checking it without the game.
 
 ## Memory access
 

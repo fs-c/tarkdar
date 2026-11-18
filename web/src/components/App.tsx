@@ -4,7 +4,7 @@ import { type RadarState, wsUrl } from "../connection";
 import { isTyping, useCatalog, useConnection, useLootPrefs, useMapIndex, useMapPrefs, usePersistentState, useQuestData, useTrailPrefs } from "../hooks";
 import { knownQuestItems, neededItems, neededQuestItems, questItemLabels, withoutUnneededQuestItems } from "../quests";
 import { describeEvent } from "../events";
-import type { MapStats } from "../map3d/Map3D";
+import type { MapStats, MapView } from "../map3d/Map3D";
 import { findMap, mapUrl } from "../maps";
 import { type Highlight, type Match, allRows } from "../highlight/match";
 import { standingRuleId, storedRules, useRuleStore } from "../rules/store";
@@ -270,14 +270,24 @@ export function App() {
     );
   };
   const [mapStats, setMapStats] = useState<string | null>(null);
+  const [mapView, setMapView] = useState<MapView | null>(null);
   const lastStats = useRef(0);
+  const pendingStats = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onMapStats = (st: MapStats) => {
-    if (performance.now() - lastStats.current < 500) return;
-    lastStats.current = performance.now();
-    // A top-down orthographic view is drawn from tiles: a few squares, not the map's triangles.
-    const drawn = st.fromTiles ? `${st.drawCalls} tiles` : `${st.drawCalls} draw calls · ${(st.triangles / 1e6).toFixed(1)}M triangles`;
-    setMapStats(`${drawn} · ${st.frames} frames drawn`);
+    const report = () => {
+      pendingStats.current = null;
+      lastStats.current = performance.now();
+      // A top-down orthographic view is drawn from tiles: a few squares, not the map's triangles.
+      const drawn = st.fromTiles ? `${st.drawCalls} tiles` : `${st.drawCalls} draw calls · ${(st.triangles / 1e6).toFixed(1)}M triangles`;
+      setMapStats(`${drawn} · ${st.frames} frames drawn`);
+      setMapView(radar.current?.view() ?? null);
+    };
+    // At most every half second, but always the last frame: the readout shows where the camera stopped.
+    const wait = 500 - (performance.now() - lastStats.current);
+    if (wait <= 0) report();
+    else pendingStats.current ??= setTimeout(report, wait);
   };
+  useEffect(() => () => void (pendingStats.current && clearTimeout(pendingStats.current)), []);
 
   const playbackRef = useRef(playback);
   playbackRef.current = playback;
@@ -401,6 +411,8 @@ export function App() {
             onPrefs={setMapPrefs}
             mapShown={!!map}
             stats={map ? mapStats : null}
+            mapInfo={map && { folder: map.folder, name: map.config.name, locationId, up: map.config.up ?? 0 }}
+            view={map ? mapView : null}
             pickOutput={pickOutput()}
             onClearPicks={() => setDebugPicks([])}
           />

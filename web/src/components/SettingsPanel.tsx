@@ -1,6 +1,7 @@
 // Settings view of the side panel: how the map looks, and map debugging tools.
 
 import type { MapPrefs } from "../hooks";
+import type { MapView } from "../map3d/Map3D";
 import { COLOR_SCHEMES, type ColorGrade, type ColorSchemeName, PLAN_PALETTES, type PlanPalette, type PlanPaletteName, paletteOf, schemeOf } from "../map3d/settings";
 import { Actions, Button, PanelBody, Section, Segmented, SliderRow, ToggleRow } from "../ui";
 import s from "./SettingsPanel.module.css";
@@ -13,6 +14,10 @@ interface Props {
   mapShown: boolean;
   /** Render statistics of the map, when it is shown. */
   stats: string | null;
+  /** The map shown: its folder of maps/3d, the raid's location id and the configured home heading. */
+  mapInfo: { folder: string; name: string; locationId: string | null; up: number } | null;
+  /** Where the camera is, when a map is shown. */
+  view: MapView | null;
   /** Coordinate pick output to paste into a bug report. */
   pickOutput: string;
   onClearPicks: () => void;
@@ -199,6 +204,7 @@ export function SettingsPanel(p: Props) {
             onChange={toggle("coordinatePick")}
           />
           <ToggleRow label="Wireframe" checked={p.prefs.wireframe} onChange={toggle("wireframe")} />
+          {p.mapInfo && <MapReadout info={p.mapInfo} view={p.view} />}
           {p.stats && <p className="muted">{p.stats}</p>}
           {p.prefs.coordinatePick && (
             <>
@@ -218,5 +224,60 @@ export function SettingsPanel(p: Props) {
         </p>
       </Section>
     </PanelBody>
+  );
+}
+
+/** Degrees in [0, 360). */
+const compass = (deg: number) => ((deg % 360) + 360) % 360;
+/** Degrees in (-180, 180]. */
+const turn = (deg: number) => {
+  const d = compass(deg);
+  return d > 180 ? d - 360 : d;
+};
+const fixed = (v: number, digits = 1) => v.toFixed(digits);
+const xyz = (v: [number, number, number]) => v.map((c) => fixed(c)).join(", ");
+
+/** What map is shown and where the camera is: for setting a map's `up` (its home orientation). */
+function MapReadout({ info, view }: { info: NonNullable<Props["mapInfo"]>; view: MapView | null }) {
+  const heading = view && compass(view.heading);
+  const off = view && turn(view.heading - info.up);
+  const rows: [string, string, string?][] = [
+    ["Map", `${info.name} (maps/3d/${info.folder})`],
+    ["Location id", info.locationId ?? "–"],
+    ["Home up", `${fixed(compass(info.up))}°`, "The map's up in map.json: the heading of the home view (0 resets it)"],
+  ];
+  if (view && heading !== null && off !== null) {
+    rows.push(
+      ["Heading", `${fixed(heading)}° (${off >= 0 ? "+" : ""}${fixed(off)}° from home)`, "Direction at the top of the screen, clockwise from north"],
+      ["Tilt", `${fixed(view.tilt)}° from top-down`],
+      ["Span", `${fixed(view.span, 0)} m`, "Ground across the height of the view"],
+      ["Camera", xyz(view.position), "World coordinates: x east, y up, z north"],
+      ["Target", xyz(view.target)],
+    );
+  }
+  return (
+    <>
+      <dl className={s.readout}>
+        {rows.map(([label, value, title]) => (
+          <div key={label} title={title}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {heading !== null && (
+        <>
+          <p className="muted">
+            To change the home orientation: turn the map until it looks right, then set <code>"up": {fixed(heading)}</code> in{" "}
+            <code>maps/3d/{info.folder}/map.json</code>.
+          </p>
+          <Actions>
+            <Button onClick={() => void navigator.clipboard?.writeText(fixed(heading))} title="The current heading, for map.json's up">
+              Copy heading
+            </Button>
+          </Actions>
+        </>
+      )}
+    </>
   );
 }

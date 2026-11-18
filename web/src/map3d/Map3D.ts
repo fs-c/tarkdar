@@ -21,6 +21,20 @@ import { Stage } from "./stage";
 
 export type WorldPos = [number, number, number];
 
+/** Where the camera is (map debugging). */
+export interface MapView {
+  /** Direction the top of the screen points to (degrees clockwise from north). */
+  heading: number;
+  /** The same in the home view: the map's `up` (maps.ts). */
+  home: number;
+  /** Degrees from looking straight down. */
+  tilt: number;
+  /** Metres of ground across the height of the view. */
+  span: number;
+  position: WorldPos;
+  target: WorldPos;
+}
+
 export interface MapStats {
   drawCalls: number;
   triangles: number;
@@ -543,6 +557,20 @@ export class Map3D {
     if (!stage) return null;
     const p = stage.camera.position, t = stage.controls.target;
     return { position: [p.x, p.y, -p.z], target: [t.x, t.y, -t.z] };
+  }
+
+  /** The camera for the map debugging readout. */
+  view(): MapView | null {
+    const stage = this.stage, pose = this.pose();
+    if (!stage || !pose) return null;
+    const deg = THREE.MathUtils.radToDeg;
+    return {
+      heading: deg(stage.heading()),
+      home: deg(this.up),
+      tilt: deg(stage.controls.getPolarAngle()),
+      span: stage.span(),
+      ...pose,
+    };
   }
 
   setPose(position: WorldPos, target: WorldPos): void {

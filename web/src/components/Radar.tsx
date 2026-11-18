@@ -8,7 +8,7 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { type Ref, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { isTyping } from "../hooks";
-import { Map3D, type MapStats } from "../map3d/Map3D";
+import { Map3D, type MapStats, type MapView } from "../map3d/Map3D";
 import type { MapSettings } from "../map3d/settings";
 import type { Projector } from "../projector";
 import type { WorldPos } from "../protocol";
@@ -27,6 +27,8 @@ export interface RadarHandle {
   /** The map surface under a canvas position: world position and what was hit. */
   pickSurface(x: number, y: number): { pos: WorldPos; mesh: string } | null;
   pose(): { position: WorldPos; target: WorldPos } | null;
+  /** The camera for the map debugging readout (Map3D.view). */
+  view(): MapView | null;
 }
 
 interface Props {
@@ -303,6 +305,7 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
     projector: () => mapRef.current?.projector() ?? { width: 0, height: 0, toScreen: () => [NaN, NaN], pxPerMetre: () => 0, detail: 0, depth: () => 0 },
     pickSurface: (x, y) => mapRef.current?.pick(x, y) ?? null,
     pose: () => mapRef.current?.pose() ?? null,
+    view: () => mapRef.current?.view() ?? null,
   }));
 
   // A click is a press and release in (nearly) the same place; anything else moves the map.

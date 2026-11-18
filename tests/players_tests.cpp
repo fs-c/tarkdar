@@ -44,10 +44,19 @@ TEST_CASE("pickPosition and plausibleSkeleton") {
     CHECK(eft::pickPosition({std::nullopt, pose(left), pose({30, 1, 20})}) == left);  // feet too far apart
     CHECK_FALSE(eft::pickPosition({std::nullopt, std::nullopt, std::nullopt}));
 
-    CHECK(eft::plausibleSkeleton({pose(base), pose(left), pose(right)}));
-    CHECK_FALSE(eft::plausibleSkeleton({pose(base), pose(left), std::nullopt}));
-    CHECK_FALSE(eft::plausibleSkeleton({pose(base), pose(left), pose({20, 1, 20})}));  // foot 10 m away
-    CHECK_FALSE(eft::plausibleSkeleton({pose({0.5f, 0.5f, 0.5f}), pose(left), pose(right)}));  // near origin
+    eft::SkeletonBones all;
+    all.transforms[0] = all.transforms[1] = all.transforms[2] = 0x1000;
+    CHECK(eft::plausibleSkeleton({pose(base), pose(left), pose(right)}, all));
+    CHECK_FALSE(eft::plausibleSkeleton({pose(base), pose(left), std::nullopt}, all));
+    CHECK_FALSE(eft::plausibleSkeleton({pose(base), pose(left), pose({20, 1, 20})}, all));  // foot 10 m away
+    CHECK_FALSE(eft::plausibleSkeleton({pose({0.5f, 0.5f, 0.5f}), pose(left), pose(right)}, all));  // near origin
+
+    // Only the joints that resolved are checked (e.g. a zombie's body without feet bones yet).
+    eft::SkeletonBones baseOnly;
+    baseOnly.transforms[0] = 0x1000;
+    CHECK(eft::plausibleSkeleton({pose(base), std::nullopt, std::nullopt}, baseOnly));
+    CHECK_FALSE(eft::plausibleSkeleton({std::nullopt, std::nullopt, std::nullopt}, baseOnly));
+    CHECK(eft::plausibleSkeleton({pose(base), std::nullopt, pose({20, 1, 20})}, baseOnly));  // ignored foot
 }
 
 TEST_CASE("relativeJoints") {
@@ -192,6 +201,39 @@ TEST_CASE("Players tracks the position of a skeleton too short for the joints") 
     CHECK(world.players.get()->local()->joints);
 }
 
+TEST_CASE("Players tracks a body with only some position bones, and picks up the rest later") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 0);
+    const Address zombie = w.newObservedPlayer(4, true, u"Zombie", Vec3{30, 2, 40});
+    w.setBoneAttached(zombie, eft::Joint::LeftFoot, false);
+    w.setBoneAttached(zombie, eft::Joint::RightFoot, false);
+    w.setRosterList({w.localPlayer, zombie});
+
+    eft::WorldState world;
+    eft::Players players(makeSession(w), world);
+    auto t = Clock::now();
+    players.rosterTick(t);
+    players.positionsTick(t);
+    auto snap = world.players.get();
+    const auto* z = byPosition(*snap, {30, 2, 40});
+    REQUIRE(z);  // tracked by Base alone
+    CHECK_FALSE(z->joints);
+
+    // Still tracked as it moves (no endless re-resolving of a skeleton judged implausible).
+    w.movePlayer(zombie, {31, 2, 41});
+    players.positionsTick(t + milliseconds(10));
+    REQUIRE(byPosition(*world.players.get(), {31, 2, 41}));
+
+    // The feet appear: the periodic re-resolve completes the skeleton.
+    w.setBoneAttached(zombie, eft::Joint::LeftFoot, true);
+    w.setBoneAttached(zombie, eft::Joint::RightFoot, true);
+    players.positionsTick(t + eft::Players::kBoneRetry + eft::Players::kBoneRetryStagger * 8);
+    snap = world.players.get();
+    z = byPosition(*snap, {31, 2, 41});
+    REQUIRE(z);
+    CHECK(z->joints);
+}
+
 TEST_CASE("Players builds observed players through their own layout") {
     FakeWorld w;
     w.newWorld(u"bigmap", 0);
@@ -239,44 +281,93 @@ TEST_CASE("Players builds observed players through their own layout") {
     CHECK(byPosition(*snap, {11, 4, -10}));
 }
 
-TEST_CASE("Players backs off on build failures and reports why") {
+TEST_CASE("Players retries build failures and reports why") {
     FakeWorld w;
     w.newWorld(u"bigmap", 0);
     const Address observed = w.heap.object(w.observedClass);  // an observed view with nothing filled in
     const Address broken = w.newPlayer();
     w.heap.put<Address>(broken + off::Player::Profile, 0);  // can't build
-    w.setRosterList({w.localPlayer, observed, broken});
+    const Address garbage = w.newPlayer(7);  // not a valid side: a misread, not a player
+    w.setRosterList({w.localPlayer, observed, broken, garbage});
 
     eft::WorldState world;
     {
         eft::Players players(makeSession(w), world);
         auto t = Clock::now();
-        // Free retries are spaced kMinBuildSpacing apart: 5 attempts at 0, 250, …, 1000 ms.
+        // Retries are spaced kBuildRetry (500 ms) apart: 5 attempts at 0, 500, …, 2000 ms.
         for (int i = 0; i < 10; ++i) players.rosterTick(t + milliseconds(250 * i));
         CHECK(world.players.get()->players.size() == 1);  // only the local player
         const auto failures = players.buildFailures();
-        REQUIRE(failures.size() == 2);
+        REQUIRE(failures.size() == 3);
         for (const auto& f : failures) {
-            CHECK(f.attempts == eft::Players::kMaxFreeBuildAttempts);
+            CHECK(f.attempts == 5);
             if (f.instance == broken) {
                 CHECK(f.className == "ClientPlayer");
                 CHECK(f.error == "Player.Profile is null");
+            } else if (f.instance == garbage) {
+                CHECK(f.error == "PlayerInfo.Side is 7, not USEC, BEAR or Savage");
             } else {
                 CHECK(f.className == "ObservedPlayerView");
                 CHECK(f.error == "ObservedPlayerView.ObservedPlayerController is null");
             }
         }
 
-        // The broken player becomes buildable: picked up after the back-off.
+        // The broken player becomes buildable: picked up at its next retry.
         w.heap.put<Address>(broken + off::Player::Profile, w.heap.alloc(0x200));
         const Address profile = mem::MemoryView(w.fake, FakeWorld::kPid).read<Address>(broken + off::Player::Profile);
-        w.heap.put<Address>(profile + off::Profile::Info, w.heap.alloc(0x100));
+        const Address info = w.heap.alloc(0x100);
+        w.heap.put<Address>(profile + off::Profile::Info, info);
+        w.heap.put<std::int32_t>(info + off::PlayerInfo::Side, 1);
+        players.rosterTick(t + milliseconds(2300));
+        CHECK(world.players.get()->players.size() == 1);  // last attempt at 2000 ms
         players.rosterTick(t + milliseconds(2500));
-        CHECK(world.players.get()->players.size() == 1);  // still backing off (last attempt at 1000 ms)
-        players.rosterTick(t + milliseconds(3100));
         CHECK(world.players.get()->players.size() == 2);
     }
     CHECK(world.players.get()->players.empty());  // cleared at raid end
+}
+
+TEST_CASE("Players builds at most kMaxBuildsPerTick players per tick") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 0);
+    std::vector<Address> list{w.localPlayer};
+    for (std::size_t i = 0; i < eft::Players::kMaxBuildsPerTick + 4; ++i) list.push_back(w.newPlayer());
+    w.setRosterList(list);
+
+    eft::WorldState world;
+    eft::Players players(makeSession(w), world);
+    auto t = Clock::now();
+    players.rosterTick(t);
+    CHECK(world.players.get()->players.size() == eft::Players::kMaxBuildsPerTick);
+    players.rosterTick(t + milliseconds(20));
+    CHECK(world.players.get()->players.size() == list.size());
+}
+
+TEST_CASE("Players ignores a single empty roster read") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 0);
+    const Address bot = w.newPlayer(4, Vec3{5, 0, 5});
+    w.setRosterList({w.localPlayer, bot});
+
+    eft::WorldState world;
+    eft::Players players(makeSession(w), world);
+    auto t = Clock::now();
+    players.rosterTick(t);
+    REQUIRE(world.players.get()->players.size() == 2);
+
+    w.setRosterList({});
+    // Absence needs kAbsentMisses misses over kAbsentAfter; one empty read in between must not count.
+    for (int i = 1; i <= 8; ++i) {
+        if (i % 2 == 0) w.setRosterList({});
+        else w.setRosterList({w.localPlayer, bot});
+        players.rosterTick(t + std::chrono::seconds(i));
+    }
+    for (const auto& p : world.players.get()->players) CHECK_FALSE(p.absent);
+
+    // A list that stays empty is believed.
+    w.setRosterList({});
+    for (int i = 9; i <= 14; ++i) players.rosterTick(t + std::chrono::seconds(i));
+    for (const auto& p : world.players.get()->players)
+        if (!p.local) CHECK(p.absent);
 }
 
 TEST_CASE("Players reads observed players' role, nickname and group, also once the AI data appears later") {

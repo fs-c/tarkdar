@@ -142,6 +142,38 @@ export interface LootEntry {
   contents?: ItemNode[];
 }
 
+/** One of the local player's cameras (docs/protocol.md, `camera`). */
+export interface CameraView {
+  /** View-projection matrix, column-major (element row + 4 × column): world (x, y, z, 1) → clip. */
+  vp: number[];
+  pos?: WorldPos;
+  /** Vertical field of view, degrees. */
+  fov?: number;
+  /** Width / height. */
+  aspect?: number;
+}
+
+export interface CameraSight {
+  scope: number;
+  mode: number;
+  zoom: number;
+  min?: number;
+  max?: number;
+  magnified: boolean;
+  current: boolean;
+}
+
+/** The local player's view: experimental, see docs/protocol.md. */
+export interface CameraData {
+  fps: CameraView | null;
+  aiming: boolean;
+  scoped: boolean;
+  magnification: number;
+  sights: CameraSight[];
+  active: number | null;
+  optic: CameraView | null;
+}
+
 export interface HelloData {
   protocol: number;
   /** False when the backend has no memory source (--offline). Missing from old backends: live. */
@@ -159,7 +191,8 @@ export type Message =
   | Envelope<"loot", { loot: LootEntry[] }>
   | Envelope<"equipment", { players: PlayerEquipment[] }>
   /** `quests` null: not read yet. */
-  | Envelope<"quests", { quests: QuestState[] | null }>;
+  | Envelope<"quests", { quests: QuestState[] | null }>
+  | Envelope<"camera", CameraData>;
 
 // ---- raid recordings (docs/protocol.md, "Raid recordings") ----
 

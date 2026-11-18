@@ -8,6 +8,7 @@ add_library(radar_core STATIC
     text/Utf16.cpp
     il2cpp/Managed.cpp
     il2cpp/TypeInfoTable.cpp
+    unity/Camera.cpp
     unity/Scene.cpp
     unity/Transforms.cpp
     sched/TaskRunner.cpp

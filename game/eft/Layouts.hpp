@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/il2cpp/Layout.hpp"
+#include "core/unity/Camera.hpp"
 #include "core/unity/Layout.hpp"
 
 #include <eft_offsets.hpp>
@@ -43,6 +44,16 @@ inline constexpr unity::Layout kUnityLayout{
     .transformIndex = off::unity::Transform::Index,
     .hierarchyParentIndices = off::unity::TransformHierarchy::ParentIndices,
     .hierarchyLocalTransforms = off::unity::TransformHierarchy::LocalTransforms,
+};
+
+inline constexpr unity::CameraLayout kCameraLayout{
+    .worldToCamera = off::unity::Camera::WorldToCamera,
+    .viewProjection = off::unity::Camera::ViewProjection,
+    .fieldOfView = off::unity::Camera::FieldOfView,
+    .aspect = off::unity::Camera::Aspect,
+    .listItems = off::unity::CameraList::Items,
+    .listCount = off::unity::CameraList::Count,
+    .listCount64 = off::unity::CameraList::Count64,
 };
 
 }  // namespace radar::eft

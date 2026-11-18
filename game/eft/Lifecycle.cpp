@@ -84,6 +84,7 @@ void Lifecycle::run(std::stop_token stop) {
 }
 
 void Lifecycle::runRaid(std::stop_token stop, const Game& game, const RaidCandidate& raid) {
+    game.mem.backend().refreshCaches();
     auto session = std::make_shared<RaidSession>(RaidSession{
         .id = ++raidCounter_,
         .game = game,

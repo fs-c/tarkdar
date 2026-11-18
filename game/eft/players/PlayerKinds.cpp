@@ -6,6 +6,7 @@
 #include <eft_offsets.hpp>
 
 #include <algorithm>
+#include <format>
 
 namespace radar::eft {
 
@@ -18,6 +19,17 @@ namespace {
 constexpr auto kFresh = Freshness::Fresh;
 
 using Result = std::expected<PlayerLayout, std::string>;
+
+// Only these sides exist (EPlayerSide). Anything else is a misread of a half-initialised or reused
+// object, built into a phantom player if accepted: fail and retry instead.
+std::optional<std::string> sideProblem(std::string_view field, std::int32_t side) {
+    switch (static_cast<Side>(side)) {
+        case Side::Usec:
+        case Side::Bear:
+        case Side::Savage: return std::nullopt;
+        default: return std::format("{} is {}, not USEC, BEAR or Savage", field, side);
+    }
+}
 
 // A short managed string field (voice, nickname, group id); empty if null or unreadable.
 std::string readString(const Game& game, Address field) {
@@ -35,6 +47,7 @@ Result buildClient(const Game& game, Address instance, PlayerLayout layout) {
     if (!movement) return std::unexpected("Player.MovementContext is null");
     std::int32_t side = 0;
     if (!game.mem.tryRead(info + off::PlayerInfo::Side, side, kFresh)) return std::unexpected("PlayerInfo.Side unreadable");
+    if (auto problem = sideProblem("PlayerInfo.Side", side)) return std::unexpected(std::move(*problem));
 
     layout.side = static_cast<Side>(side);
     // Role, nickname and group are identity, not needed to track the player: missing ones don't fail
@@ -69,6 +82,7 @@ Result buildObserved(const Game& game, Address instance, PlayerLayout layout) {
     if (!game.mem.tryRead(instance + off::ObservedPlayerView::IsAI, isAi, kFresh) ||
         !game.mem.tryRead(instance + off::ObservedPlayerView::Side, side, kFresh))
         return std::unexpected("ObservedPlayerView.IsAI / Side unreadable");
+    if (auto problem = sideProblem("ObservedPlayerView.Side", side)) return std::unexpected(std::move(*problem));
 
     layout.ai = isAi != 0;
     layout.side = static_cast<Side>(side);

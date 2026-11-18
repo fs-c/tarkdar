@@ -1,0 +1,20 @@
+.page {
+  position: fixed; inset: 0; display: flex;
+  background: var(--chrome); color: var(--text); font-size: var(--fs-sm);
+}
+.view {
+  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  & canvas { display: block; }
+}
+.panel {
+  width: 320px; flex: none; overflow: auto; padding: 12px; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); border-left: 1px solid var(--border);
+  & h3 { margin: 0; font-size: inherit; }
+  & a { color: var(--link-text); }
+}
+.readout {
+  margin: 0; display: flex; flex-direction: column; gap: 4px;
+  & dt { color: var(--muted); }
+  & dd { margin: 0 0 0 8px; overflow-wrap: anywhere; }
+}

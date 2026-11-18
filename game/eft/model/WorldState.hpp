@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/sched/Published.hpp"
+#include "game/eft/model/Camera.hpp"
 #include "game/eft/model/Players.hpp"
 #include "game/eft/model/Quests.hpp"
 #include "game/eft/model/World.hpp"
@@ -18,6 +19,7 @@ struct WorldState {
     sched::Published<LootSnapshot> loot;
     sched::Published<EquipmentSnapshot> equipment;
     sched::Published<QuestsSnapshot> quests;
+    sched::Published<CameraSnapshot> camera;
 };
 
 }  // namespace radar::eft

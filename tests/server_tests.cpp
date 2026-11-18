@@ -220,7 +220,7 @@ TEST_CASE("LiveFeed broadcasts only changes") {
     auto status = std::make_shared<eft::Status>();
     server::LiveFeed feed({.status = [&] { return std::shared_ptr<const eft::Status>(status); }, .world = &world}, hub);
 
-    CHECK(feed.poll() == 8);  // initial status + every (empty) world snapshot
+    CHECK(feed.poll() == 9);  // initial status + every (empty) world snapshot
     CHECK(feed.poll() == 0);
     world.players.publish(eft::PlayersSnapshot{.raidId = 1, .revision = 1, .players = {}});
     CHECK(feed.poll() == 1);
@@ -228,7 +228,7 @@ TEST_CASE("LiveFeed broadcasts only changes") {
     changed->state = eft::Status::State::InRaid;
     status = changed;
     CHECK(feed.poll() == 1);
-    CHECK(types == std::vector<std::string>{"status", "players", "exfils", "explosives", "vehicles", "loot", "equipment", "quests", "players", "status"});
+    CHECK(types == std::vector<std::string>{"status", "players", "exfils", "explosives", "vehicles", "loot", "equipment", "quests", "camera", "players", "status"});
 }
 
 TEST_CASE("LiveFeed sends skeletons with the players that have joints") {
@@ -344,6 +344,15 @@ TEST_CASE("RaidRecorder writes one file per raid") {
         now += 100;
         skeletons(12);  // due
         rec.onSkeletons(2, *server::encodeSkeletons([] { auto p = playersAt(2, 1, 0); p.players[0].joints = eft::Joints{}; return p; }()));  // other raid
+        const auto camera = [&](std::uint64_t raid, std::uint64_t rev) {
+            rec.onCamera(raid, server::encodeCamera({.raidId = raid, .revision = rev}));
+        };
+        camera(1, 20);  // written
+        now += 50;
+        camera(1, 21);  // throttled (cameraInterval 100 ms): dropped
+        now += 50;
+        camera(1, 22);  // due
+        camera(2, 1);   // other raid
         players(playersAt(1, 6, 3, true));  // pending when the raid ends: written on finish
 
         send({.state = eft::Status::State::Cooldown});
@@ -356,8 +365,8 @@ TEST_CASE("RaidRecorder writes one file per raid") {
     CHECK(files[0].string().ends_with("_bigmap.jsonl.gz"));
     const auto lines = readLines(files[0]);
     CHECK(types(lines) == std::vector<std::string>{"recording", "players", "loot", "status", "players", "players",
-                                                   "lootDiff", "loot", "exfils", "skeletons", "skeletons", "players",
-                                                   "status"});
+                                                   "lootDiff", "loot", "exfils", "skeletons", "skeletons", "camera",
+                                                   "camera", "players", "status"});
     CHECK(contains(lines[0], R"("locationId":"bigmap")"));
     CHECK(contains(lines[0], R"("format":1)"));
     CHECK(contains(lines[4], R"("rev":3)"));
@@ -367,8 +376,10 @@ TEST_CASE("RaidRecorder writes one file per raid") {
     CHECK(contains(lines[6], R"("contents")"));
     CHECK(contains(lines[9], R"("rev":10)"));
     CHECK(contains(lines[10], R"("rev":12)"));
-    CHECK(contains(lines[11], R"("rev":6)"));
-    CHECK(contains(lines[12], R"("state":"cooldown")"));
+    CHECK(contains(lines[11], R"("rev":20)"));
+    CHECK(contains(lines[12], R"("rev":22)"));
+    CHECK(contains(lines[13], R"("rev":6)"));
+    CHECK(contains(lines[14], R"("state":"cooldown")"));
 }
 
 TEST_CASE("RaidRecorder: a new raid id starts a new file; keep prunes old ones") {

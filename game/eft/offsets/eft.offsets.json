@@ -33,7 +33,14 @@
     "Transform.Hierarchy": "0x70",
     "Transform.Index": "0x78",
     "TransformHierarchy.ParentIndices": "0x40",
-    "TransformHierarchy.LocalTransforms": "0x68"
+    "TransformHierarchy.LocalTransforms": "0x68",
+    "Camera.WorldToCamera": "0xA8",
+    "Camera.ViewProjection": "0x128",
+    "Camera.FieldOfView": "0x1A8",
+    "Camera.Aspect": "0x518",
+    "CameraList.Items": "0x0",
+    "CameraList.Count": "0x8",
+    "CameraList.Count64": "0x10"
   },
   "managedLayout": {
     "Object.Klass": "0x0",
@@ -1034,6 +1041,132 @@
       "optional": true,
       "value": "0x18",
       "note": "List<Item> of the grid's items. The dump types it only as genericinst; List<Item> because ItemExtensions.<GetAllItemsFromGridItemCollectionNonAlloc> holds a 24-byte List<Item>.Enumerator. (The sibling field Items at 0x10 is presumably Dictionary<Item, LocationInGrid>.)"
+    },
+    {
+      "group": "Player",
+      "name": "ProceduralWeaponAnimation",
+      "class": "EFT.Player",
+      "field": "<ProceduralWeaponAnimation>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x3C0"
+    },
+    {
+      "group": "ProceduralWeaponAnimation",
+      "name": "IsAiming",
+      "class": "EFT.Animations.ProceduralWeaponAnimation",
+      "field": "_isAiming",
+      "static": false,
+      "required": false,
+      "value": "0x175"
+    },
+    {
+      "group": "ProceduralWeaponAnimation",
+      "name": "Optics",
+      "class": "EFT.Animations.ProceduralWeaponAnimation",
+      "field": "_optics",
+      "static": false,
+      "required": false,
+      "value": "0x1D0"
+    },
+    {
+      "group": "SightNBone",
+      "name": "Mod",
+      "class": "SightNBone",
+      "field": "Mod",
+      "static": false,
+      "required": false,
+      "value": "0x10"
+    },
+    {
+      "group": "SightNBone",
+      "name": "Bone",
+      "class": "SightNBone",
+      "field": "Bone",
+      "static": false,
+      "required": false,
+      "value": "0x18"
+    },
+    {
+      "group": "SightComponent",
+      "name": "Template",
+      "class": "EFT.InventoryLogic.SightComponent",
+      "field": "_template",
+      "static": false,
+      "required": false,
+      "value": "0x20"
+    },
+    {
+      "group": "SightComponent",
+      "name": "ScopesSelectedModes",
+      "class": "EFT.InventoryLogic.SightComponent",
+      "field": "ScopesSelectedModes",
+      "static": false,
+      "required": false,
+      "value": "0x30"
+    },
+    {
+      "group": "SightComponent",
+      "name": "SelectedScope",
+      "class": "EFT.InventoryLogic.SightComponent",
+      "field": "SelectedScope",
+      "static": false,
+      "required": false,
+      "value": "0x38"
+    },
+    {
+      "group": "SightComponent",
+      "name": "ScopeZoomValue",
+      "class": "EFT.InventoryLogic.SightComponent",
+      "field": "ScopeZoomValue",
+      "static": false,
+      "required": false,
+      "value": "0x3C"
+    },
+    {
+      "group": "SightModTemplate",
+      "name": "Zooms",
+      "class": "EFT.InventoryLogic.SightModTemplate",
+      "field": "Zooms",
+      "static": false,
+      "required": false,
+      "value": "0x1B8"
+    },
+    {
+      "group": "CameraManager",
+      "name": "OpticCameraManager",
+      "class": "EFT.CameraControl.CameraManager",
+      "field": "<OpticCameraManager>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x10"
+    },
+    {
+      "group": "OpticCameraManager",
+      "name": "Camera",
+      "class": "EFT.CameraControl.OpticCameraManager",
+      "field": "<Camera>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x68"
+    },
+    {
+      "group": "OpticCameraManager",
+      "name": "CurrentOpticSight",
+      "class": "EFT.CameraControl.OpticCameraManager",
+      "field": "<CurrentOpticSight>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x70"
+    },
+    {
+      "group": "OpticSight",
+      "name": "ScopeTransform",
+      "class": "EFT.CameraControl.OpticSight",
+      "field": "ScopeTransform",
+      "static": false,
+      "required": false,
+      "value": "0x40"
     }
   ],
   "literals": [

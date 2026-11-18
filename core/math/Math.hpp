@@ -1,6 +1,8 @@
 #pragma once
 
+#include <array>
 #include <cmath>
+#include <cstddef>
 
 // Minimal vector/quaternion types for transform math. Unity conventions: left-handed, Y up,
 // quaternions stored (x, y, z, w).
@@ -46,6 +48,17 @@ struct Quat {
     if (!(n > 0.0f) || !std::isfinite(n)) return {};
     return {q.x / n, q.y / n, q.z / n, q.w / n};
 }
+
+[[nodiscard]] constexpr float dot(Vec3 a, Vec3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+
+// 4×4 matrix in Unity's Matrix4x4 memory order: column-major, m[column * 4 + row].
+struct Mat4 {
+    std::array<float, 16> m{};
+    [[nodiscard]] constexpr float at(int row, int column) const { return m[static_cast<std::size_t>(column * 4 + row)]; }
+    // Row `row` of the upper-left 3×3 part.
+    [[nodiscard]] constexpr Vec3 row3(int row) const { return {at(row, 0), at(row, 1), at(row, 2)}; }
+    friend constexpr bool operator==(const Mat4&, const Mat4&) = default;
+};
 
 // Finite and within ±limit on every axis.
 [[nodiscard]] inline bool isSane(Vec3 v, float limit = 1e6f) {

@@ -42,6 +42,7 @@ const LABEL_OPTIONS: SegmentedOption<LabelMode>[] = [
 /** Short text for what a rule sets, besides its colour: "strong · from mid zoom · no label". */
 export function summary(r: Pick<Rule, "match" | "style">): string {
   const parts: string[] = [];
+  if (r.match.questNeeded) parts.push("a started quest needs it");
   if (r.match.maxValue !== undefined) parts.push(`< ${formatPrice(r.match.maxValue)}`);
   if (r.match.minValue !== undefined) parts.push(`≥ ${formatPrice(r.match.minValue)}`);
   const { emphasis, show, label } = r.style;

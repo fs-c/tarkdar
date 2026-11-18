@@ -34,22 +34,36 @@ class Players final : public RaidSubsystem {
 public:
     static constexpr auto kRosterInterval = std::chrono::milliseconds(20);
     static constexpr auto kPositionInterval = std::chrono::milliseconds(10);
-    static constexpr int kMaxBuildsPerTick = 4;
     // An observed player's role (its AI data) may be set up after it's registered: re-read it this
     // often, this many times (~10 s), before giving up.
     static constexpr auto kRoleRetry = std::chrono::milliseconds(500);
     static constexpr int kMaxRoleAttempts = 20;
-    // A player that fails to build is retried freely kMaxFreeBuildAttempts times, then every kBuildRetry.
-    static constexpr int kMaxFreeBuildAttempts = 5;
-    static constexpr auto kBuildRetry = std::chrono::seconds(2);
-    static constexpr auto kMinBuildSpacing = std::chrono::milliseconds(200);  // between free retries
-    static constexpr auto kCorpseInterval = std::chrono::milliseconds(100);
-    static constexpr auto kBoneRetry = std::chrono::seconds(1);
+    // Unbuilt registered entries are tried each roster tick, at most kMaxBuildsPerTick (starting at a
+    // rotating cursor, so a wave of spawns is spread over a few ticks). One that fails is retried
+    // every kBuildRetry for kFastBuildAttempts attempts (a just-spawned player's fields fill in late,
+    // and a skipped player stays invisible), then every kSlowBuildRetry for as long as it stays
+    // registered. The failure is logged at info level once it has failed kBuildFailuresLogged times.
+    static constexpr std::size_t kMaxBuildsPerTick = 16;
+    static constexpr auto kBuildRetry = std::chrono::milliseconds(500);
+    static constexpr int kFastBuildAttempts = 10;
+    static constexpr auto kSlowBuildRetry = std::chrono::seconds(2);
+    static constexpr int kBuildFailuresLogged = 5;
+    // An empty registered-player list must be read this many times in a row before it's believed:
+    // a single empty read mid-raid is usually the list being swapped.
+    static constexpr int kEmptyRosterConfirmations = 2;
+    static constexpr auto kCorpseInterval = std::chrono::milliseconds(20);
+    // Retry interval while a player's skeleton is unresolved or partly resolved: kBoneRetry for
+    // kFastBoneAttempts attempts, then kSlowBoneRetry (some bodies never get every joint). Spread
+    // over players by id in steps of kBoneRetryStagger, so they don't all retry in the same tick.
+    static constexpr auto kBoneRetry = std::chrono::milliseconds(250);
+    static constexpr int kFastBoneAttempts = 8;
+    static constexpr auto kSlowBoneRetry = std::chrono::seconds(2);
+    static constexpr auto kBoneRetryStagger = std::chrono::milliseconds(10);
     // Absent from the list for at least this many roster ticks and this long → "absent".
     static constexpr int kAbsentMisses = 3;
     static constexpr auto kAbsentAfter = std::chrono::seconds(2);
     static constexpr auto kEquipmentInterval = std::chrono::milliseconds(500);
-    static constexpr auto kEquipmentRefresh = std::chrono::seconds(5);
+    static constexpr auto kEquipmentRefresh = std::chrono::seconds(10);
     static constexpr std::size_t kEquipmentPerTick = 2;
 
     Players(std::shared_ptr<const RaidSession> session, WorldState& world);
@@ -98,6 +112,7 @@ private:
         sched::Clock::time_point nextCorpseCheck{};
         std::optional<SkeletonBones> bones;
         sched::Clock::time_point nextBoneResolve{};
+        int boneAttempts = 0;  // resolves since the skeleton was last complete
         std::optional<math::Vec3> position;
         std::optional<Joints> joints;
         // Absence tracking.
@@ -131,6 +146,7 @@ private:
     std::unordered_set<Address> registered_;
     std::uint32_t nextId_ = 1;
     std::uint64_t revision_ = 0;
+    int emptyRosterReads_ = 0;
     std::size_t buildCursor_ = 0;
 
     // Written by the live tasks; read by the equipment task and other subsystems (refs()).

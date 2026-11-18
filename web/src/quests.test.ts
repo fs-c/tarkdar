@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { LootEntry, QuestState } from "./protocol";
-import { knownQuestItems, loadQuestData, neededQuestItems, questItemLabels, questNames, slimTasks, withoutUnneededQuestItems } from "./quests";
+import {
+  SPECIFIC_ITEMS,
+  formatQuestNeed,
+  isSpecific,
+  knownQuestItems,
+  loadQuestData,
+  neededItems,
+  neededQuestItems,
+  questItemLabels,
+  questNames,
+  slimItemObjectives,
+  slimTasks,
+  withoutUnneededQuestItems,
+} from "./quests";
 
 const feed = {
   data: {
@@ -90,6 +103,7 @@ describe("quests", () => {
     const first = await loadQuestData({ now: 1000, storage, fetchFn: ok });
     expect(first.status.state).toBe("ready");
     expect(first.tasks?.q2).toEqual([["o4", "itemC"]]);
+    expect(first.items).toEqual({});
     const cached = await loadQuestData({ now: 2000, storage, fetchFn: failing });
     expect(cached.status.state).toBe("ready");
     expect(first.names).toEqual(NAMES);
@@ -99,6 +113,72 @@ describe("quests", () => {
     expect(stale.status.state).toBe("stale");
     expect(stale.tasks).toEqual(first.tasks);
     const none = await loadQuestData({ now: 0, storage: { getItem: () => null, setItem: () => {} }, fetchFn: failing });
-    expect(none).toMatchObject({ tasks: null, names: null, status: { state: "unavailable" } });
+    expect(none).toMatchObject({ tasks: null, items: null, names: null, status: { state: "unavailable" } });
+  });
+});
+
+describe("ordinary items needed by quests", () => {
+  const itemFeed = {
+    data: {
+      tasks: {
+        // Find in raid, then hand over: the hand-over defers to the find.
+        gun: {
+          name: "gun name",
+          objectives: [
+            { id: "find", type: "findItem", items: ["salewa", "ifak"], count: 3, foundInRaid: true },
+            { id: "give", type: "giveItem", items: ["ifak", "salewa"], count: 3, foundInRaid: true },
+          ],
+        },
+        // Only a hand-over (and a plant); a sell objective isn't loot.
+        drop: {
+          name: "drop name",
+          objectives: [
+            { id: "hand", type: "giveItem", items: ["salewa"], count: 1, foundInRaid: false },
+            // Money is handed over from the stash: left out (an objective with nothing else, entirely).
+            { id: "pay", type: "giveItem", items: ["5449016a4bdc2d6f028b456f"], count: 100000 },
+            { id: "plant", type: "plantItem", items: ["marker"], count: 2 },
+            { id: "sell", type: "sellItem", items: ["salewa"], count: 9 },
+            { id: "qi", type: "findQuestItem", questItem: "folder" },
+          ],
+        },
+        none: { name: "none name", objectives: [{ id: "v", type: "visit" }] },
+      },
+    },
+  };
+  const itemEn = { data: { "gun name": "Gunsmith", "drop name": "Drop" } };
+
+  it("keeps find, hand-over and plant objectives, a hand-over only without a matching find", () => {
+    expect(slimItemObjectives(itemFeed)).toEqual({
+      gun: [["find", ["salewa", "ifak"], 3, true]],
+      drop: [["hand", ["salewa"], 1, false], ["plant", ["marker"], 2, false]],
+    });
+    expect(() => slimItemObjectives({})).toThrow();
+  });
+
+  it("singles out only objectives few items count for", () => {
+    expect(isSpecific({ quest: "q", count: 1, fir: false, of: SPECIFIC_ITEMS })).toBe(true);
+    expect(isSpecific({ quest: "q", count: 3, fir: false, of: 60 })).toBe(false);
+    expect(formatQuestNeed({ quest: "First in Line", count: 3, fir: false, of: 60 })).toBe("First in Line (×3, any of 60)");
+  });
+
+  it("names quests with item objectives", () => {
+    const names = questNames(itemFeed, itemEn, slimTasks(itemFeed), slimItemObjectives(itemFeed));
+    expect(names.quests).toEqual({ gun: "Gunsmith", drop: "Drop" });
+  });
+
+  it("needs the items of started quests' open objectives", () => {
+    const objectives = slimItemObjectives(itemFeed);
+    const names = questNames(itemFeed, itemEn, slimTasks(itemFeed), objectives);
+    expect(neededItems(null, objectives, names).size).toBe(0);
+    // gun started, nothing done; drop started with the plant done; a finished quest needs nothing.
+    const needs = neededItems([quest("gun", 2), quest("drop", 2, ["plant"]), quest("none", 4)], objectives, names);
+    expect(needs.get("salewa")).toEqual([{ quest: "Gunsmith", count: 3, fir: true, of: 2 }, { quest: "Drop", count: 1, fir: false, of: 1 }]);
+    expect(needs.get("ifak")?.map(formatQuestNeed)).toEqual(["Gunsmith (×3, FIR, any of 2)"]);
+    expect(needs.has("marker")).toBe(false);
+    // Not started (ready to hand in), or found already: nothing.
+    expect(neededItems([quest("gun", 3)], objectives, names).size).toBe(0);
+    expect(neededItems([quest("gun", 2, ["find"])], objectives, names).size).toBe(0);
+    // Unreadable completed conditions: every objective open. Unnamed quests go by id.
+    expect(neededItems([quest("drop", 2, null)], objectives, null).get("marker")).toEqual([{ quest: "drop", count: 2, fir: false, of: 1 }]);
   });
 });

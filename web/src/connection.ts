@@ -2,6 +2,7 @@
 // immutable snapshot (a new object on every change), so React can subscribe with useSyncExternalStore.
 
 import {
+  type CameraData,
   type Exfil,
   type ExplosivesData,
   type Vehicle,
@@ -14,6 +15,9 @@ import {
   type StatusData,
   parseMessage,
 } from "./protocol";
+
+/** The backend's WebSocket, on the host that served the page. */
+export const wsUrl = (): string => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
 
 /** The game sometimes parks some despawned/uninitialised entities at about -9999 on some axis; the backend sends it as is. */
 export const isSentinelPos = (pos: readonly number[] | null | undefined): boolean => !!pos && pos.some((c) => c <= -9000);
@@ -57,6 +61,10 @@ export const initialRadarState = (): RadarState => ({
 export class Connection {
   private state: RadarState = initialRadarState();
   private readonly listeners = new Set<() => void>();
+  // The camera changes at the full message rate: kept apart from the state, so only who asks for it
+  // (the POV page) re-renders on it.
+  private camera: CameraData | null = null;
+  private readonly cameraListeners = new Set<() => void>();
   private ws: WebSocket | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private running = false;
@@ -74,6 +82,13 @@ export class Connection {
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  };
+
+  getCamera = (): CameraData | null => this.camera;
+
+  subscribeCamera = (listener: () => void): (() => void) => {
+    this.cameraListeners.add(listener);
+    return () => this.cameraListeners.delete(listener);
   };
 
   start(): void {
@@ -127,6 +142,10 @@ export class Connection {
         return this.update({ protocolMismatch: msg.data.protocol !== PROTOCOL_VERSION, live: msg.data.live !== false });
       case "status":
         if (msg.data.state !== "inRaid") {
+          if (this.camera) {
+            this.camera = null;
+            for (const l of this.cameraListeners) l();
+          }
           const { connected, protocolMismatch, live } = this.state;
           return this.update({ ...initialRadarState(), connected, protocolMismatch, live, status: msg.data });
         }
@@ -145,6 +164,12 @@ export class Connection {
         return this.update({ equipment: new Map(msg.data.players.map((p) => [p.id, p])) });
       case "quests":
         return this.update({ quests: msg.data.quests });
+      case "camera":
+        // The camera's last (empty) snapshot of a raid can come after the status that ended it.
+        if (msg.raid === null || this.state.status?.state !== "inRaid") return;
+        this.camera = msg.data;
+        for (const l of this.cameraListeners) l();
+        return;
     }
   }
 }

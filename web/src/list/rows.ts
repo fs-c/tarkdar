@@ -6,6 +6,7 @@ import type { RadarState } from "../connection";
 import { type ItemCatalog, containerName, equipmentValue, exfilStatus } from "../items";
 import { type Selection, midpoint, selectionKey } from "../pick";
 import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, WorldPos } from "../protocol";
+import { type QuestNeed, formatQuestNeed, isSpecific } from "../quests";
 import { type PlayerType, SPECIAL_TYPES, bossGroups, identityText, playerType } from "../roles";
 
 export type TabId = "players" | "items" | "containers" | "exfils";
@@ -32,6 +33,10 @@ export interface RowBase {
   value?: number;
   /** Lowercase text the search matches against: names, kinds, carried items' names. */
   search: string;
+  /** Loose items a started quest still needs: what for, e.g. "Shooter Born in Heaven (×3, FIR)". */
+  questNeeds?: readonly string[];
+  /** One of them is specific (an objective few items count for): the "Needed for quests" rule. */
+  questNeeded?: boolean;
 }
 
 export interface PlayerRow extends RowBase {
@@ -155,8 +160,16 @@ export function playerRows(players: Player[], equipment: Map<number, PlayerEquip
   });
 }
 
-/** `questLabels`: quest item template id → the quest it's for (quests.ts), the quest item's name. */
-export function lootRows(loot: LootEntry[], catalog: ItemCatalog, questLabels: ReadonlyMap<string, string> = new Map()): Pick<TabRows, "items" | "containers"> {
+/**
+ * `questLabels`: quest item template id → the quest it's for (quests.ts), the quest item's name.
+ * `questNeeds`: ordinary item template id → the started quests that still need it (quests.ts).
+ */
+export function lootRows(
+  loot: LootEntry[],
+  catalog: ItemCatalog,
+  questLabels: ReadonlyMap<string, string> = new Map(),
+  questNeeds: ReadonlyMap<string, readonly QuestNeed[]> = new Map(),
+): Pick<TabRows, "items" | "containers"> {
   const items: ItemRow[] = [];
   const containers: ContainerRow[] = [];
   for (const l of loot) {
@@ -175,10 +188,13 @@ export function lootRows(loot: LootEntry[], catalog: ItemCatalog, questLabels: R
       const info = catalog.lookup(l.tpl);
       const kind = l.kind === "quest" ? "quest" : "item";
       const name = info?.name ?? (kind === "quest" ? (questLabels.get(l.tpl) ?? "quest item") : l.tpl || "item");
+      const itemNeeds = kind === "item" ? questNeeds.get(l.tpl) : undefined;
+      const needs = itemNeeds?.map(formatQuestNeed);
       items.push({
-        ...base(sel, kind, l.pos, text(name, info?.shortName, l.tpl, kind), l.tpl ? [l.tpl] : NO_TPLS),
+        ...base(sel, kind, l.pos, text(name, info?.shortName, l.tpl, kind, ...(needs ?? [])), l.tpl ? [l.tpl] : NO_TPLS),
         value: info?.price,
         name, shortName: info?.shortName ?? name, kind, basePrice: info?.priceSource === "base",
+        ...(needs?.length ? { questNeeds: needs, questNeeded: itemNeeds!.some(isSpecific) } : {}),
       });
     }
   }

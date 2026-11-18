@@ -113,6 +113,18 @@ class UpdateOffsetsTest(unittest.TestCase):
         self.assertTrue(any("not set up yet" in m for m in report.missing))
         self.assertEqual(doc["fields"][-1]["value"], "0x10")  # kept
 
+    def test_missing_entries_suggest_moved_classes_and_renamed_fields(self):
+        offsets = copy.deepcopy(OFFSETS)
+        offsets["fields"].append({"group": "Moved", "name": "Corpse", "class": "Old.LocalPlayer", "field": "_corpse",
+                                  "static": False, "required": True, "value": "0x10"})
+        offsets["fields"].append({"group": "Player", "name": "Corpse", "class": "EFT.Player", "field": "Corpse",
+                                  "static": False, "required": True, "value": "0x10"})
+        _, report = self.run_update(offsets=offsets)
+        moved = next(m for m in report.missing if m.startswith("Moved::Corpse"))
+        self.assertIn("same short name: EFT.LocalPlayer", moved)
+        renamed = next(m for m in report.missing if m.startswith("Player::Corpse"))
+        self.assertIn("similar: _corpse @ 0x700", renamed)
+
     def test_static_mismatch_is_a_warning(self):
         offsets = copy.deepcopy(OFFSETS)
         offsets["fields"][0]["static"] = False

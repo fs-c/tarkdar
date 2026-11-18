@@ -32,7 +32,19 @@ public:
     static constexpr std::size_t kResolvePerTick = 256;
     static constexpr std::size_t kMaxEntries = 12000;
     static constexpr int kMissesToRemove = 2;
-    static constexpr int kMaxAttempts = 10;
+    // A failed entry (often one still being set up) is retried after retryDelay(attempts), up to
+    // kMaxAttempts times (~4 minutes in total).
+    static constexpr int kMaxAttempts = 20;
+    [[nodiscard]] static constexpr sched::Clock::duration retryDelay(int failedAttempts) {
+        using std::chrono::seconds;
+        switch (failedAttempts) {
+            case 1: return seconds(1);
+            case 2: return seconds(2);
+            case 3: return seconds(5);
+            case 4: return seconds(10);
+            default: return seconds(15);
+        }
+    }
     static constexpr std::size_t kContentRefreshPerScan = 16;
 
     Loot(std::shared_ptr<const RaidSession> session, WorldState& world);

@@ -54,6 +54,8 @@ export const BUILTIN_RULES: readonly GroupedRule[] = [
   rule("Loot", "item.cheap", "Cheap items", { subjects: ["item"], maxValue: VALUE_TIERS.mid }, { color: "#8b969f", emphasis: "faint", show: SHOW_LEVELS.mid }),
   rule("Loot", "item.valuable", "Valuable items", { subjects: ["item"], minValue: VALUE_TIERS.high }, { color: ui.gold, emphasis: "strong", show: SHOW_LEVELS.always }),
   rule("Loot", "quest", "Quest items", { subjects: ["quest"] }, { color: ui.quest }),
+  // Ordinary items a started quest still needs (to find, hand over or plant): over the value rules.
+  rule("Loot", "item.quest-needed", "Needed for quests", { subjects: ["item"], questNeeded: true }, { color: ui.quest, emphasis: "strong", show: SHOW_LEVELS.always }),
   rule("Containers", "container", "Containers", { subjects: ["container"] }, { color: "#b08a5a" }),
   rule("Containers", "airdrop", "Airdrops", { subjects: ["airdrop"] }, { color: "#4de1ff" }),
   rule("Containers", "corpse", "Corpses", { subjects: ["corpse"] }, { color: "#9a9a9a" }),

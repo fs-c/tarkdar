@@ -314,6 +314,8 @@ export class Timeline {
   ingest(msg: RecordedMessage): boolean {
     if (typeof msg.t !== "number") return false;
     if (msg.type === "hello") return false;
+    // Not kept (yet): only the live POV page uses it.
+    if (msg.type === "camera") return false;
     if (msg.type === "recording") {
       this.locationId = msg.data.locationId;
       this.raid = msg.raid;

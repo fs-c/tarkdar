@@ -25,6 +25,17 @@ bool containsIgnoreCase(std::string_view haystack, std::string_view needle) {
            }) != haystack.end();
 }
 
+// The battle-pass info documents ("item_barter_info_<topic>") carry the quest-item flag but are
+// ordinary loot.
+// TODO: this seems like the kind of thing that frontend should decide, backend should report facts
+bool isInfoDocument(std::string_view objectName) {
+    constexpr std::string_view kPrefix = "item_barter_info_";
+    return objectName.size() > kPrefix.size() &&
+           std::equal(kPrefix.begin(), kPrefix.end(), objectName.begin(), [](char a, char b) {
+               return a == std::tolower(static_cast<unsigned char>(b));
+           });
+}
+
 bool plausible(const math::Vec3& p) {
     return math::isSane(p) && !(p.x == 0.0f && p.y == 0.0f && p.z == 0.0f);
 }
@@ -137,8 +148,9 @@ std::optional<Loot::Resolved> Loot::resolveOne(Address instance, bool& permanent
         auto id = tmpl ? readMongoId(game_, tmpl + off::ItemTemplate::_id) : std::nullopt;
         if (!id) return std::nullopt;
         loot.templateId = std::move(*id);
-        loot.kind = game_.mem.read<std::uint8_t>(tmpl + off::ItemTemplate::QuestItem) != 0 ? LootEntry::Kind::QuestItem
-                                                                                            : LootEntry::Kind::Item;
+        const bool questItem =
+            game_.mem.read<std::uint8_t>(tmpl + off::ItemTemplate::QuestItem) != 0 && !isInfoDocument(loot.objectName);
+        loot.kind = questItem ? LootEntry::Kind::QuestItem : LootEntry::Kind::Item;
     } else {
         permanent = true;
         log::debug("loot: ignoring {:#x} of class {}", instance, game_.managed.classNameOf(instance));
@@ -163,7 +175,7 @@ void Loot::resolve(Clock::time_point now) {
     auto fail = [&](Address a, bool permanent) {
         Failure& f = failures_[a];
         f.permanent = permanent || ++f.attempts >= kMaxAttempts;
-        f.nextTry = now + std::min(std::chrono::seconds(20), std::chrono::seconds(2) * f.attempts);
+        f.nextTry = now + retryDelay(f.attempts);
     };
     for (Address a : todo) {
         bool permanent = false;

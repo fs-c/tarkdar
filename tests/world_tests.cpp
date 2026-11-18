@@ -449,3 +449,25 @@ TEST_CASE("Quests: in-progress quests with their completed conditions") {
     }
     CHECK_FALSE(world.quests.get()->known);  // cleared when the raid ends
 }
+
+TEST_CASE("Loot: battle-pass info documents are ordinary items despite the quest flag") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 1);
+    auto& h = w.heap;
+    const Address lootItemClass = h.klass("LootItem", "EFT.Interactive", h.klass("InteractableObject", "EFT.Interactive"));
+    const Address doc = h.object(lootItemClass, 0x200);
+    h.put<Address>(doc + off::InteractiveLootItem::Item, itemWithTemplate(w, u"infodoctpl", true));
+    place(w, doc, {1, 1, 1}, "Item_barter_info_streets(Clone)");
+    const Address quest = h.object(lootItemClass, 0x200);
+    h.put<Address>(quest + off::InteractiveLootItem::Item, itemWithTemplate(w, u"questtpl", true));
+    place(w, quest, {2, 1, 2}, "item_quest_flash_drive");
+    h.put<Address>(w.world + off::ClientLocalGameWorld::LootList, h.list(std::vector<Address>{doc, quest}, 64));
+
+    eft::WorldState world;
+    eft::Loot loot(makeSession(w), world);
+    loot.scan(Clock::now());
+    const auto snap = world.loot.get();
+    REQUIRE(snap->loot.size() == 2);
+    for (const auto& l : snap->loot)
+        CHECK(l.kind == (l.templateId == "questtpl" ? eft::LootEntry::Kind::QuestItem : eft::LootEntry::Kind::Item));
+}

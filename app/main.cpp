@@ -15,6 +15,7 @@
 #include "game/eft/model/WorldState.hpp"
 #include "game/eft/players/Players.hpp"
 #include "game/eft/world/Exfils.hpp"
+#include "game/eft/camera/CameraTracker.hpp"
 #include "game/eft/world/Explosives.hpp"
 #include "game/eft/world/Quests.hpp"
 #include "game/eft/world/Vehicles.hpp"
@@ -146,6 +147,7 @@ int main(int argc, char** argv) {
         subsystems.push_back(std::move(vehicles));
         subsystems.push_back(std::make_unique<eft::Loot>(session, world));
         subsystems.push_back(std::make_unique<eft::Quests>(session, world));
+        subsystems.push_back(std::make_unique<eft::CameraTracker>(session, world));
         return subsystems;
     });
     server::LiveFeed feed(

@@ -46,8 +46,8 @@ inline constexpr std::array<JointSource, kJointCount> kJointSources{{
 // Native transforms of the skeleton's joints, in Joint order.
 struct SkeletonBones {
     std::array<Address, kJointCount> transforms{};
-    // Every joint resolved. Otherwise only the first kPositionJoints are set (the bone list was
-    // too short or some joint bone unreadable), which is enough for the position.
+    // Every joint resolved. Otherwise only (some of) the first kPositionJoints are set (the bone
+    // list was too short or some joint bone unreadable), which is enough for the position.
     bool full = false;
     [[nodiscard]] std::size_t count() const { return full ? kJointCount : kPositionJoints; }
     [[nodiscard]] std::span<const Address> used() const { return std::span{transforms}.first(count()); }
@@ -55,7 +55,7 @@ struct SkeletonBones {
 
 // Follows the PlayerBody pointer stored at bodyField (Player._playerBody or ObservedPlayerView.PlayerBody)
 // → skeleton root joint → bone list, then each joint bone's managed Transform to its native transform.
-// nullopt if the bone list or any position bone is unreadable.
+// Unresolved joints are 0. nullopt if the bone list is unreadable or no position bone resolves.
 [[nodiscard]] std::optional<SkeletonBones> resolveSkeletonBones(const Game& game, Address bodyField);
 
 // Picks the position from bone poses (Base, left foot, right foot):
@@ -63,10 +63,12 @@ struct SkeletonBones {
 //  3. left foot;  4. right foot.  "Usable" = present, finite, not at the world origin.
 [[nodiscard]] std::optional<math::Vec3> pickPosition(const std::array<std::optional<unity::Pose>, 3>& poses);
 
-// Whether the poses look like a real skeleton: all three present, none within 2 m of the origin on
-// every axis, each foot within 5 m of Base and the feet within 5 m of each other. Failing this
-// means the cached bone pointers are stale (e.g. the body was rebuilt) and need resolving again.
-[[nodiscard]] bool plausibleSkeleton(const std::array<std::optional<unity::Pose>, 3>& poses);
+// Whether the poses (Base, left foot, right foot) look like a real skeleton. Of the joints resolved
+// in `bones`: all present, none within 2 m of the origin on every axis, all within 5 m of each other.
+// Failing this means the cached bone pointers are stale (e.g. the body was rebuilt) and need
+// resolving again.
+[[nodiscard]] bool plausibleSkeleton(const std::array<std::optional<unity::Pose>, 3>& poses,
+                                     const SkeletonBones& bones);
 
 // No joint is further than this from Base (metres): a standing player reaching up, or prone.
 inline constexpr float kMaxJointReach = 3.0f;

@@ -1,17 +1,18 @@
 // Quest data from tarkov.dev's JSON API ("tasks" feed), cached in the browser like the item catalogue,
 // and which quest items the local player still needs.
 //
-// Only what the quest item filter and labels need is kept: per quest, its "find quest item" objectives
-// (objective id → the quest item's template id), and English names (the `tasks_en` feed: names in `tasks`
-// are translation keys like "<id> name") of the quests that have any and of the quest items, which the
-// item catalogue doesn't have. Objective ids are the game's condition ids, so together with the
-// backend's `quests` message (quests in progress and their completed conditions) they tell which quest
-// items on the map are still wanted. SPT uses the live game's quest ids.
+// Only what the quest item filter, the "needed for quests" rule and labels need is kept: per quest, its
+// "find quest item" objectives (objective id → the quest item's template id), its objectives for
+// ordinary items (find, hand over, plant: objective id → the items that count), and English names (the
+// `tasks_en` feed: names in `tasks` are translation keys like "<id> name") of the quests that have any
+// and of the quest items, which the item catalogue doesn't have. Objective ids are the game's condition
+// ids, so together with the backend's `quests` message (quests in progress and their completed
+// conditions) they tell which items on the map are still wanted. SPT uses the live game's quest ids.
 
 import { FEED_BASE } from "./catalog";
 import type { LootEntry, QuestState } from "./protocol";
 
-const STORAGE_KEY = "radar.quests.v3";
+const STORAGE_KEY = "radar.quests.v4";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** EQuestStatus: started (and not yet ready to hand in). */
@@ -20,8 +21,25 @@ export const QUEST_STARTED = 2;
 /** Quest id → its find-quest-item objectives: [objective id, quest item template id]. */
 export type SlimTasks = Record<string, [string, string][]>;
 
+/**
+ * An objective for ordinary items: [objective id, the items that count (any of them), how many, found in
+ * raid only].
+ */
+export type ItemObjective = [string, string[], number, boolean];
+/** Quest id → its objectives for ordinary items. */
+export type ItemObjectives = Record<string, ItemObjective[]>;
+
+/** Objective types for ordinary items that can be picked up in a raid. (sellItem, mark, useItem and
+ *  buildWeapon involve items too, but not loot.) */
+const ITEM_OBJECTIVE_TYPES = new Set(["findItem", "giveItem", "plantItem"]);
+/** Roubles, dollars, euros: handed over from the stash, not looked for in a raid. */
+const CURRENCIES = new Set(["5449016a4bdc2d6f028b456f", "5696686a4bdc2da3298b456a", "569668774bdc2da2298b4568"]);
+/** An objective any of more items than this counts for is too broad to single its items out
+ *  ("any medical item"): they're labelled, but not highlighted (QuestNeed.specific). */
+export const SPECIFIC_ITEMS = 5;
+
 export interface QuestNames {
-  /** Quest id → name, for quests with quest items to find. */
+  /** Quest id → name, for quests with items to find. */
   quests: Record<string, string>;
   /** Quest item template id → short name. */
   items: Record<string, string>;
@@ -50,15 +68,47 @@ export function slimTasks(tasksFeed: unknown): SlimTasks {
   return out;
 }
 
-/** The English names of the quests with quest items to find, and of the quest items. Anything without a
- *  translation is left out (it gets a less specific label). */
-export function questNames(tasksFeed: unknown, translationsFeed: unknown, tasks: SlimTasks): QuestNames {
+/**
+ * Reduces the tasks feed to each quest's objectives for ordinary items. A hand-over or plant objective
+ * for the same items as a find objective of its quest is left out: the find objective says whether
+ * they still have to be found (once found, they're carried, not loot).
+ */
+export function slimItemObjectives(tasksFeed: unknown): ItemObjectives {
+  const tasks = (tasksFeed as { data?: { tasks?: Record<string, { objectives?: unknown }> } })?.data?.tasks;
+  if (!tasks || typeof tasks !== "object") throw new Error("unexpected tasks feed format");
+  const out: ItemObjectives = {};
+  const key = (items: string[]) => [...items].sort().join(",");
+  for (const [id, task] of Object.entries(tasks)) {
+    const objectives = Array.isArray(task?.objectives) ? (task.objectives as Record<string, unknown>[]) : [];
+    const all: [...ItemObjective, string][] = []; // plus the objective type
+    const found = new Set<string>();
+    for (const o of objectives) {
+      if (typeof o?.type !== "string" || !ITEM_OBJECTIVE_TYPES.has(o.type) || typeof o.id !== "string" || !Array.isArray(o.items)) continue;
+      const items = o.items.filter((t): t is string => typeof t === "string" && t !== "" && !CURRENCIES.has(t));
+      if (!items.length) continue;
+      if (o.type === "findItem") found.add(key(items));
+      all.push([o.id, items, typeof o.count === "number" && o.count > 0 ? o.count : 1, o.foundInRaid === true, o.type]);
+    }
+    const kept = all.filter((o) => o[4] === "findItem" || !found.has(key(o[1])));
+    if (kept.length) out[id] = kept.map(([oid, items, count, fir]): ItemObjective => [oid, items, count, fir]);
+  }
+  return out;
+}
+
+/** The English names of the quests with items to find (quest items or ordinary ones), and of the quest
+ *  items. Anything without a translation is left out (it gets a less specific label). */
+export function questNames(tasksFeed: unknown, translationsFeed: unknown, tasks: SlimTasks, itemObjectives: ItemObjectives = {}): QuestNames {
   const data = (tasksFeed as { data?: { tasks?: Record<string, { name?: unknown }>; questItems?: Record<string, { shortName?: unknown }> } })?.data;
   const en = (translationsFeed as { data?: Record<string, string> })?.data ?? {};
   const translated = (key: unknown) => (typeof key === "string" && typeof en[key] === "string" && en[key] ? en[key] : null);
   const out: QuestNames = { quests: {}, items: {} };
   for (const [id, finds] of Object.entries(tasks)) {
-    const name = finds.length ? translated(data?.tasks?.[id]?.name ?? `${id} name`) : null;
+    const name = finds.length || itemObjectives[id]?.length ? translated(data?.tasks?.[id]?.name ?? `${id} name`) : null;
+    if (name) out.quests[id] = name;
+  }
+  for (const id of Object.keys(itemObjectives)) {
+    if (Object.hasOwn(out.quests, id)) continue;
+    const name = translated(data?.tasks?.[id]?.name ?? `${id} name`);
     if (name) out.quests[id] = name;
   }
   for (const [tpl, item] of Object.entries(data?.questItems ?? {})) {
@@ -143,6 +193,49 @@ export function questItemLabels(quests: readonly QuestState[] | null, tasks: Sli
   return labels;
 }
 
+/** A started quest that still needs an item: its name (or id), and how many of the item, found in raid or
+ *  not, the objective asks for (any of its items count). */
+export interface QuestNeed {
+  quest: string;
+  /** The objective's total (the backend doesn't read how many are done). */
+  count: number;
+  fir: boolean;
+  /** How many different items count for the objective (any of them). */
+  of: number;
+}
+
+/** At most SPECIFIC_ITEMS items count for the objective: worth highlighting. */
+export const isSpecific = (n: QuestNeed): boolean => n.of <= SPECIFIC_ITEMS;
+
+/** "Shooter Born in Heaven (×3, FIR)", "First in Line (×3, any of 60)". */
+export function formatQuestNeed(n: QuestNeed): string {
+  const extra = [n.count > 1 ? `×${n.count}` : "", n.fir ? "FIR" : "", n.of > 1 ? `any of ${n.of}` : ""].filter(Boolean).join(", ");
+  return extra ? `${n.quest} (${extra})` : n.quest;
+}
+
+/**
+ * Ordinary items still needed, by template id: for every started quest, its open objectives for ordinary
+ * items (all of them when its completed conditions couldn't be read). One entry per objective; several
+ * objectives may need the same item.
+ */
+export function neededItems(quests: readonly QuestState[] | null, objectives: ItemObjectives | null, names: QuestNames | null): Map<string, QuestNeed[]> {
+  const needs = new Map<string, QuestNeed[]>();
+  if (!quests || !objectives) return needs;
+  for (const q of quests) {
+    if (q.status !== QUEST_STARTED || !Object.hasOwn(objectives, q.id)) continue;
+    const quest = names?.quests[q.id] ?? q.id;
+    for (const [objective, items, count, fir] of objectives[q.id]!) {
+      if (q.done?.includes(objective)) continue;
+      for (const tpl of items) {
+        let list = needs.get(tpl);
+        if (!list) needs.set(tpl, (list = []));
+        list.push({ quest, count, fir, of: items.length });
+      }
+    }
+  }
+  return needs;
+}
+
 interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -151,13 +244,16 @@ interface StorageLike {
 interface CachedTasks {
   fetchedAt: number;
   tasks: SlimTasks;
+  items: ItemObjectives;
   names: QuestNames;
 }
 
 function readCache(storage: StorageLike): CachedTasks | null {
   try {
     const c = JSON.parse(storage.getItem(STORAGE_KEY) ?? "null") as CachedTasks | null;
-    return c && typeof c.fetchedAt === "number" && c.tasks && typeof c.tasks === "object" && c.names?.quests && c.names.items ? c : null;
+    return c && typeof c.fetchedAt === "number" && c.tasks && typeof c.tasks === "object" && c.items && typeof c.items === "object" && c.names?.quests && c.names.items
+      ? c
+      : null;
   } catch {
     return null;
   }
@@ -169,13 +265,14 @@ function readCache(storage: StorageLike): CachedTasks | null {
  */
 export async function loadQuestData(
   opts: { now?: number; storage?: StorageLike; fetchFn?: typeof fetch } = {},
-): Promise<{ tasks: SlimTasks | null; names: QuestNames | null; status: QuestDataStatus }> {
+): Promise<{ tasks: SlimTasks | null; items: ItemObjectives | null; names: QuestNames | null; status: QuestDataStatus }> {
   const now = opts.now ?? Date.now();
   const storage = opts.storage ?? localStorage;
   const fetchFn = opts.fetchFn ?? fetch.bind(globalThis);
   const cached = readCache(storage);
   const age = cached ? now - cached.fetchedAt : Infinity;
-  if (cached && age >= 0 && age < MAX_AGE_MS) return { tasks: cached.tasks, names: cached.names, status: { state: "ready", fetchedAt: cached.fetchedAt } };
+  if (cached && age >= 0 && age < MAX_AGE_MS)
+    return { tasks: cached.tasks, items: cached.items, names: cached.names, status: { state: "ready", fetchedAt: cached.fetchedAt } };
   try {
     const get = async (feed: string) => {
       const res = await fetchFn(`${FEED_BASE}/${feed}`);
@@ -184,16 +281,17 @@ export async function loadQuestData(
     };
     const [feed, en] = await Promise.all([get("tasks"), get("tasks_en")]);
     const tasks = slimTasks(feed);
-    const names = questNames(feed, en, tasks);
+    const items = slimItemObjectives(feed);
+    const names = questNames(feed, en, tasks, items);
     try {
-      storage.setItem(STORAGE_KEY, JSON.stringify({ fetchedAt: now, tasks, names } satisfies CachedTasks));
+      storage.setItem(STORAGE_KEY, JSON.stringify({ fetchedAt: now, tasks, items, names } satisfies CachedTasks));
     } catch (e) {
       console.warn("couldn't cache quest data", e);
     }
-    return { tasks, names, status: { state: "ready", fetchedAt: now } };
+    return { tasks, items, names, status: { state: "ready", fetchedAt: now } };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
-    if (cached) return { tasks: cached.tasks, names: cached.names, status: { state: "stale", fetchedAt: cached.fetchedAt, error } };
-    return { tasks: null, names: null, status: { state: "unavailable", fetchedAt: null, error } };
+    if (cached) return { tasks: cached.tasks, items: cached.items, names: cached.names, status: { state: "stale", fetchedAt: cached.fetchedAt, error } };
+    return { tasks: null, items: null, names: null, status: { state: "unavailable", fetchedAt: null, error } };
   }
 }

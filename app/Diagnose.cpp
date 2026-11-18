@@ -9,6 +9,8 @@
 #include "game/eft/raid/RaidFinder.hpp"
 #include "game/eft/raid/Roster.hpp"
 #include "game/eft/world/Exfils.hpp"
+#include "game/eft/Layouts.hpp"
+#include "game/eft/camera/CameraTracker.hpp"
 #include "game/eft/world/Explosives.hpp"
 #include "game/eft/world/Loot.hpp"
 #include "game/eft/world/Quests.hpp"
@@ -174,8 +176,8 @@ void checkPlayers(Report& r, const std::shared_ptr<const eft::RaidSession>& sess
     eft::WorldState world;
     eft::Players players(session, world);
     const auto t = Clock::now();
-    // A few roster ticks (builds are rate-limited per tick), then positions and equipment.
-    for (int i = 0; i < 1 + int(roster->players.size()) / eft::Players::kMaxBuildsPerTick; ++i)
+    // Enough roster ticks to build every entry (kMaxBuildsPerTick each); then positions and equipment.
+    for (std::size_t i = 0; i <= roster->players.size() / eft::Players::kMaxBuildsPerTick; ++i)
         players.rosterTick(t + std::chrono::milliseconds(20 * i));
     players.positionsTick(t);
     for (int i = 0; i < 1 + int(roster->players.size()); ++i) players.equipmentTick(t + std::chrono::seconds(i));
@@ -315,6 +317,9 @@ void checkSkeleton(Report& r, const std::shared_ptr<const eft::RaidSession>& ses
         const auto bones = eft::resolveSkeletonBones(game, bodyField);
         std::string problem;
         if (!bones) problem = "position bones unresolved";
+        else if (std::any_of(bones->transforms.begin(), bones->transforms.begin() + eft::kPositionJoints,
+                             [](Address a) { return a == 0; }))
+            problem = "some position bones unresolved (tracked by the others)";
         else if (!bones->full) problem = "joint bones unresolved";
         else problem = eft::jointProblem(game.transforms.worldPoses(bones->used(), mem::Freshness::Fresh));
         if (problem.empty()) ++full;
@@ -376,6 +381,69 @@ void checkExplosives(Report& r, const std::shared_ptr<const eft::RaidSession>& s
     r.ok(std::format("synchronizable objects: {}; {} armed tripwire(s)", hist.empty() ? "none" : hist,
                      world.explosives.get()->tripwires.size()));
     r.info(std::format("tripwires are type {} (verify on a map with tripwires)", eft::Explosives::kTripwireType));
+}
+
+void checkCamera(Report& r, const std::shared_ptr<const eft::RaidSession>& session) {
+    r.section("Camera");
+    const auto& game = session->game;
+    eft::WorldState world;
+    eft::CameraTracker tracker(session, world);
+    const auto found = tracker.resolve();
+    if (found.cameras.empty()) {
+        r.fail("camera list unreadable or empty", "unity_rva allCameras, unityLayout CameraList.*");
+        return;
+    }
+    std::map<std::string, int> names;
+    for (const auto& [camera, name] : found.cameras) ++names[name.empty() ? "(unnamed)" : name];
+    std::string nameList;
+    for (const auto& [name, n] : names) nameList += std::format("{}{}{}", nameList.empty() ? "" : ", ", name, n > 1 ? std::format(" ×{}", n) : "");
+    r.ok(std::format("{} cameras: {}", found.cameras.size(), nameList));
+
+    if (!found.fps) {
+        r.fail("no readable camera named like 'FPS Camera'",
+               "unityLayout Camera.ViewProjection, Camera.WorldToCamera (or the camera names changed)");
+    } else {
+        const auto sample = unity::Cameras(game.mem, eft::kCameraLayout).sample(found.fps);
+        if (!sample) {
+            r.fail(std::format("FPS camera {} doesn't read", hex(found.fps)), "unityLayout Camera.*");
+        } else {
+            const auto& v = *sample;
+            r.ok(std::format("FPS camera {}: fov {:.1f}°, aspect {:.3f}{}", hex(found.fps), v.fieldOfView, v.aspect,
+                             v.position ? std::format(", at ({:.1f}, {:.1f}, {:.1f})", v.position->x, v.position->y, v.position->z) : ", position unknown"));
+            if (!v.fieldOfView || !v.aspect) r.info("fov or aspect implausible: check unityLayout Camera.FieldOfView / Camera.Aspect");
+            // The camera should sit at the local player's eyes: compare with the skeleton's Base (feet).
+            const auto bones = eft::resolveSkeletonBones(game, session->start.localPlayer + off::Player::_playerBody);
+            const auto poses = bones ? game.transforms.worldPoses(bones->used(), mem::Freshness::Fresh)
+                                     : std::vector<std::optional<unity::Pose>>{};
+            if (v.position && !poses.empty() && poses[0]) {
+                const auto d = *v.position - poses[0]->position;
+                const float horizontal = std::sqrt(d.x * d.x + d.z * d.z);
+                const auto msg = std::format("camera is {:.2f} m from the local player's feet, {:.2f} m above them", horizontal, d.y);
+                if (horizontal < 1.0f && d.y > 0.2f && d.y < 2.2f) r.ok(msg);
+                else r.fail(msg + " (expected: close, at eye height)", "unityLayout Camera.WorldToCamera, or the wrong camera");
+            }
+        }
+    }
+    r.info(std::format("optic camera: {}; OpticCameraManager: {}", found.optic ? hex(found.optic) : "not found",
+                       found.opticManager ? hex(found.opticManager) : "not found"));
+
+    const Address pwa = tracker.proceduralWeaponAnimation();
+    const auto aiming = tracker.readAiming(pwa);
+    if (!aiming) {
+        r.fail("aiming state unreadable", "Player.ProceduralWeaponAnimation, ProceduralWeaponAnimation.IsAiming");
+        return;
+    }
+    r.ok(std::format("aiming down sights: {} (aim through a scope while running --diagnose to check sights)",
+                     *aiming ? "yes" : "no"));
+    const auto sights = tracker.readSights(pwa, found.opticManager);
+    if (sights.empty())
+        r.info("no sights read: normal without optics; otherwise check ProceduralWeaponAnimation.Optics, SightNBone.*, "
+               "SightComponent.*, SightModTemplate.Zooms");
+    for (std::size_t i = 0; i < sights.size(); ++i) {
+        const auto& s = sights[i];
+        r.info(std::format("sight {}: scope {} mode {}, zoom {:.2f}× (range {:.1f}–{:.1f}){}{}", i, s.scope, s.mode, s.zoom,
+                           s.minZoom, s.maxZoom, s.magnified ? ", magnified" : "", s.current ? ", looked through" : ""));
+    }
 }
 
 void checkVehicles(Report& r, const std::shared_ptr<const eft::RaidSession>& session) {
@@ -515,8 +583,9 @@ int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out) {
         checkVehicles(r, session);
         checkLoot(r, session);
         checkQuests(r, session);
+        checkCamera(r, session);
     } else {
-        r.info("skipping players, exfils, explosives, vehicles, loot and quests: they need a raid");
+        r.info("skipping players, exfils, explosives, vehicles, loot, quests and camera: they need a raid");
     }
 
     r.section("Summary");

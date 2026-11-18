@@ -19,6 +19,7 @@ Also reads MeatyDumper-style dumps (classes grouped under "namespaces").
 import argparse
 import json
 import os
+import difflib
 import re
 import sys
 from collections import defaultdict
@@ -66,7 +67,11 @@ class Dump:
         """Returns (class, error)."""
         found = self.by_full.get(name) or ([] if "." in name else self.by_short.get(name, []))
         if not found:
-            return None, f"class {name} not in dump"
+            # A class that moved namespace keeps its short name: point at the candidates.
+            short = name.rsplit(".", 1)[-1]
+            moved = [c["fullName"] for c in self.by_short.get(short, []) if c["fullName"] != name]
+            hint = f" (same short name: {', '.join(sorted(moved)[:5])})" if moved else ""
+            return None, f"class {name} not in dump{hint}"
         if len(found) > 1:
             idx = ", ".join(str(c.get("typeIndex", "?")) for c in found)
             return None, f"class {name} is ambiguous (type indices {idx})"
@@ -113,6 +118,12 @@ def find_field(dump, cls, field_name):
             f, owner = merged[candidate]
             return f, owner, None
     hint = f" (fields not set up yet in {', '.join(uninitialised)}; dump again later in a raid)" if uninitialised else ""
+    if not hint:
+        # A renamed field usually keeps most of its name.
+        bare = {n.strip("_<>").lower(): n for n in merged}
+        close = [bare[c] for c in difflib.get_close_matches(field_name.strip("_<>").lower(), bare, n=5, cutoff=0.6)]
+        if close:
+            hint = " (similar: " + ", ".join(f"{n} @ {hexs(merged[n][0]['offset'])}" for n in close) + ")"
     return None, None, f"field {field_name} not found in {cls['fullName']} or its base classes{hint}"
 
 

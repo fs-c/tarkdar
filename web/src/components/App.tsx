@@ -1,8 +1,8 @@
 import { Locate, LocateFixed, Navigation } from "lucide-react";
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { RadarState } from "../connection";
+import { type RadarState, wsUrl } from "../connection";
 import { isTyping, useCatalog, useConnection, useLootPrefs, useMapIndex, useMapPrefs, usePersistentState, useQuestData, useTrailPrefs } from "../hooks";
-import { knownQuestItems, neededQuestItems, questItemLabels, withoutUnneededQuestItems } from "../quests";
+import { knownQuestItems, neededItems, neededQuestItems, questItemLabels, withoutUnneededQuestItems } from "../quests";
 import { describeEvent } from "../events";
 import type { MapStats } from "../map3d/Map3D";
 import { findMap, mapUrl } from "../maps";
@@ -35,10 +35,9 @@ import { TimelinePanel } from "./TimelinePanel";
 // The radar brings the renderer (three.js) with it: loaded after the rest of the page.
 const Radar = lazy(() => import("./Radar").then((m) => ({ default: m.Radar })));
 
-const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
 
 export function App() {
-  const { state: conn, live, liveVersion } = useConnection(WS_URL);
+  const { state: conn, live, liveVersion } = useConnection(wsUrl());
 
   // What's shown: the live raid, or a recording opened from the Raids view; either at the cursor.
   const [review, setReview] = useState<{ info: RecordingInfo; timeline: Timeline } | null>(null);
@@ -63,10 +62,12 @@ export function App() {
   const [lootPrefs, setLootPrefs] = useLootPrefs();
 
   // Quest items nobody needs are left out everywhere (map, list, search), unless all are wanted.
-  const { tasks: questTasks, names: questNames, status: questDataStatus } = useQuestData();
+  const { tasks: questTasks, items: questItemObjectives, names: questNames, status: questDataStatus } = useQuestData();
   const knownQuest = useMemo(() => knownQuestItems(questTasks), [questTasks]);
   const neededQuest = useMemo(() => neededQuestItems(unfiltered.quests, questTasks), [unfiltered.quests, questTasks]);
   const questLabels = useMemo(() => questItemLabels(unfiltered.quests, questTasks, questNames), [unfiltered.quests, questTasks, questNames]);
+  // Ordinary items started quests still need: the "Needed for quests" rule, labels in the list and details.
+  const questNeeds = useMemo(() => neededItems(unfiltered.quests, questItemObjectives, questNames), [unfiltered.quests, questItemObjectives, questNames]);
   const filterQuest = lootPrefs.questItems !== "all";
   const state: RadarState = useMemo(() => {
     const loot = withoutUnneededQuestItems(unfiltered.loot, filterQuest ? neededQuest : null, knownQuest);
@@ -125,7 +126,7 @@ export function App() {
   }, [follow]);
   const [hovered, setHovered] = useState<Selection | null>(null);
   const [listPrefs, setListPrefs] = useListPrefs();
-  const list = useListRows(state, catalog, questLabels, listPrefs.filters);
+  const list = useListRows(state, catalog, questLabels, questNeeds, listPrefs.filters);
   const focusListSearch = useRef<() => void>(undefined);
 
   // Highlights (the global search): kept for the session. The search's preview counts as one.
@@ -496,6 +497,7 @@ export function App() {
               selection={selection}
               state={state}
               catalog={catalog}
+              questNeeds={questNeeds}
               history={timeline && range && at !== null ? { timeline, at, start: range[0], onPick: pickEvent } : null}
             />
           )}

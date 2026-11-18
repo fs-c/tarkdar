@@ -211,6 +211,12 @@ export function SettingsPanel(p: Props) {
           )}
         </Section>
       )}
+      <Section title="Experimental">
+        <p className="muted">
+          <a href="#pov">Player's view</a>: what the backend reads of the local player's camera and scope, as points
+          projected from their eyes. For checking the camera offsets.
+        </p>
+      </Section>
     </PanelBody>
   );
 }

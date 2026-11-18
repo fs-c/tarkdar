@@ -62,6 +62,7 @@ public:
     void readMany(Pid pid, std::span<ReadRequest> requests, Freshness freshness) override;
 
     [[nodiscard]] Limits limits() const override;
+    void refreshCaches() override;
 
     // The guest's physical memory map (RAM ranges, as the guest OS sees them). Empty on failure.
     [[nodiscard]] std::vector<PhysicalRange> physicalMemoryMap();

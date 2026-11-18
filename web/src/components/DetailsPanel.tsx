@@ -6,6 +6,7 @@ import { describeEvent, eventConcerns } from "../events";
 import { type ItemCatalog, containerName, exfilStatus, equipmentValue, formatPrice } from "../items";
 import type { Selection } from "../pick";
 import type { ItemNode, WorldPos } from "../protocol";
+import { type QuestNeed, formatQuestNeed } from "../quests";
 import { WILD_SPAWN_TYPES, bossGroups, playerType } from "../roles";
 import type { Timeline, TimelineEvent } from "../timeline";
 import { formatDuration } from "../playback";
@@ -16,6 +17,8 @@ interface Props {
   selection: Selection;
   state: RadarState;
   catalog: ItemCatalog;
+  /** Ordinary item template id → started quests that still need it (quests.ts). */
+  questNeeds: ReadonlyMap<string, readonly QuestNeed[]>;
 }
 
 /** The raid's history, for the History section. */
@@ -62,7 +65,7 @@ function History({ selection, catalog, timeline, at, start, onPick }: HistoryPro
   );
 }
 
-function Details({ selection: sel, state, catalog }: Props) {
+function Details({ selection: sel, state, catalog, questNeeds }: Props) {
   if (sel.kind === "player") {
     const p = state.players.find((x) => x.id === sel.id);
     if (!p) return <div>player gone</div>;
@@ -99,6 +102,7 @@ function Details({ selection: sel, state, catalog }: Props) {
         {!!info?.price && (
           <Line label="price" value={`${formatPrice(info.price)} ₽${info.priceSource === "base" ? " (base price)" : ""}`} />
         )}
+        {l.kind === "item" && !!questNeeds.get(l.tpl)?.length && <Line label="needed for" value={questNeeds.get(l.tpl)!.map(formatQuestNeed).join("; ")} />}
         {l.tpl && <Line label="template" value={l.tpl} />}
         <Line label="object" value={l.obj} />
         <Line label="position" value={formatPos(l.pos)} />

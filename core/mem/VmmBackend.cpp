@@ -190,6 +190,12 @@ std::optional<VmmBackend::WindowsVersion> VmmBackend::windowsVersion() {
                           static_cast<std::uint32_t>(build)};
 }
 
+void VmmBackend::refreshCaches() {
+    // VMM refreshes its caches on its own schedule; this forces all of them now, so the first reads
+    // of a new raid don't go through page-table entries cached from before it.
+    if (handle_) VMMDLL_ConfigSet(handle_, VMMDLL_OPT_REFRESH_ALL, 1);
+}
+
 Limits VmmBackend::limits() const {
     // VMM itself has no small per-batch limit (reads up to 1 GiB are accepted). Keep batches to a
     // sane size so a single failure doesn't stall a huge batch; tune with measurements.

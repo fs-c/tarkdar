@@ -40,6 +40,10 @@ public:
     [[nodiscard]] virtual Limits limits() const = 0;
     // Optional periodic upkeep (e.g. cache refresh). Default: nothing to do.
     virtual void maintenance() {}
+    // Drops every cache the backend keeps about the target (page tables, memory, process lists),
+    // e.g. when a raid starts and the game has just remapped much of its memory. Default: nothing
+    // cached.
+    virtual void refreshCaches() {}
 };
 
 }  // namespace radar::mem

@@ -50,22 +50,24 @@ void Players::registerTasks(sched::TaskRunner& live, sched::TaskRunner& backgrou
 void Players::rosterTick(Clock::time_point now) {
     const auto roster = readRoster(game_, session_->start.localGameWorld);
     if (!roster) return;  // keep the previous state; the raid monitor decides whether the raid is over
+    if (roster->players.empty() && !registered_.empty() && ++emptyRosterReads_ < kEmptyRosterConfirmations)
+        return;  // probably transient; believe it once it repeats
+    emptyRosterReads_ = 0;
 
     registered_.clear();
     registered_.insert(roster->players.begin(), roster->players.end());
 
-    // Build new players: at most kMaxBuildsPerTick attempts, starting at a rotating cursor so a few
-    // unbuildable entries can't starve the rest.
+    // Build new players: up to kMaxBuildsPerTick, from a rotating cursor; failed ones again after
+    // kBuildRetry (kSlowBuildRetry once they keep failing).
     const auto& list = roster->players;
-    int attempts = 0;
-    std::size_t inspected = 0;
-    for (; inspected < list.size() && attempts < kMaxBuildsPerTick; ++inspected) {
+    std::size_t builds = 0, inspected = 0;
+    for (; inspected < list.size() && builds < kMaxBuildsPerTick; ++inspected) {
         const Address instance = list[(buildCursor_ + inspected) % list.size()];
         if (entries_.contains(instance)) continue;
         auto& failure = failures_[instance];
-        if (failure.attempts > 0 && now - failure.last < (failure.attempts >= kMaxFreeBuildAttempts ? kBuildRetry : kMinBuildSpacing))
-            continue;
-        ++attempts;
+        const auto retry = failure.attempts < kFastBuildAttempts ? kBuildRetry : kSlowBuildRetry;
+        if (failure.attempts > 0 && now - failure.last < retry) continue;
+        ++builds;
         const bool isLocal = instance == roster->localPlayer;
         if (auto layout = buildPlayerLayout(game_, instance, isLocal)) {
             Entry entry;
@@ -83,13 +85,13 @@ void Players::rosterTick(Clock::time_point now) {
         } else {
             failure.error = std::move(layout.error());
             failure.className = game_.managed.classNameOf(instance);
-            if (++failure.attempts == kMaxFreeBuildAttempts)
-                log::info("players: {:#x} ({}) failed to build {} times, backing off: {}", instance,
+            if (++failure.attempts == kBuildFailuresLogged)
+                log::info("players: {:#x} ({}) failed to build {} times, still retrying: {}", instance,
                           failure.className, failure.attempts, failure.error);
             failure.last = now;
         }
     }
-    if (!list.empty()) buildCursor_ = (buildCursor_ + std::max<std::size_t>(1, inspected)) % list.size();
+    if (!list.empty()) buildCursor_ = (buildCursor_ + inspected) % list.size();
     std::erase_if(failures_, [&](const auto& kv) { return !registered_.contains(kv.first); });
 
     // Observed players whose AI data wasn't set up at build time: try again for a while.
@@ -232,6 +234,9 @@ void Players::refresh(Clock::time_point now) {
         }
         if (p.corpseHandle && batch.complete(*p.corpseHandle) && MemoryView::isUserPointer(p.corpse)) {
             p.entry->dead = true;
+            // The corpse keeps the last position; a ragdoll's pose isn't worth tracking.
+            p.entry->joints.reset();
+            p.entry->bones.reset();
             log::debug("players: #{} died", p.entry->id);
         }
     }
@@ -242,10 +247,15 @@ void Players::positionsTick(Clock::time_point now) {
     std::vector<Entry*> tracked;
     for (auto& [instance, e] : entries_) {
         if (e.dead || e.absent) continue;
-        if (!e.bones && now >= e.nextBoneResolve) {
-            e.bones = resolveSkeletonBones(game_, e.layout.bodyField);
-            if (!e.bones) e.nextBoneResolve = now + kBoneRetry;
+        // Unresolved or partly resolved (bones still being set up): try again every kBoneRetry,
+        // tracking with what we have meanwhile.
+        if ((!e.bones || !e.bones->full) && now >= e.nextBoneResolve) {
+            if (auto bones = resolveSkeletonBones(game_, e.layout.bodyField)) e.bones = bones;
+            ++e.boneAttempts;
+            const auto delay = e.boneAttempts < kFastBoneAttempts ? kBoneRetry : kSlowBoneRetry;
+            e.nextBoneResolve = now + delay + kBoneRetryStagger * (e.id % 8);
         }
+        if (e.bones && e.bones->full) e.boneAttempts = 0;
         if (e.bones) tracked.push_back(&e);
     }
     if (tracked.empty()) return;
@@ -269,7 +279,7 @@ void Players::positionsTick(Clock::time_point now) {
             e.joints = e.bones->full ? relativeJoints(mine, *position) : std::nullopt;
             changed = true;
         }
-        if (!plausibleSkeleton(positionPoses)) {
+        if (!plausibleSkeleton(positionPoses, *e.bones)) {
             // Stale bone pointers (e.g. the body was rebuilt): resolve again next tick.
             e.bones.reset();
             e.joints.reset();

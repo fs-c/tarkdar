@@ -74,8 +74,15 @@ for a raid → in raid → cooldown → waiting for a raid.
 - **Player kinds.** Roster entries come in two object layouts: full `EFT.Player` objects (ours, and
   bots simulated in this client) and `ObservedPlayerView` network replicas (players and bots
   simulated elsewhere). Each kind resolves its own addresses; everything after that is shared.
+- **Players are built as soon as they're registered**: up to 16 new entries per roster tick (20 ms),
+  failed ones retried every 500 ms, then every 2 s after 10 failures, for as long as they stay
+  registered. A build fails rather than accept
+  a side other than USEC, BEAR or Savage (a misread object would become a phantom player). The
+  roster is only believed empty after two empty reads in a row.
 - **Positions come from skeleton bones**, read in one batch for all players. There's no usable
-  position field.
+  position field. Any of the 3 position bones is enough to track a player (some bodies, e.g.
+  zombies, get bones late); a partly resolved skeleton is resolved again every 250 ms, every 2 s
+  after 8 tries.
 - **Body joints come from the same read.** 17 joints (`kJointSources` in
   `game/eft/players/Skeleton.hpp`) share one transform hierarchy per player, so they cost little
   more than the 3 position bones. A player gets either every joint or none. The bone indices are
@@ -85,6 +92,10 @@ for a raid → in raid → cooldown → waiting for a raid.
   positions. The frontend's timeline stores them per player (thinned to one per 150 ms) and draws
   players close up as figures on the marker canvas, through the 3D camera: no extra map frames,
   but no occlusion by the map either.
+- **The camera is read but not drawn by the radar.** `game/eft/camera/` follows the first-person
+  camera, aiming, sights and their zoom, and the scope's camera while scoped (`camera` message), so
+  clients can render the player's view. The Unity part (camera list, matrices) is in
+  `core/unity/Camera`. The frontend's experimental POV page (`#pov`) shows it.
 - **Ids, not addresses.** Players and loot get small integer ids, stable within a raid. Addresses
   never leave the backend.
 - **Loot is classified by runtime class**, including base classes, so SPT subclasses still match.

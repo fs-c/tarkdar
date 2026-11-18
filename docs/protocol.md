@@ -147,6 +147,32 @@ The local player's quests in progress (`Profile.QuestsData`); `null` until they'
 - Sent when something changes (read every 2 s). Quest names, objectives and which items they need
   come from quest data in the frontend.
 
+### `camera`
+```json
+{ "fps": { "vp": [ 16 numbers ], "pos": [ 120.4, 3.1, -88.2 ], "fov": 75, "aspect": 1.7778 },
+  "aiming": true, "scoped": true, "magnification": 4,
+  "sights": [ { "scope": 0, "mode": 0, "zoom": 1, "min": 1, "max": 1, "magnified": false, "current": false },
+              { "scope": 0, "mode": 1, "zoom": 4, "min": 1, "max": 4, "magnified": true, "current": true } ],
+  "active": 1,
+  "optic": { "vp": [ 16 numbers ], "pos": [ 120.5, 3.1, -88.0 ], "fov": 6.2, "aspect": 1 } }
+```
+The local player's view, for clients that render what the player sees. Experimental: the offsets
+behind it are unverified on SPT (`--diagnose`, section Camera).
+- **`fps`:** the first-person camera, `null` while not found or unreadable. **`vp`** is its
+  view-projection matrix (Unity `Matrix4x4`, column-major: element `row + 4 × column`): a world point
+  `(x, y, z, 1)` times it gives clip coordinates `(cx, cy, cz, w)`; the point is in front of the camera
+  when `w > 0`, and on screen at `(cx / w, cy / w)` within −1…1 (y up). `pos` (world position), `fov`
+  (vertical, degrees) and `aspect` (width / height) are left out when unknown.
+- **`aiming`:** aiming down sights. **`sights`** (only while aiming): the weapon's sights in order;
+  `zoom` is the current magnification (variable scopes: the live zoom), `min`/`max` the sight's zoom
+  range, `magnified` whether it's noticeably above 1×, `current` whether the game looks through it.
+  **`active`** is the index of the sight looked through (`null` when not aiming).
+- **`scoped`:** aiming through a magnified sight; **`magnification`** is the active sight's zoom (1
+  when there's none). While scoped, **`optic`** is the scope's own camera (same fields as `fps`): its
+  matrix projects the narrow view inside the scope; otherwise `null`.
+- Sent when something changes (read about 60 times per second, so while the player moves, at the
+  full message rate).
+
 ### `loot`
 ```json
 { "loot": [ { "id": 7, "kind": "container", "tpl": "578f8782245977354405a1e3", "obj": "container_safe", "pos": [3.0, 1.0, 3.0] } ] }
@@ -202,6 +228,7 @@ stream, with these differences:
   ```
 - **`skeletons`** is throttled harder than `players` (at most 5 per second); the ones in between are
   dropped. Recordings from before it existed have none.
+- **`camera`** is throttled to at most 10 per second, the ones in between dropped.
 - `status`, `exfils`, `explosives`, `vehicles`, `equipment` and `quests` are written as sent. The last line is the
   `status` that ended the raid (unless the backend stopped mid-raid).
 - A last line may be cut off (a raid in progress, or a crash): readers skip lines that don't parse.

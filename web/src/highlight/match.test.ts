@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { type ItemCatalog, type ItemInfo, emptyCatalog } from "../items";
-import { buildRows } from "../list/rows";
+import { buildRows, lootRows } from "../list/rows";
 import type { LootEntry, Player } from "../protocol";
 import { type Highlight, HIGHLIGHT_COLORS, allRows, matchingRows, nextColor } from "./match";
 
@@ -49,6 +49,18 @@ describe("matching", () => {
   });
   it("needs every given field to hold", () => {
     expect(keys({ categories: ["barter"], minValue: 500_000 })).toEqual(["loot:10"]);
+  });
+  it("matches loose items a started quest still needs, and finds them by the quest's name", () => {
+    const needs = new Map([
+      ["bolts", [{ quest: "Gunsmith", count: 2, fir: true, of: 1 }]],
+      ["ledx", [{ quest: "Any meds", count: 3, fir: false, of: 60 }]], // too broad to highlight
+    ]);
+    const quested = lootRows([loot(12, "item", "bolts"), loot(13, "quest", "bolts"), loot(10, "item", "ledx")], catalog, new Map(), needs).items;
+    expect(quested[0]!.questNeeds).toEqual(["Gunsmith (×2, FIR)"]);
+    expect(quested[2]!.questNeeds).toEqual(["Any meds (×3, any of 60)"]);
+    expect(matchingRows(quested, { subjects: ["item"], questNeeded: true }, catalog).map((r) => r.key)).toEqual(["loot:12"]);
+    expect(matchingRows(quested, { text: "gunsmith" }, catalog).map((r) => r.key)).toEqual(["loot:12"]);
+    expect(keys({ questNeeded: true })).toEqual([]); // nothing needed without quest data
   });
   it("matches nothing with an empty rule", () => {
     expect(keys({})).toEqual([]);

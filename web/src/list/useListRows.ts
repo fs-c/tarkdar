@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import type { RadarState } from "../connection";
 import { usePersistentState } from "../hooks";
 import type { ItemCatalog } from "../items";
+import type { QuestNeed } from "../quests";
 import { TABS, columnIds } from "./columns";
 import {
   DEFAULT_FILTERS,
@@ -67,9 +68,15 @@ export interface ListRows {
 }
 
 /** Rows per category, each rebuilt only when its source changes (loot rarely, players many times a second). */
-export function useListRows(state: RadarState, catalog: ItemCatalog, questLabels: ReadonlyMap<string, string>, filters: ListFilters): ListRows {
+export function useListRows(
+  state: RadarState,
+  catalog: ItemCatalog,
+  questLabels: ReadonlyMap<string, string>,
+  questNeeds: ReadonlyMap<string, readonly QuestNeed[]>,
+  filters: ListFilters,
+): ListRows {
   const players = useMemo(() => playerRows(state.players, state.equipment, catalog), [state.players, state.equipment, catalog]);
-  const loot = useMemo(() => lootRows(state.loot, catalog, questLabels), [state.loot, catalog, questLabels]);
+  const loot = useMemo(() => lootRows(state.loot, catalog, questLabels, questNeeds), [state.loot, catalog, questLabels, questNeeds]);
   const exfils = useMemo(() => exfilRows(state.exfils), [state.exfils]);
   const explosives = useMemo(() => explosiveRows(state.explosives), [state.explosives]);
   return useMemo(() => {

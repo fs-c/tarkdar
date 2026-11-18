@@ -79,10 +79,15 @@ std::optional<SkeletonBones> resolveSkeletonBones(const Game& game, Address body
     batch.execute(Freshness::Fresh);
 
     auto valid = [&](std::size_t j) { return MemoryView::isUserPointer(bones.transforms[j]); };
-    for (std::size_t j = 0; j < kPositionJoints; ++j)
-        if (!valid(j)) return std::nullopt;
+    // Some bodies (e.g. zombies) lack bones for a while: any position joint is enough to track.
+    bool anyPosition = false;
+    for (std::size_t j = 0; j < kPositionJoints; ++j) {
+        if (!valid(j)) bones.transforms[j] = 0;
+        anyPosition = anyPosition || valid(j);
+    }
+    if (!anyPosition) return std::nullopt;
     bones.full = true;
-    for (std::size_t j = kPositionJoints; j < kJointCount; ++j) bones.full = bones.full && valid(j);
+    for (std::size_t j = 0; j < kJointCount; ++j) bones.full = bones.full && valid(j);
     if (!bones.full) std::fill(bones.transforms.begin() + kPositionJoints, bones.transforms.end(), Address{0});
     return bones;
 }
@@ -99,12 +104,15 @@ std::optional<Vec3> pickPosition(const std::array<std::optional<unity::Pose>, 3>
     return std::nullopt;
 }
 
-bool plausibleSkeleton(const std::array<std::optional<unity::Pose>, 3>& poses) {
-    for (const auto& p : poses)
+bool plausibleSkeleton(const std::array<std::optional<unity::Pose>, 3>& poses, const SkeletonBones& bones) {
+    for (std::size_t j = 0; j < poses.size(); ++j) {
+        if (!bones.transforms[j]) continue;  // not resolved: nothing to check
+        const auto& p = poses[j];
         if (!p || !math::isSane(p->position) || nearOrigin(p->position, 2.0f)) return false;
-    const Vec3 base = poses[0]->position, left = poses[1]->position, right = poses[2]->position;
-    return math::length(left - base) <= 5.0f && math::length(right - base) <= 5.0f &&
-           math::length(left - right) <= 5.0f;
+        for (std::size_t k = 0; k < j; ++k)
+            if (bones.transforms[k] && math::length(p->position - poses[k]->position) > 5.0f) return false;
+    }
+    return true;
 }
 
 std::optional<Joints> relativeJoints(std::span<const std::optional<unity::Pose>> poses, Vec3 position) {

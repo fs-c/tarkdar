@@ -123,6 +123,7 @@ void RaidRecorder::start(const eft::Status& status) {
     pendingPlayers_.clear();
     playerFlags_.clear();
     lastSkeletonsWrite_ = 0;
+    lastCameraWrite_ = 0;
     lastLoot_.reset();
     lastLootKeyframe_ = 0;
     stats_.clear();
@@ -210,6 +211,15 @@ void RaidRecorder::onSkeletons(std::uint64_t raidId, const std::string& message)
     if (lastSkeletonsWrite_ && now - lastSkeletonsWrite_ < config_.skeletonsInterval.count()) return;
     write("skeletons", message);
     lastSkeletonsWrite_ = now;
+}
+
+void RaidRecorder::onCamera(std::uint64_t raidId, const std::string& message) {
+    std::lock_guard lock(mutex_);
+    if (!recording(raidId)) return;
+    const auto now = now_();
+    if (lastCameraWrite_ && now - lastCameraWrite_ < config_.cameraInterval.count()) return;
+    write("camera", message);
+    lastCameraWrite_ = now;
 }
 
 void RaidRecorder::onMessage(const std::string& type, std::uint64_t raidId, const std::string& message) {

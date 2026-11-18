@@ -258,6 +258,51 @@ std::string encodeQuests(const eft::QuestsSnapshot& snap) {
     return envelope("quests", snap.raidId, snap.revision, std::move(data));
 }
 
+namespace {
+// Matrix elements: 6 decimals (they're mostly in -10..10; translations in metres).
+double round6(float v) { return std::round(static_cast<double>(v) * 1e6) / 1e6; }
+
+crow::json::wvalue cameraView(const eft::CameraView& v) {
+    crow::json::wvalue o;
+    std::vector<crow::json::wvalue> vp;
+    for (const float e : v.viewProjection.m) vp.emplace_back(round6(e));
+    o["vp"] = std::move(vp);
+    if (v.position) o["pos"] = vec(*v.position);
+    if (v.fieldOfView > 0) o["fov"] = round2(v.fieldOfView);
+    if (v.aspect > 0) o["aspect"] = std::round(static_cast<double>(v.aspect) * 1e4) / 1e4;
+    return o;
+}
+}  // namespace
+
+std::string encodeCamera(const eft::CameraSnapshot& snap) {
+    crow::json::wvalue data;
+    if (snap.fps) data["fps"] = cameraView(*snap.fps);
+    else data["fps"] = nullptr;
+    data["aiming"] = snap.aiming;
+    data["scoped"] = snap.scoped;
+    data["magnification"] = round2(snap.magnification);
+    std::vector<crow::json::wvalue> sights;
+    for (const auto& s : snap.sights) {
+        crow::json::wvalue o;
+        o["scope"] = s.scope;
+        o["mode"] = s.mode;
+        o["zoom"] = round2(s.zoom);
+        if (s.maxZoom > 0) {
+            o["min"] = round2(s.minZoom);
+            o["max"] = round2(s.maxZoom);
+        }
+        o["magnified"] = s.magnified;
+        o["current"] = s.current;
+        sights.push_back(std::move(o));
+    }
+    data["sights"] = std::move(sights);
+    if (snap.activeSight) data["active"] = static_cast<std::uint64_t>(*snap.activeSight);
+    else data["active"] = nullptr;
+    if (snap.optic) data["optic"] = cameraView(*snap.optic);
+    else data["optic"] = nullptr;
+    return envelope("camera", snap.raidId, snap.revision, std::move(data));
+}
+
 std::string encodeLoot(const eft::LootSnapshot& snap) {
     std::vector<crow::json::wvalue> list;
     list.reserve(snap.loot.size());

@@ -64,6 +64,8 @@ int LiveFeed::poll() {
         forward(w.equipment, lastEquipment_, "equipment", [](const auto& s) { return encodeEquipment(s); },
                 other("equipment"));
         forward(w.quests, lastQuests_, "quests", [](const auto& s) { return encodeQuests(s); }, other("quests"));
+        forward(w.camera, lastCamera_, "camera", [](const auto& s) { return encodeCamera(s); },
+                [&](const auto& s, const std::string& m) { rec->onCamera(s.raidId, m); });
     }
     return sent;
 }

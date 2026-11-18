@@ -22,6 +22,8 @@ export interface Match {
   minValue?: number;
   /** Below this value (roubles). Unknown values count as 0 (unpriced items are cheap ones). */
   maxValue?: number;
+  /** A loose item a started quest still needs, from an objective few items count for (RowBase.questNeeded). */
+  questNeeded?: boolean;
 }
 
 export interface Highlight {
@@ -50,6 +52,7 @@ export function matches(row: RowBase, m: Match, catalog: ItemCatalog): boolean {
   if (m.playerTypes && (row.subject !== "player" || !m.playerTypes.includes((row as PlayerRow).type))) return false;
   if (m.minValue !== undefined && (row.value === undefined || row.value < m.minValue)) return false;
   if (m.maxValue !== undefined && (row.value ?? 0) >= m.maxValue) return false;
+  if (m.questNeeded && !row.questNeeded) return false;
   if (m.tpls && !row.tpls.some((t) => m.tpls!.includes(t))) return false;
   if (m.categories && !row.tpls.some((t) => catalog.lookup(t)?.categories?.some((c) => m.categories!.includes(c)))) return false;
   if (m.text !== undefined && !matchesText(row, m.text)) return false;
@@ -58,7 +61,7 @@ export function matches(row: RowBase, m: Match, catalog: ItemCatalog): boolean {
 
 /** Whether a match says anything at all (an empty one would match everything). */
 export const isEmptyMatch = (m: Match): boolean =>
-  !m.text?.trim() && !m.subjects && !m.categories && !m.tpls && !m.playerTypes && m.minValue === undefined && m.maxValue === undefined;
+  !m.text?.trim() && !m.subjects && !m.categories && !m.tpls && !m.playerTypes && m.minValue === undefined && m.maxValue === undefined && !m.questNeeded;
 
 export function allRows(rows: TabRows): AnyRow[] {
   return [...rows.players, ...rows.items, ...rows.containers, ...rows.exfils, ...rows.explosives];

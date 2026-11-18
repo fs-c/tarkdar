@@ -12,13 +12,6 @@ import { type Timeline, isJump } from "./timeline";
 import type { Projector } from "./projector";
 import { midpoint } from "./pick";
 
-export interface Layers {
-  loot: boolean;
-  containers: boolean;
-  exfils: boolean;
-  explosives: boolean;
-}
-
 export interface Scene {
   players: Player[];
   catalog: ItemCatalog;

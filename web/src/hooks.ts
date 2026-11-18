@@ -9,8 +9,6 @@ import { fetchRecordings, parseLine, readRecording } from "./recordings";
 import { type ItemCatalog, emptyCatalog } from "./items";
 import { DEFAULT_MAP_SETTINGS, type MapSettings, type PlanPalette } from "./map3d/settings";
 import { type MapEntry, fetchMapIndex } from "./maps";
-import { DEFAULT_LOOT_DENSITY, type LootDensity } from "./declutter";
-import type { Layers } from "./render";
 
 export interface LiveState {
   state: RadarState;
@@ -151,23 +149,14 @@ export function useTrailPrefs() {
 }
 
 export interface LootPrefs {
-  /** Items worth less than this (₽, per unit) never get a map label; unpriced items count as 0. */
-  minLabelPrice: number;
-  /** Which loose item markers drop out as you zoom out (declutter.ts). */
-  density: LootDensity;
   /** Quest items: only those a quest in progress still needs, or all of them. */
   questItems: "needed" | "all";
 }
 
+/** (radar.loot also held the loot density and label threshold of older versions: rules/store.ts
+ *  turns them into rules once.) */
 export function useLootPrefs() {
-  return usePersistentState<LootPrefs>("radar.loot", { minLabelPrice: 0, density: DEFAULT_LOOT_DENSITY, questItems: "needed" });
-}
-
-const DEFAULT_LAYERS: Layers = { loot: false, containers: false, exfils: true, explosives: true };
-
-export function useLayers(): [Layers, (key: keyof Layers) => void] {
-  const [layers, setLayers] = usePersistentState("radar.layers", DEFAULT_LAYERS);
-  return [layers, (key) => setLayers((l) => ({ ...l, [key]: !l[key] }))];
+  return usePersistentState<LootPrefs>("radar.loot", { questItems: "needed" });
 }
 
 /** Keyboard shortcuts must not fire while the user types into a field. */

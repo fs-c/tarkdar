@@ -1,13 +1,13 @@
 import { Locate, LocateFixed, Navigation } from "lucide-react";
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RadarState } from "../connection";
-import { isTyping, useCatalog, useConnection, useLayers, useLootPrefs, useMapIndex, useMapPrefs, usePersistentState, useQuestData, useTrailPrefs } from "../hooks";
+import { isTyping, useCatalog, useConnection, useLootPrefs, useMapIndex, useMapPrefs, usePersistentState, useQuestData, useTrailPrefs } from "../hooks";
 import { knownQuestItems, neededQuestItems, questItemLabels, withoutUnneededQuestItems } from "../quests";
 import { describeEvent } from "../events";
 import type { MapStats } from "../map3d/Map3D";
 import { findMap, mapUrl } from "../maps";
 import { type Highlight, type Match, allRows } from "../highlight/match";
-import { builtinRules } from "../rules/defaults";
+import { standingRuleId, storedRules, useRuleStore } from "../rules/store";
 import { highlightId, highlightRules, useRules } from "../rules/useRules";
 import { isFiltered, rowKeys } from "../list/rows";
 import { withoutGunners } from "../vehicles";
@@ -116,7 +116,6 @@ export function App() {
   const [mapPrefs, setMapPrefs] = useMapPrefs();
   const map = (locationId ? findMap(mapIndex, locationId) : undefined) ?? null;
   const radar = useRef<RadarHandle>(null);
-  const [layers, toggleLayer] = useLayers();
   const [follow, setFollow] = useState(true);
   // While following: the map turns with the local player's view direction.
   const [followHeading, setFollowHeading] = useState(false);
@@ -132,12 +131,20 @@ export function App() {
   // Highlights (the global search): kept for the session. The search's preview counts as one.
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [preview, setPreview] = useState<Match | null>(null);
-  // The display rules (rules/): built-in ones (with the Map panel's settings), highlights on top.
-  const builtin = useMemo(
-    () => builtinRules({ layers, density: lootPrefs.density, minLabelPrice: lootPrefs.minLabelPrice }),
-    [layers, lootPrefs.density, lootPrefs.minLabelPrice],
-  );
-  const rules = useMemo(() => [...builtin, ...highlightRules(highlights, preview)], [builtin, highlights, preview]);
+  // The display rules (rules/): built-in ones (as changed in the Map view), hidden groups, standing
+  // rules; highlights on top.
+  const [ruleStore, setRuleStore] = useRuleStore();
+  const stored = useMemo(() => storedRules(ruleStore), [ruleStore]);
+  const rules = useMemo(() => [...stored, ...highlightRules(highlights, preview)], [stored, highlights, preview]);
+  /** A highlight becomes a standing rule (on top of the others): its matches keep its colour and show
+   *  at every zoom, whatever the groups say. */
+  const pinHighlight = (h: Highlight) => {
+    setRuleStore((r) => {
+      const n = Math.max(0, ...r.mine.map((m) => Number(m.id.split(":")[1]) || 0)) + 1;
+      return { ...r, mine: [...r.mine, { id: standingRuleId(n), label: h.label, kind: h.group, match: h.match, style: { color: h.color, show: 0 }, on: true }] };
+    });
+    setHighlights((hs) => hs.filter((x) => x.id !== h.id));
+  };
   const styled = useRules(list.all, rules, catalog);
   const highlightMatches = useMemo(() => new Map(highlights.map((h) => [h.id, styled.matched.get(highlightId(h.id)) ?? []])), [highlights, styled.matched]);
   const everything = useMemo(() => allRows(list.all), [list.all]);
@@ -345,13 +352,14 @@ export function App() {
       case "map":
         return (
           <MapPanel
+            rules={ruleStore}
+            setRules={setRuleStore}
+            matched={styled.matched}
             trails={trailPrefs}
             onTrails={setTrailPrefs}
             loot={lootPrefs}
             onLoot={setLootPrefs}
             questInfo={questInfo}
-            layers={layers}
-            onToggleLayer={toggleLayer}
           />
         );
       case "raids":
@@ -480,6 +488,7 @@ export function App() {
             catalog={catalog}
             local={local?.pos ?? null}
             onPreview={setPreview}
+            onPin={pinHighlight}
             onShow={showOnMap}
           />
           {selection && (

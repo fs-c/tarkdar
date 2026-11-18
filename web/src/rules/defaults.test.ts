@@ -5,7 +5,7 @@ import type { AnyRow, SubjectKind } from "../list/rows";
 import type { PlayerType } from "../roles";
 import { EMPHASIS_SCALE, MARKER_SIZE } from "../style";
 import { ui } from "../theme";
-import { builtinRules, prefRules } from "./defaults";
+import { BUILTIN_RULES } from "./defaults";
 import { type Emphasis, type Style, applyRules } from "./rules";
 
 // The looks as they were before they became rules (style.ts, f2193bc): the built-in rules must give
@@ -33,7 +33,7 @@ const OLD_LOOT_LOOK = {
 };
 const PROMINENCE_TO_EMPHASIS: Record<string, Emphasis> = { minor: "faint", normal: "normal", special: "strong", boss: "loud" };
 
-const DEFAULTS = builtinRules({ layers: { loot: true, containers: true, exfils: true, explosives: true }, density: "all", minLabelPrice: 0 });
+const DEFAULTS = [...BUILTIN_RULES];
 
 /** A row of just what the rules look at. */
 const row = (key: string, subject: SubjectKind, extra: Partial<AnyRow> & Record<string, unknown> = {}) =>
@@ -68,32 +68,14 @@ describe("built-in rules", () => {
     }
   });
 
+  it("drop cheaper items first as you zoom out (the old default density, \"fewer\")", () => {
+    expect(styleOf(row("loot:1", "item", { value: 5_000 })).show).toBe(1);
+    expect(styleOf(row("loot:1", "item", { value: 50_000 })).show).toBe(0.4);
+    expect(styleOf(row("loot:1", "item", { value: 500_000 })).show).toBe(0);
+    expect(styleOf(row("loot:1", "quest")).show).toBe(0);
+  });
+
   it("have unique ids", () => {
-    const all = [...DEFAULTS, ...prefRules({ layers: { loot: false, containers: false, exfils: false, explosives: false }, density: "fewest", minLabelPrice: 1 })];
-    expect(new Set(all.map((r) => r.id)).size).toBe(all.length);
-  });
-});
-
-describe("Map panel settings as rules", () => {
-  const prefs = { layers: { loot: true, containers: true, exfils: true, explosives: true }, density: "all" as const, minLabelPrice: 0 };
-
-  it("nothing to say for the defaults that change nothing", () => {
-    expect(prefRules(prefs)).toEqual([]);
-  });
-
-  it("drop cheaper items from a level of detail on, by density", () => {
-    const rules = builtinRules({ ...prefs, density: "fewer" });
-    expect(styleOf(row("loot:1", "item", { value: 5_000 }), rules).show).toBe(1);
-    expect(styleOf(row("loot:1", "item", { value: 50_000 }), rules).show).toBe(0.4);
-    expect(styleOf(row("loot:1", "item", { value: 500_000 }), rules).show).toBe(0);
-    expect(styleOf(row("loot:1", "quest"), rules).show).toBe(0);
-  });
-
-  it("hide layers that are off, whatever else applies", () => {
-    const rules = builtinRules({ ...prefs, density: "fewest", layers: { ...prefs.layers, loot: false, exfils: false } });
-    expect(styleOf(row("loot:1", "item", { value: 5_000 }), rules).show).toBeNull();
-    expect(styleOf(row("loot:1", "quest"), rules).show).toBeNull();
-    expect(styleOf(row("exfil:1", "exfil"), rules).show).toBeNull();
-    expect(styleOf(row("loot:2", "container"), rules).show).toBe(0);
+    expect(new Set(DEFAULTS.map((r) => r.id)).size).toBe(DEFAULTS.length);
   });
 });

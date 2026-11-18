@@ -4,9 +4,8 @@ import { topDownProjector } from "./projector.fixture";
 import type { Exfil, LootEntry, Player } from "./protocol";
 import { type Scene, renderMarkers } from "./render";
 import type { Match } from "./highlight/match";
-import type { MapDisplayPrefs } from "./rules/defaults";
 import { highlightRule } from "./rules/rules";
-import { stylesFor } from "./rules/rules.fixture";
+import { type LegacyPrefs, storeFrom, stylesFor } from "./rules/rules.fixture";
 
 /** A canvas context that records the text and the filled rectangles drawn (text is 6 px a character). */
 function fakeCtx() {
@@ -33,16 +32,16 @@ const player = (id: number): Player => ({ id, local: false, ai: false, side: "us
 const loot = (id: number, kind: LootEntry["kind"], tpl = ""): LootEntry => ({ id, kind, tpl, obj: "", pos: [0, 0, 0] });
 const exfil: Exfil = { id: 1, kind: "regular", name: "Gate", status: 4, pos: [0, 0, 0] };
 
-/** Draws the scene at a level of detail (declutter.ts), styled by the built-in rules with these Map
- *  panel settings, and a highlight. */
-function draw(detail: number, patch: Partial<Scene>, prefs: Partial<MapDisplayPrefs> = {}, highlight?: Match) {
+/** Draws the scene at a level of detail (declutter.ts), styled by the built-in rules as made from these
+ *  (old) Map panel settings, and a highlight. */
+function draw(detail: number, patch: Partial<Scene>, prefs: LegacyPrefs = {}, highlight?: Match) {
   const base: Scene = {
     players: [], catalog, exfils: [], explosives: { grenades: [], tripwires: [] }, vehicles: [], loot: [], questLabels: new Map(),
     styles: new Map(), selected: null, hovered: null, debugPoints: [], trails: null, bodies: false,
     ...patch,
   };
   const extra = highlight ? [highlightRule("h", "", highlight, "#f00", true)] : [];
-  const scene = { ...base, styles: stylesFor(base, prefs, extra, catalog) };
+  const scene = { ...base, styles: stylesFor(base, storeFrom(prefs), extra, catalog) };
   const f = fakeCtx();
   renderMarkers(f.ctx, topDownProjector(200, 200, 4 * detail), scene);
   return f;
@@ -107,7 +106,7 @@ describe("item markers by zoom", () => {
   });
 });
 
-describe("Map panel settings as rules", () => {
+describe("the old Map panel settings, as rules", () => {
   it("label only items worth at least the minimum price", () => {
     const items = [loot(1, "item", "cheap"), loot(2, "item", "dear")];
     expect(draw(3, { loot: items }, { minLabelPrice: 0 }).texts.sort()).toEqual(["cheap 5k", "dear 500k"]);

@@ -114,9 +114,14 @@ for a raid → in raid → cooldown → waiting for a raid.
   ordered list of rules, each a match (`web/src/highlight/match.ts`) and the style properties it sets
   (visibility from a level of detail on, colour, emphasis, label, ring). A thing starts from its kind's
   base style; every rule that matches sets its properties on top, later rules winning property by
-  property. Bottom to top: the built-in rules (today's looks by player type and item value, and the
-  Map panel's layers, loot density and label threshold), then highlights from the global search, so a
-  highlight beats anything that hides. Map, figures, trails, picking and the list all read the result.
+  property. Bottom to top: the built-in rules (looks by player type, loose items by value, the other
+  kinds of things), groups switched off (the old map layers), standing rules (pinned highlights), then
+  highlights from the global search; so standing rules and highlights beat anything that hides. Map,
+  figures, trails, picking and the list all read the result.
+- **The Map view edits the rules** (`web/src/components/MapPanel.tsx`). Built-in rules can be changed
+  and reset, not removed; only the changes are stored (`web/src/rules/store.ts`, by rule id), so
+  changed defaults in code still reach every rule nobody touched. Loot density and the label
+  threshold are no settings of their own: they are the item rules' "shown" and "label".
 - **Not rules, on purpose:** each kind's shape and what an emphasis means for it (`web/src/style.ts`),
   a thing's state (the dead are grey, those who left faded, an exfil's colour is its status), the local
   player, and where labels go.

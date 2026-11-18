@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { pick, selectedPosition } from "./pick";
 import { type Exfil, JOINT_COUNT, Joint, type LootEntry, type Player, type WorldPos } from "./protocol";
-import type { Layers } from "./render";
 import { topDownProjector } from "./projector.fixture";
 import { highlightRule } from "./rules/rules";
-import { type Things, stylesFor } from "./rules/rules.fixture";
+import { type LegacyPrefs, type Things, storeFrom, stylesFor } from "./rules/rules.fixture";
 
 // 2 px/m, north up, 200×200 centred on the origin: world (x, z) lands at screen (100 + 2x, 100 − 2z).
 const view = topDownProjector(200, 200, 2);
@@ -13,9 +12,10 @@ const player = (id: number, x: number, z: number): Player =>
 const loot = (id: number, kind: LootEntry["kind"], x: number, z: number): LootEntry => ({ id, kind, tpl: "", obj: "", pos: [x, 0, z] });
 const exfil = (id: number, x: number, z: number): Exfil => ({ id, kind: "regular", name: "e", status: 4, pos: [x, 0, z] });
 const none = { grenades: [], tripwires: [] };
+type Layers = NonNullable<LegacyPrefs["layers"]>;
 const all: Layers = { loot: true, containers: true, exfils: true, explosives: true };
-/** The display rules' styles for these things with these layers. */
-const shown = (src: Things, layers: Layers = all) => stylesFor(src, { layers });
+/** The display rules' styles for these things with these (old) layer settings. */
+const shown = (src: Things, layers: Layers = all) => stylesFor(src, storeFrom({ layers }));
 
 describe("pick", () => {
   it("picks the nearest marker within its radius", () => {
@@ -42,7 +42,7 @@ describe("pick", () => {
 
   it("picks highlighted things on a hidden layer", () => {
     const src = { players: [], exfils: [exfil(1, 0, 0)], loot: [], explosives: none };
-    const highlighted = stylesFor(src, { layers: { ...all, exfils: false } }, [highlightRule("h", "", { subjects: ["exfil"] }, "red", true)]);
+    const highlighted = stylesFor(src, storeFrom({ layers: { ...all, exfils: false } }), [highlightRule("h", "", { subjects: ["exfil"] }, "red", true)]);
     expect(pick(view, src, highlighted, 100, 100)).toEqual({ kind: "exfil", id: 1 });
   });
 

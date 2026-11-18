@@ -1,9 +1,10 @@
 // The global search (top left of the map, or /): highlights things across everything the radar knows,
 // without hiding anything (filtering is the list's job). Typing suggests what the query could mean;
 // the active suggestion previews on the map; Enter (or a click) keeps it as a pill. Pills: click to
-// switch on/off, the count steps through the matches (nearest first), × removes.
+// switch on/off, the count steps through the matches (nearest first), the pin keeps it as a standing
+// rule (the Map view), × removes.
 
-import { Highlighter, X } from "lucide-react";
+import { Highlighter, Pin, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isTyping } from "../hooks";
 import { type Highlight, type Match, matchingRows, nextColor } from "../highlight/match";
@@ -28,11 +29,13 @@ interface Props {
   onPreview: (m: Match | null) => void;
   /** Select a match and bring it into view. */
   onShow: (sel: Selection) => void;
+  /** Keep it as a standing rule (the Map view's "Mine"). */
+  onPin: (h: Highlight) => void;
 }
 
 let nextId = 1;
 
-export function Highlights({ highlights, setHighlights, matched, rows, catalog, local, onPreview, onShow }: Props) {
+export function Highlights({ highlights, setHighlights, matched, rows, catalog, local, onPreview, onShow, onPin }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -130,6 +133,9 @@ export function Highlights({ highlights, setHighlights, matched, rows, catalog, 
               </button>
               <button type="button" className={s.count} disabled={!n} title={n ? `Show the next one (${n} in all, nearest first)` : "Nothing matches right now"} onClick={() => step(h)}>
                 {n}
+              </button>
+              <button type="button" className={s.pin} title="Keep as a standing rule (Map view, Mine)" onClick={() => onPin(h)}>
+                <Pin size={11} />
               </button>
               <button type="button" className={s.remove} title="Remove" onClick={() => remove(h.id)}>
                 <X size={12} />

@@ -53,6 +53,8 @@ where each marked thing is on screen now, and how far away it is.
 
 - **Frames:** drawn when the compositor's frame callback asks for one, without waiting for vsync;
   nothing is drawn while the overlay is off or there's no camera.
+- **Players:** their full skeleton (limbs and head, as the map draws figures) when it's readable;
+  otherwise, or when the figure would be under 30 px tall, a line from the feet to head height.
 - **Delay:** Looking Glass shows the game's picture a little after the game rendered it, while
   the camera is read as it is now. A configurable delay draws with the camera reading from that
   long ago.

@@ -1,7 +1,7 @@
 // radar-overlay-demo: the overlay window with a made-up scene, no game needed. For checking the window
 // itself on a desktop: that it covers the right monitor, above fullscreen windows, lets clicks
 // through, and how the marks look. The camera turns slowly on the spot; players stand in a ring
-// around it, with loot, an exfil and the ground grid.
+// around it (every other one with a skeleton), with loot, an exfil and the ground grid.
 //
 //   radar-overlay-demo [--output <name>] [--font <file>] [--scoped] [--seconds <n>]
 
@@ -62,6 +62,14 @@ Mat4 multiply(const Mat4& a, const Mat4& b) {
     return out;
 }
 
+// A person standing upright, facing +z: joints relative to the feet (Joint order).
+eft::Joints standing() {
+    return {{{0, 0, 0},         {-0.12f, 0.05f, 0}, {0.12f, 0.05f, 0}, {0, 0.95f, 0},       {0, 1.4f, 0},
+             {0, 1.55f, 0},     {0, 1.65f, 0},      {-0.1f, 0.9f, 0},  {-0.11f, 0.5f, 0},   {0.1f, 0.9f, 0},
+             {0.11f, 0.5f, 0},  {-0.2f, 1.45f, 0},  {-0.25f, 1.15f, 0}, {-0.27f, 0.9f, 0}, {0.2f, 1.45f, 0},
+             {0.25f, 1.15f, 0}, {0.27f, 0.9f, 0}}};
+}
+
 // A camera that turns with time.
 class TurningCamera final : public eft::CameraReader {
 public:
@@ -105,6 +113,7 @@ void publishScene(eft::WorldState& world, sched::Published<overlay::Config>& con
     for (const Who& w : who) {
         const float b = w.bearing * std::numbers::pi_v<float> / 180;
         players.players.push_back({.id = id, .position = Vec3{std::sin(b) * w.distance, 0, std::cos(b) * w.distance}});
+        if (id % 2 == 0) players.players.back().joints = standing();  // the others: no skeleton, a plain line
         if (w.label[0]) c.marks.push_back({.kind = MarkKind::Player, .id = id, .color = w.color, .label = w.label, .emphasis = w.emphasis});
         ++id;  // the unlabelled one isn't marked: drawn as one of the other players
     }

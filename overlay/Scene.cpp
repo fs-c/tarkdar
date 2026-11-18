@@ -1,6 +1,7 @@
 #include "overlay/Scene.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <format>
 #include <numbers>
@@ -48,6 +49,7 @@ public:
     struct Screen {
         Point at;
         float depth;
+        bool throughScope = false;  // placed through the scope (inside its circle)
     };
     // nullopt: behind the camera, hidden behind the scope's picture, or off the picture.
     [[nodiscard]] std::optional<Screen> toScreen(Vec3 p) const {
@@ -61,7 +63,7 @@ public:
         const auto o = scope_->offset(p);
         if (!o) return std::nullopt;
         const Point at{centre.x + o->x * vp_.height, centre.y - o->y * vp_.height};
-        return insideLens(at, centre) ? std::optional(Screen{at, o->depth}) : std::nullopt;
+        return insideLens(at, centre) ? std::optional(Screen{at, o->depth, true}) : std::nullopt;
     }
     [[nodiscard]] bool scoped() const { return scope_.has_value(); }
     [[nodiscard]] float lensRadius() const { return radius_; }
@@ -87,17 +89,80 @@ void label(DrawList& out, Point at, float offset, const std::string& text, float
     out.items.emplace_back(DrawList::Text{{at.x + offset + 3, at.y - kTextSize / 2}, line, color, kTextSize});
 }
 
+// The figure's limbs (as the map draws them, web/src/render.ts), and the head: a circle this big (m),
+// its centre this far beyond the head bone along neck → head (m).
+constexpr std::pair<eft::Joint, eft::Joint> kBones[] = {
+    {eft::Joint::Pelvis, eft::Joint::Chest},           {eft::Joint::Chest, eft::Joint::Neck},
+    {eft::Joint::Neck, eft::Joint::Head},              {eft::Joint::LeftHip, eft::Joint::RightHip},
+    {eft::Joint::LeftShoulder, eft::Joint::RightShoulder}, {eft::Joint::LeftHip, eft::Joint::LeftKnee},
+    {eft::Joint::LeftKnee, eft::Joint::LeftFoot},      {eft::Joint::RightHip, eft::Joint::RightKnee},
+    {eft::Joint::RightKnee, eft::Joint::RightFoot},    {eft::Joint::LeftShoulder, eft::Joint::LeftElbow},
+    {eft::Joint::LeftElbow, eft::Joint::LeftHand},     {eft::Joint::RightShoulder, eft::Joint::RightElbow},
+    {eft::Joint::RightElbow, eft::Joint::RightHand},
+};
+constexpr float kHeadRadius = 0.12f;
+// Smaller on screen than this (px, feet to head) a skeleton doesn't read: the plain line instead.
+constexpr float kMinSkeletonHeight = 30;
+constexpr float kHeadLift = 0.09f;
+
+// The full skeleton. A limb with one end inside the scope's circle and the other outside isn't drawn:
+// its ends are placed through different views. False if no part of it shows.
+bool drawSkeleton(DrawList& out, const Painter& painter, Vec3 eye, const eft::PlayerState& p, const Mark& m) {
+    const Vec3 base = *p.position;
+    const eft::Joints& joints = *p.joints;
+    std::array<std::optional<Painter::Screen>, eft::kJointCount> at;
+    for (std::size_t i = 0; i < eft::kJointCount; ++i) at[i] = painter.toScreen(base + joints[i]);
+    const float width = widthOf(m.emphasis);
+    bool drawn = false;
+    for (const auto& [from, to] : kBones) {
+        const auto& a = at[static_cast<std::size_t>(from)];
+        const auto& b = at[static_cast<std::size_t>(to)];
+        if (!a || !b || a->throughScope != b->throughScope) continue;
+        out.items.emplace_back(DrawList::Line{a->at, b->at, m.color, width});
+        drawn = true;
+    }
+    // The head: its centre a little beyond the head bone; its size, a point on its rim projected too.
+    const Vec3 head = base + joints[static_cast<std::size_t>(eft::Joint::Head)];
+    const Vec3 up = head - (base + joints[static_cast<std::size_t>(eft::Joint::Neck)]);
+    const float upLength = math::length(up);
+    const Vec3 centre = upLength > 1e-3f ? head + up * (kHeadLift / upLength) : head;
+    const auto c = painter.toScreen(centre);
+    const auto rim = painter.toScreen(centre + Vec3{0, kHeadRadius, 0});
+    if (c) {
+        const float r = rim && rim->throughScope == c->throughScope ? std::hypot(rim->at.x - c->at.x, rim->at.y - c->at.y) : 0.f;
+        out.items.emplace_back(DrawList::Circle{c->at, std::max(r, 2.f), m.color, r > 3 ? width : 0});
+        drawn = true;
+    }
+    if (!drawn) return false;
+    // The label next to the highest point shown.
+    const Painter::Screen* top = nullptr;
+    for (const auto& s : at)
+        if (s && (!top || s->at.y < top->at.y)) top = &*s;
+    if (c && (!top || c->at.y < top->at.y)) top = &*c;
+    if (top) label(out, top->at, sizeAt(top->depth, m.emphasis), m.label, math::length(base - eye), m.color);
+    return true;
+}
+
 void drawPlayer(DrawList& out, const Painter& painter, Vec3 eye, const eft::PlayerState& p, const Mark& m) {
+    if (p.joints) {
+        const auto f = painter.toScreen(*p.position);
+        const auto h = painter.toScreen(*p.position + (*p.joints)[static_cast<std::size_t>(eft::Joint::Head)]);
+        const bool small = f && h && f->throughScope == h->throughScope && std::hypot(f->at.x - h->at.x, f->at.y - h->at.y) < kMinSkeletonHeight;
+        if (!small) {
+            drawSkeleton(out, painter, eye, p, m);
+            return;
+        }
+    }
+    // No skeleton (not readable in full), or too small to read: a line from the feet up to head height.
     const Vec3 feet = *p.position;
-    Vec3 head = feet + Vec3{0, kBody, 0};
-    if (p.joints) head = feet + (*p.joints)[static_cast<std::size_t>(eft::Joint::Head)];
+    const Vec3 head = feet + Vec3{0, kBody, 0};
     const auto f = painter.toScreen(feet), h = painter.toScreen(head);
     if (!f && !h) return;
     const float width = widthOf(m.emphasis);
     const auto& top = h ? *h : *f;
     const float size = sizeAt(top.depth, m.emphasis);
     // Feet to head; just the head (or feet) when only one end shows, e.g. the feet below the picture.
-    if (f && h) out.items.emplace_back(DrawList::Line{f->at, h->at, m.color, width});
+    if (f && h && f->throughScope == h->throughScope) out.items.emplace_back(DrawList::Line{f->at, h->at, m.color, width});
     out.items.emplace_back(DrawList::Circle{top.at, size / 1.5f, m.color, 0});
     label(out, top.at, size, m.label, math::length(feet - eye), m.color);
 }

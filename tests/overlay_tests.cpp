@@ -30,6 +30,14 @@ eft::PlayersSnapshot players(std::uint64_t raid, std::vector<std::pair<std::uint
     return s;
 }
 
+// A person standing upright, facing +z: joints relative to the feet (Joint order).
+eft::Joints standing() {
+    return {{{0, 0, 0},         {-0.12f, 0.05f, 0}, {0.12f, 0.05f, 0}, {0, 0.95f, 0},       {0, 1.4f, 0},
+             {0, 1.55f, 0},     {0, 1.65f, 0},      {-0.1f, 0.9f, 0},  {-0.11f, 0.5f, 0},   {0.1f, 0.9f, 0},
+             {0.11f, 0.5f, 0},  {-0.2f, 1.45f, 0},  {-0.25f, 1.15f, 0}, {-0.27f, 0.9f, 0}, {0.2f, 1.45f, 0},
+             {0.25f, 1.15f, 0}, {0.27f, 0.9f, 0}}};
+}
+
 template <class T>
 std::vector<T> itemsOf(const DrawList& d) {
     std::vector<T> out;
@@ -130,6 +138,36 @@ TEST_CASE("overlay: marked players, loot and exfils") {
     s.config.on = true;
     s.fps.reset();
     CHECK(s.build().empty());
+}
+
+TEST_CASE("overlay: full skeletons") {
+    Scene s;
+    s.players = players(7, {{2, {0, 0, 10}}});
+    s.players.players[1].joints = standing();
+    s.config.marks.push_back({.kind = overlay::MarkKind::Player, .id = 2, .color = {255, 0, 0, 255}, .label = "Killa"});
+    const auto d = s.build();
+    CHECK(itemsOf<DrawList::Line>(d).size() == 13);  // every limb
+    const auto heads = itemsOf<DrawList::Circle>(d);
+    REQUIRE(heads.size() == 1);
+    CHECK(heads[0].center.x == doctest::Approx(960));
+    CHECK(heads[0].radius > 3);  // a real head's size at 10 m
+    CHECK(heads[0].width > 0);
+    CHECK(hasText(d, "Killa 10 m"));
+
+    // Far away, too small to read: the plain line.
+    s.players.players[1].position = Vec3{0, 0, 80};
+    CHECK(itemsOf<DrawList::Line>(s.build()).size() == 1);
+
+    // Through the scope, limbs crossing the scope's circle aren't drawn (their ends would be placed
+    // through different views), the rest are.
+    s.players.players[1].position = Vec3{0, 0, 3};
+    s.camera.scoped = true;
+    s.camera.magnification = 2;
+    s.config.scopeRadius = 0.1f;
+    const auto scoped = s.build();
+    const auto limbs = itemsOf<DrawList::Line>(scoped).size();
+    CHECK(limbs > 0);
+    CHECK(limbs < 13);
 }
 
 TEST_CASE("overlay: through the scope inside its circle, the first-person view outside") {

@@ -59,6 +59,13 @@ const FOLLOW_SPAN = 350;
 
 /** Indoor maps: the floor shown follows the local player once they are this far (metres) above or below it. */
 const FLOOR_FOLLOW = 0.4;
+/**
+ * A floor shown this long (ms) is one the player stood on, not a step on the stairs: arriving
+ * within FLOOR_FOLLOW of it later shows it again at exactly that height, which the map has kept.
+ */
+const FLOOR_SETTLED = 1000;
+/** Floors remembered so, the latest last. */
+const FLOOR_MEMORY = 8;
 /** ... and the buttons move it by this much. */
 const FLOOR_STEP = 1;
 
@@ -90,6 +97,8 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
   const [interior, setInterior] = useState(false);
   const [pickedFloor, setPickedFloor] = useState<number | null>(null);
   const playerFloor = useRef<number | null>(null);
+  const floorSince = useRef(0);
+  const settledFloors = useRef<number[]>([]);
   // Turned away from the map's usual orientation: a button turns it back (its needle points north on screen).
   const [rotated, setRotated] = useState(false);
   const needleRef = useRef<SVGSVGElement>(null);
@@ -163,6 +172,7 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
     setInterior(false);
     setPickedFloor(null);
     playerFloor.current = null;
+    settledFloors.current = [];
     map.load(url, (progress) => live && setStatus({ progress, error: null }), up).then(
       () => {
         if (!live) return;
@@ -203,8 +213,19 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
     if (map?.loaded && interior) {
       // Not every step of a staircase: only once they have left the floor shown.
       const y = scene.players.find((p) => p.local && p.pos)?.pos?.[1];
+      const now = performance.now();
+      const shown = playerFloor.current;
+      const settled = settledFloors.current;
+      if (shown !== null && now - floorSince.current >= FLOOR_SETTLED && !settled.includes(shown)) {
+        settled.push(shown);
+        if (settled.length > FLOOR_MEMORY) settled.shift();
+      }
       if (y === undefined) playerFloor.current = null;
-      else if (playerFloor.current === null || Math.abs(y - playerFloor.current) > FLOOR_FOLLOW) playerFloor.current = y;
+      else if (shown === null || Math.abs(y - shown) > FLOOR_FOLLOW) {
+        const near = settled.filter((f) => Math.abs(y - f) <= FLOOR_FOLLOW).sort((a, b) => Math.abs(y - a) - Math.abs(y - b));
+        playerFloor.current = near[0] ?? y;
+        floorSince.current = now;
+      }
       map.setFloor(pickedFloor ?? playerFloor.current);
     }
     if (map?.loaded) map.requestFrame();

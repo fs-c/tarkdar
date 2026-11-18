@@ -104,6 +104,42 @@ describe("TileCache", () => {
     expect(tiles.ready).toBe(true);
   });
 
+  it("keeps the tiles of floors seen before, and shows them again at once", () => {
+    const { tiles, painted } = cache();
+    tiles.look(view(), 0, "0");
+    paintAll(tiles);
+    const once = painted.length;
+    expect(tiles.look(view(), 0, "3")).toBe(false); // a new floor: painted
+    expect(tiles.ready).toBe(false);
+    paintAll(tiles);
+    expect(painted.length).toBe(2 * once);
+    expect(tiles.look(view(), 0, "0")).toBe(true); // back: nothing to paint
+    expect(tiles.ready).toBe(true);
+    expect(tiles.pending).toBe(0);
+    expect(painted.length).toBe(2 * once);
+    // Only the layer shown is drawn.
+    const drawn = (tiles as unknown as { group: THREE.Group }).group.children.length;
+    expect(drawn).toBeLessThanOrEqual(once);
+    // Another look or zoom: every floor starts over.
+    expect(tiles.look(view(), 1, "3")).toBe(false);
+    expect(tiles.ready).toBe(false);
+  });
+
+  it("does not keep floors that were only passed through", () => {
+    const { tiles, painted } = cache();
+    tiles.look(view(), 0, "0");
+    paintAll(tiles);
+    tiles.look(view(), 0, "1");
+    tiles.paint(1); // left before it was complete
+    tiles.look(view(), 0, "2");
+    paintAll(tiles);
+    const before = painted.length;
+    expect(tiles.look(view(), 0, "1")).toBe(false);
+    paintAll(tiles);
+    expect(painted.length).toBeGreaterThan(before);
+    expect(tiles.look(view(), 0, "0")).toBe(true);
+  });
+
   it("does not paint where there is no map", () => {
     const { tiles, painted } = cache({ min: [0, 0, 0], max: [50, 0, 50] });
     tiles.look(view(), 0);

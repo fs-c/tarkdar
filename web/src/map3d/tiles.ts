@@ -8,8 +8,10 @@
 // and filtered down when drawn: that is the antialiasing, for the outlines and colour steps of
 // the plan style as well, which multisampling does not reach.
 //
-// A tile is only good for one zoom (and one content: style, colours, floor): anything else
-// starts over. Nothing here decides when to paint; Stage does (stage.ts, "Tiles").
+// A tile is only good for one zoom and one content (style, colours): anything else starts over.
+// Within those, the tiles of a few layers (the floors of an indoor map) are kept: going back to a
+// floor shows it at once instead of painting it again. Nothing here decides when to paint; Stage
+// does (stage.ts, "Tiles").
 
 import * as THREE from "three";
 import type { Bounds } from "./dataset";
@@ -23,6 +25,9 @@ const MARGIN = 160;
 /** Texels per device pixel when memory allows it, and what the tiles of a view may take (bytes). */
 const SCALE = 2;
 const MEMORY = 200e6;
+/** Texture memory (bytes) the tiles of layers not shown may keep, and how many such layers at most. */
+const SHELF_MEMORY = 300e6;
+const SHELF_LAYERS = 4;
 /** Turned less than this (radians) off a multiple of 90°, texels and screen pixels line up. */
 const ALIGNED = 1e-5;
 
@@ -63,6 +68,12 @@ interface Tile {
   sheet: Sheet | null;
   /** When a view last needed it (TileCache.clock). */
   used: number;
+}
+
+/** The tiles of a layer that is not shown. */
+interface Shelved {
+  layer: string;
+  tiles: Map<string, Tile>;
 }
 
 interface Missing {
@@ -109,7 +120,10 @@ export function snapShift(view: FlatView): [number, number] {
 }
 
 export class TileCache {
-  private readonly tiles = new Map<string, Tile>();
+  /** The tiles of the layer shown. */
+  private tiles = new Map<string, Tile>();
+  /** Other layers' tiles, painted for the same content and zoom; the one left last at the end. */
+  private shelf: Shelved[] = [];
   private readonly spare: Sheet[] = [];
   private readonly camera = new THREE.OrthographicCamera();
   private readonly scene = new THREE.Scene();
@@ -117,8 +131,9 @@ export class TileCache {
   /** A unit square on the ground; v runs north, as in a tile's texture. */
   private readonly geometry = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
   private readonly inset = { value: new THREE.Vector2(GUTTER / TILE_SIZE, INTERIOR / TILE_SIZE) };
-  /** What the tiles were painted for: content, zoom, scale. */
+  /** What the tiles were painted for: content, zoom, scale; and the layer of `tiles`. */
   private key = "";
+  private layer = "";
   private view: FlatView | null = null;
   private scale = 1;
   /** Size of a tile on the ground in metres. */
@@ -148,16 +163,20 @@ export class TileCache {
 
   /**
    * Takes a view: works out the tiles it needs. `content` identifies what the map looks like;
-   * tiles painted for another content or another zoom are dropped. Returns false if that happened.
+   * tiles painted for another content or another zoom are dropped. `layer` is one of several
+   * pictures of the same content (a floor): the tiles of a few layers are kept. Returns false if
+   * the view starts with no tiles of its own (they were dropped, or the layer is new).
    */
-  look(view: FlatView, content: number): boolean {
+  look(view: FlatView, content: number, layer = ""): boolean {
     const scale = TileCache.scaleFor(view.width, view.height);
     const key = `${content}/${view.pixel}/${scale}`;
-    const kept = key === this.key;
-    if (!kept) {
-      for (const tile of this.tiles.values()) if (tile.sheet) this.retire(tile.sheet);
-      this.tiles.clear();
+    let kept = key === this.key && layer === this.layer;
+    if (key !== this.key) {
+      this.retireAll();
       this.key = key;
+      this.layer = layer;
+    } else if (!kept) {
+      kept = this.switchLayer(layer);
     }
     this.view = view;
     this.scale = scale;
@@ -197,6 +216,43 @@ export class TileCache {
     this.missing.sort((a, b) => +b.visible - +a.visible || a.distance - b.distance);
     this.trim(needed + (needed >> 2) + 2);
     return kept;
+  }
+
+  /**
+   * Shelves the layer shown, if its view was complete (half-painted ones are the floors passed on
+   * a staircase), and takes out `layer`'s tiles if they are on the shelf. Returns whether they were.
+   */
+  private switchLayer(layer: string): boolean {
+    const painted = [...this.tiles.values()].filter((tile) => tile.sheet);
+    if (this.ready && painted.length) {
+      for (const tile of painted) this.group.remove(tile.sheet!.mesh);
+      this.shelf.push({ layer: this.layer, tiles: this.tiles });
+    } else {
+      for (const tile of painted) this.retire(tile.sheet!);
+    }
+    this.tiles = new Map();
+    this.layer = layer;
+    const found = this.shelf.findIndex((s) => s.layer === layer);
+    if (found >= 0) {
+      this.tiles = this.shelf.splice(found, 1)[0]!.tiles;
+      for (const tile of this.tiles.values()) if (tile.sheet) this.group.add(tile.sheet.mesh);
+    }
+    // Within budget: the layers left longest ago go first.
+    const sheets = (s: Shelved) => [...s.tiles.values()].filter((tile) => tile.sheet).length;
+    let held = this.shelf.reduce((n, s) => n + sheets(s), 0);
+    while (this.shelf.length && (this.shelf.length > SHELF_LAYERS || held * TILE_SIZE * TILE_SIZE * 4 > SHELF_MEMORY)) {
+      const old = this.shelf.shift()!;
+      held -= sheets(old);
+      for (const tile of old.tiles.values()) if (tile.sheet) this.discard(tile.sheet);
+    }
+    return found >= 0;
+  }
+
+  /** Lets go of the tiles of every layer; their textures are kept for reuse. */
+  private retireAll(): void {
+    for (const tiles of [this.tiles, ...this.shelf.map((s) => s.tiles)]) for (const tile of tiles.values()) if (tile.sheet) this.retire(tile.sheet);
+    this.tiles = new Map();
+    this.shelf = [];
   }
 
   /** Nothing of the map lies in this tile. */
@@ -309,13 +365,16 @@ export class TileCache {
   /** Lets go of every tile (the view is no longer one that tiles can show). */
   clear(): void {
     for (const tile of this.tiles.values()) if (tile.sheet) this.discard(tile.sheet);
+    for (const shelved of this.shelf) for (const tile of shelved.tiles.values()) if (tile.sheet) this.discard(tile.sheet);
     for (const sheet of this.spare) this.discard(sheet);
     this.tiles.clear();
+    this.shelf = [];
     this.spare.length = 0;
     this.missing = [];
     this.missingVisible = 0;
     this.view = null;
     this.key = "";
+    this.layer = "";
   }
 
   dispose(): void {

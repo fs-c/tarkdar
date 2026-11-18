@@ -418,6 +418,8 @@ export class Stage {
   private flat: FlatView | null = null;
   /** Counts changes to what the map looks like: tiles painted before are stale. */
   private content = 0;
+  /** The floor shown, as a tile layer: the tiles of floors seen before are kept. */
+  private layer = "";
   /** No tile is painted before this time. */
   private hold = 0;
   private lastDirect = 0;
@@ -614,7 +616,7 @@ export class Stage {
   setFloor(floor: number | null): void {
     this.uniforms.cut.value = floor === null ? NO_CUT : floor + CUT_ABOVE_FLOOR;
     this.uniforms.floor.value = floor === null ? -NO_CUT : floor;
-    this.content++;
+    this.layer = floor === null ? "" : String(floor);
   }
 
   /** The height above which nothing is drawn; Infinity without a cut. */
@@ -839,7 +841,7 @@ export class Stage {
     }
     const now = performance.now();
     const tiles = (this.tiles ??= new TileCache(this.paint, this.scene.background as THREE.Color, this.extent));
-    if (!tiles.look(view, this.content)) this.hold = now + SETTLE;
+    if (!tiles.look(view, this.content, this.layer)) this.hold = now + SETTLE;
     if (before && Math.hypot(view.x - before.x, view.z - before.z) > FAST * view.pixel) this.hold = Math.max(this.hold, now + CALM);
     // A tile or two short (the view turned, or moved faster than tiles were painted ahead).
     if (now >= this.hold && tiles.missingInView <= PAINT_NOW) tiles.paint(tiles.missingInView);

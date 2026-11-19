@@ -1,0 +1,23 @@
+.output {
+  display: block; width: 100%; box-sizing: border-box; margin-top: 10px; padding: 6px 8px; resize: vertical;
+  border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--chrome); color: var(--text);
+  font: var(--fs-sm) var(--mono);
+}
+.readout { display: grid; gap: 2px; margin: 6px 0 10px; font-size: var(--fs-sm); }
+.readout > div { display: grid; grid-template-columns: 7.5em 1fr; gap: 8px; }
+.readout dt { color: var(--faint); }
+.readout dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.group { margin-top: 10px; font-size: var(--fs-sm); }
+.group > summary { cursor: pointer; font-weight: 600; padding: 2px 0; }
+.list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 3px; }
+.list > li { display: flex; gap: 6px; align-items: baseline; }
+.quest { display: block !important; }
+.quest summary { cursor: pointer; }
+.mark { flex: none; width: 1em; color: var(--faint); }
+.why { display: block; color: var(--faint); font-size: var(--fs-xs); }
+.quest summary .why { display: inline; margin-left: 6px; }
+.off { opacity: 0.55; }
+.warn { color: var(--warn); }
+.detail { padding: 4px 0 6px 1.2em; display: grid; gap: 4px; }
+.detail code { font: var(--fs-xs) var(--mono); color: var(--faint); }
+.detail p { margin: 0; overflow-wrap: anywhere; }

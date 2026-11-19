@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { type CatalogStatus, loadCatalog } from "./catalog";
-import { type ItemObjectives, type QuestDataStatus, type QuestNames, type SlimTasks, loadQuestData } from "./quests";
+import { type QuestData, loadQuestData } from "./quests";
 import { Connection, type RadarState } from "./connection";
 import { type Backfill, LiveTimeline } from "./liveTimeline";
 import { fetchRecordings, parseLine, readRecording } from "./recordings";
@@ -70,15 +70,8 @@ export function useCatalog(): CatalogState {
 // Quest data (which quest needs which quest item): like the item data, once per page load.
 let questDataLoad: ReturnType<typeof loadQuestData> | null = null;
 
-export interface QuestDataState {
-  tasks: SlimTasks | null;
-  items: ItemObjectives | null;
-  names: QuestNames | null;
-  status: QuestDataStatus;
-}
-
-export function useQuestData(): QuestDataState {
-  const [state, setState] = useState<QuestDataState>({ tasks: null, items: null, names: null, status: { state: "loading", fetchedAt: null } });
+export function useQuestData(): QuestData {
+  const [state, setState] = useState<QuestData>({ tasks: null, items: null, outline: null, names: null, status: { state: "loading", fetchedAt: null } });
   useEffect(() => {
     let live = true;
     void (questDataLoad ??= loadQuestData()).then((loaded) => {

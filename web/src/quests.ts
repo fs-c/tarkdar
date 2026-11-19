@@ -12,7 +12,7 @@
 import { FEED_BASE } from "./catalog";
 import type { LootEntry, QuestState } from "./protocol";
 
-const STORAGE_KEY = "radar.quests.v4";
+const STORAGE_KEY = "radar.quests.v5";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** EQuestStatus: started (and not yet ready to hand in). */
@@ -28,6 +28,10 @@ export type SlimTasks = Record<string, [string, string][]>;
 export type ItemObjective = [string, string[], number, boolean];
 /** Quest id → its objectives for ordinary items. */
 export type ItemObjectives = Record<string, ItemObjective[]>;
+
+/** Quest id → every objective it has, of any type: [objective id, type]. For the debug view: which of
+ *  the game's completed condition ids the quest data knows. */
+export type QuestOutline = Record<string, [string, string][]>;
 
 /** Objective types for ordinary items that can be picked up in a raid. (sellItem, mark, useItem and
  *  buildWeapon involve items too, but not loot.) */
@@ -64,6 +68,18 @@ export function slimTasks(tasksFeed: unknown): SlimTasks {
       if (o?.type === "findQuestItem" && typeof o.id === "string" && typeof o.questItem === "string") finds.push([o.id, o.questItem]);
     }
     out[id] = finds;
+  }
+  return out;
+}
+
+/** Every quest's objectives, of any type: their ids and types. */
+export function questOutline(tasksFeed: unknown): QuestOutline {
+  const tasks = (tasksFeed as { data?: { tasks?: Record<string, { objectives?: unknown }> } })?.data?.tasks;
+  if (!tasks || typeof tasks !== "object") throw new Error("unexpected tasks feed format");
+  const out: QuestOutline = {};
+  for (const [id, task] of Object.entries(tasks)) {
+    const objectives = Array.isArray(task?.objectives) ? (task.objectives as Record<string, unknown>[]) : [];
+    out[id] = objectives.filter((o) => typeof o?.id === "string").map((o) => [o.id as string, typeof o.type === "string" ? o.type : "?"]);
   }
   return out;
 }
@@ -236,6 +252,15 @@ export function neededItems(quests: readonly QuestState[] | null, objectives: It
   return needs;
 }
 
+/** Everything loadQuestData provides; all null when there's no quest data. */
+export interface QuestData {
+  tasks: SlimTasks | null;
+  items: ItemObjectives | null;
+  outline: QuestOutline | null;
+  names: QuestNames | null;
+  status: QuestDataStatus;
+}
+
 interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -245,13 +270,14 @@ interface CachedTasks {
   fetchedAt: number;
   tasks: SlimTasks;
   items: ItemObjectives;
+  outline: QuestOutline;
   names: QuestNames;
 }
 
 function readCache(storage: StorageLike): CachedTasks | null {
   try {
     const c = JSON.parse(storage.getItem(STORAGE_KEY) ?? "null") as CachedTasks | null;
-    return c && typeof c.fetchedAt === "number" && c.tasks && typeof c.tasks === "object" && c.items && typeof c.items === "object" && c.names?.quests && c.names.items
+    return c && typeof c.fetchedAt === "number" && c.tasks && typeof c.tasks === "object" && c.items && typeof c.items === "object" && c.outline && typeof c.outline === "object" && c.names?.quests && c.names.items
       ? c
       : null;
   } catch {
@@ -265,14 +291,14 @@ function readCache(storage: StorageLike): CachedTasks | null {
  */
 export async function loadQuestData(
   opts: { now?: number; storage?: StorageLike; fetchFn?: typeof fetch } = {},
-): Promise<{ tasks: SlimTasks | null; items: ItemObjectives | null; names: QuestNames | null; status: QuestDataStatus }> {
+): Promise<QuestData> {
   const now = opts.now ?? Date.now();
   const storage = opts.storage ?? localStorage;
   const fetchFn = opts.fetchFn ?? fetch.bind(globalThis);
   const cached = readCache(storage);
   const age = cached ? now - cached.fetchedAt : Infinity;
   if (cached && age >= 0 && age < MAX_AGE_MS)
-    return { tasks: cached.tasks, items: cached.items, names: cached.names, status: { state: "ready", fetchedAt: cached.fetchedAt } };
+    return { tasks: cached.tasks, items: cached.items, outline: cached.outline, names: cached.names, status: { state: "ready", fetchedAt: cached.fetchedAt } };
   try {
     const get = async (feed: string) => {
       const res = await fetchFn(`${FEED_BASE}/${feed}`);
@@ -282,16 +308,190 @@ export async function loadQuestData(
     const [feed, en] = await Promise.all([get("tasks"), get("tasks_en")]);
     const tasks = slimTasks(feed);
     const items = slimItemObjectives(feed);
+    const outline = questOutline(feed);
     const names = questNames(feed, en, tasks, items);
     try {
-      storage.setItem(STORAGE_KEY, JSON.stringify({ fetchedAt: now, tasks, items, names } satisfies CachedTasks));
+      storage.setItem(STORAGE_KEY, JSON.stringify({ fetchedAt: now, tasks, items, outline, names } satisfies CachedTasks));
     } catch (e) {
       console.warn("couldn't cache quest data", e);
     }
-    return { tasks, items, names, status: { state: "ready", fetchedAt: now } };
+    return { tasks, items, outline, names, status: { state: "ready", fetchedAt: now } };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
-    if (cached) return { tasks: cached.tasks, items: cached.items, names: cached.names, status: { state: "stale", fetchedAt: cached.fetchedAt, error } };
-    return { tasks: null, items: null, names: null, status: { state: "unavailable", fetchedAt: null, error } };
+    if (cached)
+      return { tasks: cached.tasks, items: cached.items, outline: cached.outline, names: cached.names, status: { state: "stale", fetchedAt: cached.fetchedAt, error } };
+    return { tasks: null, items: null, outline: null, names: null, status: { state: "unavailable", fetchedAt: null, error } };
   }
+}
+
+// ---- debug view ----
+
+/** One objective of a quest in progress, as the quest data has it. */
+export interface QuestDebugObjective {
+  id: string;
+  type: string;
+  done: boolean;
+  /** Find-quest-item objectives: the quest item. Item objectives: the items that count. */
+  items?: string[];
+  count?: number;
+  fir?: boolean;
+}
+
+/** A quest the backend reports in progress, and what the quest data says about it. */
+export interface QuestDebugQuest {
+  id: string;
+  name: string | null;
+  status: number;
+  /** The quest data has this quest. */
+  inData: boolean;
+  /** Completed condition ids as read; null if they couldn't be read. */
+  done: string[] | null;
+  /** Completed condition ids that aren't objectives of the quest in the quest data (a different game
+   *  version's ids?). */
+  unknownDone: string[];
+  objectives: QuestDebugObjective[];
+}
+
+/** One kind of quest item on the map, and whether the filter keeps it. */
+export interface QuestDebugItem {
+  tpl: string;
+  label: string | null;
+  obj: string;
+  /** How many there are (after duplicates are merged). */
+  count: number;
+  /** Some quest in the quest data has a find objective for it. */
+  known: boolean;
+  /** A started quest still needs it. */
+  needed: boolean;
+  shown: boolean;
+  why: string;
+}
+
+export interface QuestDebug {
+  data: QuestDataStatus & { quests: number; withQuestItems: number; withItemObjectives: number };
+  /** The backend's quest list: "unread" until it was read (or an old recording without one). */
+  backend: "unread" | "read";
+  /** The quest item filter's setting, and what it does now. */
+  filter: { on: boolean; effect: string };
+  started: number;
+  readyToHandIn: number;
+  /** Started quests the quest data doesn't have: while there are any, quest items it doesn't know stay. */
+  missing: string[];
+  quests: QuestDebugQuest[];
+  questItems: QuestDebugItem[];
+  /** Loose ordinary items on the map that a started quest needs: all, and those the rule highlights. */
+  neededItemsOnMap: { all: number; specific: number };
+}
+
+const STATUS_NAMES: Record<number, string> = { 2: "started", 3: "ready to hand in" };
+export const questStatusName = (status: number): string => STATUS_NAMES[status] ?? `status ${status}`;
+
+/**
+ * Everything about the quest data and the local player's quests, for the debug view: what the quest data
+ * is, which quests the backend reports and how they match it, and why each quest item on the map shows or
+ * not. `loot` is the loot before the quest item filter; `itemName` names ordinary items.
+ */
+export function questDebugReport(input: {
+  data: QuestData;
+  quests: readonly QuestState[] | null;
+  loot: readonly LootEntry[];
+  filterOn: boolean;
+  itemName: (tpl: string) => string | undefined;
+}): QuestDebug {
+  const { data, quests, loot, filterOn, itemName } = input;
+  const { tasks, items, outline, names } = data;
+  const needed = neededQuestItems(quests, tasks);
+  const known = knownQuestItems(tasks);
+  const labels = questItemLabels(quests, tasks, names);
+  const name = (tpl: string) => itemName(tpl) ?? names?.items[tpl] ?? tpl;
+
+  const debugQuests: QuestDebugQuest[] = (quests ?? []).map((q) => {
+    const inData = !!tasks && Object.hasOwn(tasks, q.id);
+    const done = new Set(q.done ?? []);
+    const finds = new Map((tasks?.[q.id] ?? []).map(([o, tpl]) => [o, tpl]));
+    const itemObjs = new Map((items?.[q.id] ?? []).map((o) => [o[0], o]));
+    const all = outline?.[q.id] ?? [];
+    const objectiveIds = new Set(all.map(([id]) => id));
+    const objectives = all.map(([id, type]): QuestDebugObjective => {
+      const o: QuestDebugObjective = { id, type, done: done.has(id) };
+      const tpl = finds.get(id);
+      if (tpl) o.items = [name(tpl)];
+      const io = itemObjs.get(id);
+      if (io) Object.assign(o, { items: io[1].map(name), count: io[2], fir: io[3] });
+      return o;
+    });
+    return {
+      id: q.id,
+      name: names?.quests[q.id] ?? null,
+      status: q.status,
+      inData,
+      done: q.done,
+      unknownDone: inData && outline ? (q.done ?? []).filter((d) => !objectiveIds.has(d)) : [],
+      objectives,
+    };
+  });
+  // Quests the data doesn't have first, then by name.
+  debugQuests.sort((a, b) => Number(a.inData) - Number(b.inData) || (a.name ?? a.id).localeCompare(b.name ?? b.id));
+
+  const byTpl = new Map<string, { obj: string; count: number }>();
+  for (const l of loot) {
+    if (l.kind !== "quest") continue;
+    const e = byTpl.get(l.tpl);
+    if (e) e.count++;
+    else byTpl.set(l.tpl, { obj: l.obj, count: 1 });
+  }
+  const questItems = [...byTpl].map(([tpl, { obj, count }]): QuestDebugItem => {
+    const isKnown = known.has(tpl);
+    const isNeeded = !!needed?.items.has(tpl);
+    let shown = true;
+    let why: string;
+    if (!filterOn) why = "filter off: all quest items show";
+    else if (!tasks) why = "no quest data: all show";
+    else if (!needed) why = "quests not read: all show";
+    else if (isNeeded) why = "a started quest needs it";
+    else if (!isKnown && !needed.complete) why = "unknown to the quest data, and some started quests are too: kept";
+    else {
+      shown = false;
+      why = isKnown ? "no started quest needs it" : "unknown to the quest data";
+    }
+    return { tpl, label: labels.get(tpl) ?? null, obj, count, known: isKnown, needed: isNeeded, shown, why };
+  });
+  questItems.sort((a, b) => Number(b.shown) - Number(a.shown) || (a.label ?? a.obj).localeCompare(b.label ?? b.obj));
+
+  const needs = neededItems(quests, items, names);
+  let all = 0, specific = 0;
+  for (const l of loot) {
+    const n = l.kind === "item" ? needs.get(l.tpl) : undefined;
+    if (!n?.length) continue;
+    all++;
+    if (n.some(isSpecific)) specific++;
+  }
+
+  const taskValues = Object.values(tasks ?? {});
+  const missing = (quests ?? []).filter((q) => q.status === QUEST_STARTED && !(tasks && Object.hasOwn(tasks, q.id))).map((q) => q.id);
+  const effect = !filterOn
+    ? "off: all quest items show"
+    : !tasks
+      ? "no quest data: all quest items show"
+      : !needed
+        ? "quests not read: all quest items show"
+        : needed.complete
+          ? "only quest items started quests need show"
+          : `${missing.length} started quests unknown to the quest data: quest items it doesn't know show too`;
+  return {
+    data: {
+      ...data.status,
+      quests: taskValues.length,
+      withQuestItems: taskValues.filter((f) => f.length).length,
+      withItemObjectives: Object.keys(items ?? {}).length,
+    },
+    backend: quests ? "read" : "unread",
+    filter: { on: filterOn, effect },
+    started: (quests ?? []).filter((q) => q.status === QUEST_STARTED).length,
+    readyToHandIn: (quests ?? []).filter((q) => q.status !== QUEST_STARTED).length,
+    missing,
+    quests: debugQuests,
+    questItems,
+    neededItemsOnMap: { all, specific },
+  };
 }

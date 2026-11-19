@@ -2,7 +2,8 @@ import { Locate, LocateFixed, Navigation } from "lucide-react";
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type RadarState, wsUrl } from "../connection";
 import { isTyping, useCatalog, useConnection, useLootPrefs, useMapIndex, useMapPrefs, usePersistentState, useQuestData, useTrailPrefs } from "../hooks";
-import { knownQuestItems, neededItems, neededQuestItems, questItemLabels, withoutUnneededQuestItems } from "../quests";
+import { knownQuestItems, neededItems, neededQuestItems, questDebugReport, questItemLabels, withoutUnneededQuestItems } from "../quests";
+import { withoutDuplicateLoot } from "../dedupe";
 import { describeEvent } from "../events";
 import { DEFAULT_OVERLAY_PREFS, type OverlayPrefs, overlayData, overlayMarks } from "../overlay/marks";
 import { useOverlaySync } from "../overlay/useOverlaySync";
@@ -26,6 +27,7 @@ import { ListPanel } from "./ListPanel";
 import { MapPanel } from "./MapPanel";
 import { RaidsPanel } from "./RaidsPanel";
 import type { RadarHandle } from "./Radar";
+import { DebugPanel } from "./DebugPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { StyleSwitch } from "./StyleSwitch";
 import { PlaybackBar } from "./PlaybackBar";
@@ -63,8 +65,11 @@ export function App() {
   const [trailPrefs, setTrailPrefs] = useTrailPrefs();
   const [lootPrefs, setLootPrefs] = useLootPrefs();
 
-  // Quest items nobody needs are left out everywhere (map, list, search), unless all are wanted.
-  const { tasks: questTasks, items: questItemObjectives, names: questNames, status: questDataStatus } = useQuestData();
+  // Copies of the same loot at the same spot are merged, and quest items nobody needs are left out
+  // everywhere (map, list, search), unless all are wanted.
+  const questData = useQuestData();
+  const { tasks: questTasks, items: questItemObjectives, names: questNames, status: questDataStatus } = questData;
+  const deduped = useMemo(() => withoutDuplicateLoot(unfiltered.loot), [unfiltered.loot]);
   const knownQuest = useMemo(() => knownQuestItems(questTasks), [questTasks]);
   const neededQuest = useMemo(() => neededQuestItems(unfiltered.quests, questTasks), [unfiltered.quests, questTasks]);
   const questLabels = useMemo(() => questItemLabels(unfiltered.quests, questTasks, questNames), [unfiltered.quests, questTasks, questNames]);
@@ -72,9 +77,9 @@ export function App() {
   const questNeeds = useMemo(() => neededItems(unfiltered.quests, questItemObjectives, questNames), [unfiltered.quests, questItemObjectives, questNames]);
   const filterQuest = lootPrefs.questItems !== "all";
   const state: RadarState = useMemo(() => {
-    const loot = withoutUnneededQuestItems(unfiltered.loot, filterQuest ? neededQuest : null, knownQuest);
+    const loot = withoutUnneededQuestItems(deduped, filterQuest ? neededQuest : null, knownQuest);
     return loot === unfiltered.loot ? unfiltered : { ...unfiltered, loot };
-  }, [unfiltered, filterQuest, neededQuest, knownQuest]);
+  }, [unfiltered, deduped, filterQuest, neededQuest, knownQuest]);
   const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
   const questInfo = !questTasks
     ? `no quest data (${questDataStatus.state}): all shown`
@@ -166,7 +171,7 @@ export function App() {
 
   // Side panel: open or collapsed, and which section it shows (for "list", the list tab in listPrefs).
   // The Raids view has two levels: the list of raids, and the shown raid's timeline.
-  type Section = "list" | "map" | "raids" | "settings";
+  type Section = "list" | "map" | "raids" | "debug" | "settings";
   const [storedUi, setUi] = usePersistentState<{ open: boolean; section: Section; raidsLevel: "list" | "timeline" }>("radar.sidebar", {
     open: false,
     section: "list",
@@ -179,7 +184,7 @@ export function App() {
   }, [legacyTimeline, setUi]);
   const ui = legacyTimeline
     ? { ...storedUi, section: "raids" as const, raidsLevel: "timeline" as const }
-    : (["list", "map", "raids", "settings"] as string[]).includes(storedUi.section)
+    : (["list", "map", "raids", "debug", "settings"] as string[]).includes(storedUi.section)
       ? storedUi
       : { ...storedUi, section: "list" as const };
   const view: ViewId = ui.section === "list" ? listPrefs.tab : ui.section;
@@ -204,7 +209,7 @@ export function App() {
   }, [listShown]);
   const pickView = (v: ViewId) => {
     if (ui.open && v === view) return setUi((u) => ({ ...u, open: false }));
-    if (v === "map" || v === "raids" || v === "settings") return setUi((u) => ({ ...u, open: true, section: v }));
+    if (v === "map" || v === "raids" || v === "debug" || v === "settings") return setUi((u) => ({ ...u, open: true, section: v }));
     setListPrefs((p) => ({ ...p, tab: v }));
     setUi((u) => ({ ...u, open: true, section: "list" }));
   };
@@ -418,9 +423,9 @@ export function App() {
             onCurrent={openCurrent}
           />
         );
-      case "settings":
+      case "debug":
         return (
-          <SettingsPanel
+          <DebugPanel
             prefs={mapPrefs}
             onPrefs={setMapPrefs}
             mapShown={!!map}
@@ -429,6 +434,21 @@ export function App() {
             view={map ? mapView : null}
             pickOutput={pickOutput()}
             onClearPicks={() => setDebugPicks([])}
+            quests={questDebugReport({
+              data: questData,
+              quests: unfiltered.quests,
+              loot: deduped,
+              filterOn: filterQuest,
+              itemName: (tpl) => catalog.lookup(tpl)?.name,
+            })}
+            duplicates={unfiltered.loot.length - deduped.length}
+          />
+        );
+      case "settings":
+        return (
+          <SettingsPanel
+            prefs={mapPrefs}
+            onPrefs={setMapPrefs}
             overlay={{ available: conn.overlay, prefs: overlayPrefs, onPrefs: setOverlayPrefs, marks: overlayConfig?.marks.length ?? null }}
           />
         );
@@ -467,7 +487,7 @@ export function App() {
               onPan={() => setFollow(false)}
               onTurn={() => setFollowHeading(false)}
               onTap={onTap}
-              onStats={ui.open && ui.section === "settings" ? onMapStats : undefined}
+              onStats={ui.open && ui.section === "debug" ? onMapStats : undefined}
             />
           </Suspense>
           {timeline && range && (

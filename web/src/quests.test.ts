@@ -104,6 +104,7 @@ describe("quests", () => {
     expect(first.status.state).toBe("ready");
     expect(first.tasks?.q2).toEqual([["o4", "itemC"]]);
     expect(first.items).toEqual({});
+    expect(first.outline?.q1).toEqual([["o1", "findQuestItem"], ["o2", "giveQuestItem"], ["o3", "findQuestItem"]]);
     const cached = await loadQuestData({ now: 2000, storage, fetchFn: failing });
     expect(cached.status.state).toBe("ready");
     expect(first.names).toEqual(NAMES);
@@ -112,8 +113,9 @@ describe("quests", () => {
     const stale = await loadQuestData({ now: 1000 + 2 * 24 * 3600 * 1000, storage, fetchFn: failing });
     expect(stale.status.state).toBe("stale");
     expect(stale.tasks).toEqual(first.tasks);
+    expect(stale.outline).toEqual(first.outline);
     const none = await loadQuestData({ now: 0, storage: { getItem: () => null, setItem: () => {} }, fetchFn: failing });
-    expect(none).toMatchObject({ tasks: null, items: null, names: null, status: { state: "unavailable" } });
+    expect(none).toMatchObject({ tasks: null, items: null, outline: null, names: null, status: { state: "unavailable" } });
   });
 });
 

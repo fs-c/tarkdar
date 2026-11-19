@@ -1,0 +1,8 @@
+- work out quest item kinks
+    - it doesn't seem to be properly filtered to active quests
+- the highlight style system is inconsistent; if I search for something and then pin it, it get's de-emphasized? that shouldn't happen
+- at least as an experiment: make every rule a custom one which can be removed/customized etc. (= including built-in ones)
+    - in general allow for more flexibility, e.g. highlighting high-penetration ammo
+    - allow for all kinds of styles to be applied (in particular also the ring + forced label)
+- improve assets system
+    - frequently accidentally lose changes on pull, maybe do git style conflict resolution

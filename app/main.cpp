@@ -163,12 +163,13 @@ int main(int argc, char** argv) {
 
     std::jthread lifecycleThread([&](std::stop_token stop) { lifecycle.run(stop); });
     std::jthread feedThread([&](std::stop_token stop) { feed.run(stop); });
-    overlay::Frames overlayFrames(world, overlayConfig);
+    overlay::Frames overlayFrames(world, overlayConfig, options->overlayStretch);
     std::jthread overlayThread;
 #ifdef RADAR_HAVE_OVERLAY_WINDOW
     if (options->overlay)
         overlayThread = std::jthread([&](std::stop_token stop) {
-            const overlay::WindowOptions windowOptions{.output = options->overlayOutput, .font = options->overlayFont};
+            const overlay::WindowOptions windowOptions{
+                .output = options->overlayOutput, .font = options->overlayFont, .test = options->overlayTest};
             if (auto r = overlay::runOverlayWindow(stop, windowOptions, overlayFrames); !r)
                 log::error("overlay: {}", r.error());
         });

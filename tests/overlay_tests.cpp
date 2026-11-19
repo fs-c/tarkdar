@@ -58,10 +58,11 @@ struct Scene {
     eft::PlayersSnapshot players = ::players(7, {});
     eft::LootSnapshot loot{};
     eft::ExfilsSnapshot exfils{};
+    bool stretch = false;
 
     DrawList build() const {
         return overlay::buildScene({.config = config, .camera = camera, .fps = fps, .optic = optic, .players = players,
-                                    .loot = loot, .exfils = exfils, .surfaceWidth = 1920, .surfaceHeight = 1080});
+                                    .loot = loot, .exfils = exfils, .surfaceWidth = 1920, .surfaceHeight = 1080, .stretch = stretch});
     }
 };
 
@@ -82,6 +83,21 @@ TEST_CASE("overlay: projection and letterboxing") {
     CHECK(vp.width == 1920);
     CHECK(vp.height == doctest::Approx(1080));
     CHECK(vp.y == doctest::Approx(60));
+}
+
+TEST_CASE("overlay: a 4:3 picture letterboxed or stretched to 16:9") {
+    Scene s;
+    s.fps = cameraAt({0, 1.7f, 0}, 90, 4.f / 3.f);
+    // Halfway to the right edge of the view: NDC x = 0.5 (tan 45° · 4/3 · 0.5 = 2/3 of the depth).
+    s.players = players(7, {{2, {20.f / 3, 0, 10}}});
+    s.config.marks.push_back({.kind = overlay::MarkKind::Player, .id = 2, .color = {255, 0, 0, 255}});
+    auto lines = itemsOf<DrawList::Line>(s.build());
+    REQUIRE(lines.size() == 1);
+    CHECK(lines[0].a.x == doctest::Approx(240 + 0.75 * 1440));  // pillarboxed: 1440 wide, from x 240
+    s.stretch = true;
+    lines = itemsOf<DrawList::Line>(s.build());
+    REQUIRE(lines.size() == 1);
+    CHECK(lines[0].a.x == doctest::Approx(0.75 * 1920));  // the whole width
 }
 
 TEST_CASE("overlay: marked players, loot and exfils") {

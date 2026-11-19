@@ -43,8 +43,11 @@ float horizontalDistance(Vec3 a, Vec3 b) { return std::hypot(a.x - b.x, a.z - b.
 // circle while scoped, through the scope.
 class Painter {
 public:
-    Painter(const CameraView& fps, Viewport vp, std::optional<ScopeMapping> scope, float scopeRadius)
-        : fps_(fps), vp_(vp), scope_(std::move(scope)), radius_(scopeRadius * vp.height) {}
+    // `aspect`: the picture's own (the camera's); a stretched picture is wider or narrower on the
+    // surface than that, by `stretch` horizontally.
+    Painter(const CameraView& fps, Viewport vp, float aspect, std::optional<ScopeMapping> scope, float scopeRadius)
+        : fps_(fps), vp_(vp), scope_(std::move(scope)), radius_(scopeRadius * vp.height),
+          stretch_(vp.height > 0 && aspect > 0 ? vp.width / (vp.height * aspect) : 1.f) {}
 
     struct Screen {
         Point at;
@@ -62,15 +65,19 @@ public:
         // Inside the scope's circle: where the scope shows it.
         const auto o = scope_->offset(p);
         if (!o) return std::nullopt;
-        const Point at{centre.x + o->x * vp_.height, centre.y - o->y * vp_.height};
+        const Point at{centre.x + o->x * vp_.height * stretch_, centre.y - o->y * vp_.height};
         return insideLens(at, centre) ? std::optional(Screen{at, o->depth, true}) : std::nullopt;
     }
     [[nodiscard]] bool scoped() const { return scope_.has_value(); }
     [[nodiscard]] float lensRadius() const { return radius_; }
+    [[nodiscard]] float stretch() const { return stretch_; }
     [[nodiscard]] Point centre() const { return {vp_.x + vp_.width / 2, vp_.y + vp_.height / 2}; }
 
 private:
-    [[nodiscard]] bool insideLens(Point at, Point centre) const { return std::hypot(at.x - centre.x, at.y - centre.y) <= radius_; }
+    // The scope's circle, an ellipse if the picture is stretched.
+    [[nodiscard]] bool insideLens(Point at, Point centre) const {
+        return std::hypot((at.x - centre.x) / stretch_, at.y - centre.y) <= radius_;
+    }
     [[nodiscard]] bool visible(Point at) const {
         // A little past the edges, so labels of marks just outside still show.
         const float mx = 0.05f * vp_.width, my = 0.05f * vp_.height;
@@ -81,6 +88,7 @@ private:
     Viewport vp_;
     std::optional<ScopeMapping> scope_;
     float radius_;
+    float stretch_;
 };
 
 // `distance`: from the camera, in metres.
@@ -230,12 +238,14 @@ DrawList buildScene(const SceneInput& in) {
     const Config& cfg = in.config;
     if (!cfg.on || !in.fps || in.players.raidId == 0) return out;
     const CameraView& fps = *in.fps;
-    const Viewport vp = letterbox(in.surfaceWidth, in.surfaceHeight, fps.aspect > 0 ? fps.aspect : kDefaultAspect);
+    const float aspect = fps.aspect > 0 ? fps.aspect : kDefaultAspect;
+    const Viewport vp = in.stretch ? Viewport{0, 0, in.surfaceWidth, in.surfaceHeight}
+                                   : letterbox(in.surfaceWidth, in.surfaceHeight, aspect);
 
     std::optional<ScopeMapping> scope;
     if (in.camera.scoped && (in.optic || in.camera.magnification > 1))
         scope = ScopeMapping{in.optic, fps, in.camera.magnification};
-    const Painter painter(fps, vp, scope, cfg.scopeRadius);
+    const Painter painter(fps, vp, aspect, scope, cfg.scopeRadius);
 
     const eft::PlayerState* local = in.players.local();
     const Vec3 eye = fps.position.value_or(local && local->position ? *local->position : Vec3{});
@@ -284,7 +294,21 @@ DrawList buildScene(const SceneInput& in) {
                 drawPlayer(out, painter, eye, p, Mark{.kind = MarkKind::Player, .id = p.id, .color = *cfg.otherPlayers});
 
     // The scope's circle, so it's clear which marks are placed through the scope.
-    if (painter.scoped()) out.items.emplace_back(DrawList::Circle{painter.centre(), painter.lensRadius(), kLensColor, 1.5f});
+    if (painter.scoped()) {
+        if (std::abs(painter.stretch() - 1) < 1e-3f) {
+            out.items.emplace_back(DrawList::Circle{painter.centre(), painter.lensRadius(), kLensColor, 1.5f});
+        } else {  // stretched: an ellipse
+            constexpr int kSegments = 64;
+            DrawList::Polygon lens{{}, kLensColor, 1.5f};
+            const Point c = painter.centre();
+            for (int i = 0; i < kSegments; ++i) {
+                const float a = static_cast<float>(i) * 2 * std::numbers::pi_v<float> / kSegments;
+                lens.points.push_back({c.x + std::cos(a) * painter.lensRadius() * painter.stretch(),
+                                       c.y + std::sin(a) * painter.lensRadius()});
+            }
+            out.items.emplace_back(std::move(lens));
+        }
+    }
     return out;
 }
 

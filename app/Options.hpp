@@ -25,6 +25,8 @@ struct Options {
     // The overlay window (overlay/Config.hpp), configured from the frontend over the server.
     bool overlay = false;
     std::string overlayOutput;           // monitor (Wayland output name); empty: the compositor's choice
+    bool overlayStretch = false;         // the game's picture is stretched to the monitor (e.g. 4:3 on 16:9)
+    bool overlayTest = false;            // draw a test pattern and status (overlay::WindowOptions::test)
     std::string overlayFont;             // TrueType file for labels; empty: a system font
 };
 

@@ -146,7 +146,7 @@ void publishScene(eft::WorldState& world, sched::Published<overlay::Config>& con
 
 int main(int argc, char** argv) {
     overlay::WindowOptions options;
-    bool scoped = false;
+    bool scoped = false, stretch = false;
     int seconds = 0;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg = argv[i];
@@ -154,18 +154,20 @@ int main(int argc, char** argv) {
         if (arg == "--output" && hasValue) options.output = argv[++i];
         else if (arg == "--font" && hasValue) options.font = argv[++i];
         else if (arg == "--scoped") scoped = true;
+        else if (arg == "--test") options.test = true;
+        else if (arg == "--stretch") stretch = true;
         else if (arg == "--seconds" && hasValue) {
             const std::string_view v = argv[++i];
             std::from_chars(v.data(), v.data() + v.size(), seconds);
         } else {
-            std::fprintf(stderr, "usage: %s [--output <name>] [--font <file>] [--scoped] [--seconds <n>]\n", argv[0]);
+            std::fprintf(stderr, "usage: %s [--output <name>] [--font <file>] [--scoped] [--test] [--stretch] [--seconds <n>]\n", argv[0]);
             return 2;
         }
     }
     eft::WorldState world;
     sched::Published<overlay::Config> config;
     publishScene(world, config, scoped);
-    overlay::Frames frames(world, config);
+    overlay::Frames frames(world, config, stretch);
     std::jthread window([&](std::stop_token stop) {
         if (auto r = overlay::runOverlayWindow(stop, options, frames); !r) log::error("overlay: {}", r.error());
     });

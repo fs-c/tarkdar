@@ -86,6 +86,7 @@ struct Window {
 
     wl_callback* frameCallback = nullptr;
     bool drewEmpty = false;
+    bool test = false;  // WindowOptions::test
     std::chrono::steady_clock::time_point lastFrame{};
 
     explicit Window(Frames& f, std::string out) : frames(f), wantedOutput(std::move(out)) {}
@@ -264,9 +265,14 @@ void Window::scheduleFrame() {
 void Window::draw() {
     if (eglSurface == EGL_NO_SURFACE) return;
     const auto now = std::chrono::steady_clock::now();
-    const bool active = frames.active();
+    const bool active = test || frames.active();
     if (!active && drewEmpty) return;  // nothing to draw, and it's already clear
-    const DrawList list = frames.frame(static_cast<float>(width), static_cast<float>(height), now);
+    DrawList list = frames.frame(static_cast<float>(width), static_cast<float>(height), now);
+    if (test) {
+        DrawList pattern = frames.testPattern(static_cast<float>(width), static_cast<float>(height), list);
+        list.items.insert(list.items.begin(), std::make_move_iterator(pattern.items.begin()),
+                          std::make_move_iterator(pattern.items.end()));
+    }
     drewEmpty = list.empty();
 
     ImGuiIO& io = ImGui::GetIO();
@@ -338,6 +344,7 @@ Window::~Window() {
 
 std::expected<void, std::string> runOverlayWindow(std::stop_token stop, const WindowOptions& options, Frames& frames) {
     Window w(frames, options.output);
+    w.test = options.test;
     if (auto opened = w.open(options); !opened) return opened;
     w.draw();
     pollfd fd{.fd = wl_display_get_fd(w.display), .events = POLLIN, .revents = 0};
@@ -351,7 +358,7 @@ std::expected<void, std::string> runOverlayWindow(std::stop_token stop, const Wi
         }
         wl_display_dispatch_pending(w.display);
         // Woken up: start drawing again, or draw the clear frame, if no frame is pending.
-        if (!w.frameCallback && (w.frames.active() || !w.drewEmpty)) w.draw();
+        if (!w.frameCallback && (w.test || w.frames.active() || !w.drewEmpty)) w.draw();
     }
     if (w.closed) return std::unexpected("the compositor closed the overlay surface");
     return {};

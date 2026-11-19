@@ -52,6 +52,9 @@ struct SceneInput {
     const eft::LootSnapshot& loot;
     const eft::ExfilsSnapshot& exfils;
     float surfaceWidth = 0, surfaceHeight = 0;
+    // The game's picture fills the whole surface whatever its aspect (e.g. 4:3 stretched to 16:9),
+    // instead of being letterboxed to it.
+    bool stretch = false;
 };
 
 [[nodiscard]] DrawList buildScene(const SceneInput& in);

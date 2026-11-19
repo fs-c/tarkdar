@@ -37,6 +37,9 @@ void printUsage(const char* argv0) {
                  "  --overlay             draw the player's view in a transparent window over the game's picture\n"
                  "  --overlay-output <n>  the monitor to cover (Wayland output name, e.g. DP-1)\n"
                  "  --overlay-font <file> TrueType font for its labels\n"
+                 "  --overlay-stretch     the game's picture is stretched to fill the monitor (e.g. 4:3 stretched),\n"
+                 "                        not letterboxed to its aspect\n"
+                 "  --overlay-test        draw a test pattern and why nothing else shows (implies --overlay)\n"
                  "\n"
                  "  --verbose             debug logging\n",
                  argv0, argv0);
@@ -128,6 +131,11 @@ std::optional<Options> parseOptions(int argc, char** argv, std::string& error) {
             opt.keepRecordings = n;
         } else if (arg == "--overlay") {
             opt.overlay = true;
+        } else if (arg == "--overlay-stretch") {
+            opt.overlayStretch = true;
+        } else if (arg == "--overlay-test") {
+            opt.overlay = true;
+            opt.overlayTest = true;
         } else if (arg == "--overlay-output") {
             VALUE_OR_FAIL(v);
             opt.overlayOutput = *v;

@@ -38,7 +38,9 @@ private:
 // them, the overlay's configuration and the world's latest snapshots. Used by the window's thread only.
 class Frames {
 public:
-    Frames(const eft::WorldState& world, const sched::Published<Config>& config) : world_(world), config_(config) {}
+    // `stretch`: the game's picture fills the surface whatever its aspect (SceneInput::stretch).
+    Frames(const eft::WorldState& world, const sched::Published<Config>& config, bool stretch = false)
+        : world_(world), config_(config), stretch_(stretch) {}
 
     // Whether frames have anything to draw (configured on, in a raid, with a camera to read). While
     // not, the window can stop drawing.
@@ -47,9 +49,14 @@ public:
     // One frame for a surface of this size (logical pixels).
     [[nodiscard]] DrawList frame(float width, float height, sched::Clock::time_point now);
 
+    // A test pattern for a surface of this size: its edges, its centre, and a status line saying why
+    // `scene` (the frame just built) has what it has, e.g. the overlay off in the frontend, no camera.
+    [[nodiscard]] DrawList testPattern(float width, float height, const DrawList& scene) const;
+
 private:
     const eft::WorldState& world_;
     const sched::Published<Config>& config_;
+    bool stretch_ = false;
     CameraHistory history_;
     std::uint64_t historyRaid_ = 0;
 };

@@ -26,6 +26,7 @@ struct Options {
     bool overlay = false;
     std::string overlayOutput;           // monitor (Wayland output name); empty: the compositor's choice
     bool overlayStretch = false;         // the game's picture is stretched to the monitor (e.g. 4:3 on 16:9)
+    bool overlayImmediate = false;       // no late drawing (overlay::WindowOptions::pacing off)
     bool overlayTest = false;            // draw a test pattern and status (overlay::WindowOptions::test)
     std::string overlayFont;             // TrueType file for labels; empty: a system font
 };

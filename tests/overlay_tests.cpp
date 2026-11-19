@@ -1,6 +1,7 @@
 #include "FakeWorld.hpp"
 
 #include "overlay/Frames.hpp"
+#include "overlay/Pacing.hpp"
 #include "overlay/Scene.hpp"
 #include "server/Protocol.hpp"
 
@@ -306,4 +307,42 @@ TEST_CASE("decodeOverlay") {
     REQUIRE(clamped);
     CHECK_FALSE(clamped->on);
     CHECK(clamped->delay == milliseconds(500));
+}
+
+TEST_CASE("overlay: frame pacing") {
+    constexpr std::int64_t ms = 1'000'000, refresh = 7 * ms;
+    overlay::FramePacer pacer;
+    CHECK_FALSE(pacer.plan(0));  // no vblank known yet: draw right away
+    pacer.drew(2 * ms);
+    pacer.presented(95 * ms, 100 * ms, refresh, std::nullopt);
+
+    // Just in time for the next vblank: margin + the draw estimate before it.
+    auto plan = pacer.plan(101 * ms);
+    REQUIRE(plan);
+    CHECK(plan->target == 107 * ms);
+    CHECK(plan->start == 107 * ms - overlay::FramePacer::kInitialMargin - 2 * ms);
+    // Too late for that one: the one after.
+    plan = pacer.plan(102 * ms);
+    REQUIRE(plan);
+    CHECK(plan->target == 114 * ms);
+
+    // A frame was drawn for 107; the compositor's callback for it comes before 107: plan for 114.
+    pacer.drew(2 * ms, 107 * ms);
+    plan = pacer.plan(100 * ms + ms / 2);
+    REQUIRE(plan);
+    CHECK(plan->target == 114 * ms);
+
+    // A missed vblank: shown a refresh late. The margin grows, so plans start earlier.
+    pacer.presented(101 * ms, 114 * ms, refresh, 107 * ms);
+    CHECK(pacer.stats().missed == 1);
+    CHECK(pacer.stats().marginMs == doctest::Approx(4.5));
+    CHECK(pacer.stats().latencyMaxMs == doctest::Approx(13));
+
+    // Shown a vblank earlier than planned: the margin shrinks back.
+    pacer.presented(115 * ms, 121 * ms, refresh, 128 * ms);
+    CHECK(pacer.stats().marginMs == doctest::Approx(4));
+
+    // A variable refresh rate: no grid to plan for.
+    pacer.presented(120 * ms, 125 * ms, 0, std::nullopt);
+    CHECK_FALSE(pacer.plan(126 * ms));
 }

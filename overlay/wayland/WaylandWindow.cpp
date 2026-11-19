@@ -3,14 +3,18 @@
 // anchored to all edges of one output, with an empty input region so every click goes through to
 // what's beneath. Drawn with OpenGL ES 3 through EGL; shapes and text with Dear ImGui's draw lists.
 //
-// Frame pacing: a frame is drawn when the compositor's frame callback says it's ready for one, with
-// the cameras read right then (Frames::frame), and swapped without waiting for vsync. While the
-// frames are inactive, one transparent frame is drawn and no more are asked for; a poll every
-// kIdleCheck notices when to start again.
+// Frame pacing: a frame is drawn after the compositor's frame callback says it's ready for one, with
+// the cameras read right then (Frames::frame), and swapped without waiting for vsync. Not right away,
+// though: with presentation feedback (wp_presentation: when each frame reached the screen), the
+// FramePacer delays it until just in time for the next vblank it can make, so the camera is read as
+// late as possible. Without (or with WindowOptions::pacing off) it's drawn as soon as the callback
+// comes. While the frames are inactive, one transparent frame is drawn and no more are asked for; a
+// poll every kIdleCheck notices when to start again.
 
 #include "overlay/Window.hpp"
 
 #include "core/log/Log.hpp"
+#include "overlay/Pacing.hpp"
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -22,16 +26,19 @@
 #define namespace namespace_
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #undef namespace
+#include "presentation-time-client-protocol.h"
 
 #include <backends/imgui_impl_opengl3.h>
 #include <imgui.h>
 
 #include <poll.h>
+#include <time.h>
 
 #include <array>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <memory>
 #include <vector>
 
@@ -39,7 +46,24 @@ namespace radar::overlay {
 
 namespace {
 
-constexpr int kIdleCheckMs = 50;
+constexpr std::int64_t kIdleCheck = 50'000'000;  // ns
+constexpr auto kStatsLogInterval = std::chrono::seconds(10);
+
+std::int64_t nowOn(clockid_t clock) {
+    timespec t{};
+    clock_gettime(clock, &t);
+    return static_cast<std::int64_t>(t.tv_sec) * 1'000'000'000 + t.tv_nsec;
+}
+
+struct Window;
+
+// One frame's presentation feedback, waiting for the compositor to say when it was shown.
+struct Feedback {
+    Window* window;
+    struct wp_presentation_feedback* proxy;
+    std::int64_t read;                   // when its camera was read
+    std::optional<std::int64_t> target;  // the vblank it was planned for
+};
 
 // Tried in order when no font is given: common locations on Arch, Debian/Ubuntu and Fedora.
 constexpr std::array kSystemFonts = {
@@ -87,6 +111,14 @@ struct Window {
     wl_callback* frameCallback = nullptr;
     bool drewEmpty = false;
     bool test = false;  // WindowOptions::test
+    bool pacing = true;  // WindowOptions::pacing
+
+    wp_presentation* presentation = nullptr;
+    clockid_t clock = CLOCK_MONOTONIC;  // the presentation clock
+    std::vector<std::unique_ptr<Feedback>> feedbacks;
+    FramePacer pacer;
+    std::optional<FramePacer::Plan> planned;  // a frame waiting for its start
+    std::chrono::steady_clock::time_point lastStatsLog{};
     std::chrono::steady_clock::time_point lastFrame{};
 
     explicit Window(Frames& f, std::string out) : frames(f), wantedOutput(std::move(out)) {}
@@ -94,8 +126,10 @@ struct Window {
 
     std::expected<void, std::string> open(const WindowOptions& options);
     void resize();
-    void draw();
+    void draw(std::optional<std::int64_t> target = std::nullopt);
     void scheduleFrame();
+    void feedbackDone(Feedback* f);
+    [[nodiscard]] std::vector<std::string> timingLines() const;
 };
 
 // ---- Wayland listeners ----------------------------------------------------------------------------
@@ -108,12 +142,38 @@ void outputName(void* data, wl_output*, const char* name) { static_cast<Output*>
 void outputDescription(void*, wl_output*, const char*) {}
 const wl_output_listener kOutputListener{outputGeometry, outputMode, outputDone, outputScale, outputName, outputDescription};
 
+void presentationClock(void* data, wp_presentation*, uint32_t clock) {
+    static_cast<Window*>(data)->clock = static_cast<clockid_t>(clock);
+}
+const wp_presentation_listener kPresentationListener{presentationClock};
+
+void feedbackSyncOutput(void*, struct wp_presentation_feedback*, wl_output*) {}
+void feedbackPresented(void* data, struct wp_presentation_feedback*, uint32_t secHi, uint32_t secLo, uint32_t nsec,
+                       uint32_t refresh, uint32_t, uint32_t, uint32_t flags) {
+    auto* f = static_cast<Feedback*>(data);
+    const std::int64_t at =
+        static_cast<std::int64_t>((static_cast<std::uint64_t>(secHi) << 32) | secLo) * 1'000'000'000 + nsec;
+    // Only a vsynced presentation puts frames on a vblank grid (not one torn in, or with a variable rate).
+    const bool vsync = (flags & WP_PRESENTATION_FEEDBACK_KIND_VSYNC) != 0;
+    f->window->pacer.presented(f->read, at, vsync ? static_cast<std::int64_t>(refresh) : 0, f->target);
+    f->window->feedbackDone(f);
+}
+void feedbackDiscarded(void* data, struct wp_presentation_feedback*) {
+    auto* f = static_cast<Feedback*>(data);
+    f->window->pacer.discarded();
+    f->window->feedbackDone(f);
+}
+const wp_presentation_feedback_listener kFeedbackListener{feedbackSyncOutput, feedbackPresented, feedbackDiscarded};
+
 void registryGlobal(void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
     auto& w = *static_cast<Window*>(data);
     if (std::strcmp(interface, wl_compositor_interface.name) == 0) {
         w.compositor = static_cast<wl_compositor*>(wl_registry_bind(registry, name, &wl_compositor_interface, std::min(version, 6u)));
     } else if (std::strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
         w.layerShell = static_cast<zwlr_layer_shell_v1*>(wl_registry_bind(registry, name, &zwlr_layer_shell_v1_interface, std::min(version, 4u)));
+    } else if (std::strcmp(interface, wp_presentation_interface.name) == 0) {
+        w.presentation = static_cast<wp_presentation*>(wl_registry_bind(registry, name, &wp_presentation_interface, 1u));
+        wp_presentation_add_listener(w.presentation, &kPresentationListener, &w);
     } else if (std::strcmp(interface, wl_output_interface.name) == 0) {
         auto out = std::make_unique<Output>();
         out->globalName = name;
@@ -155,6 +215,12 @@ void frameDone(void* data, wl_callback* callback, uint32_t) {
     auto& w = *static_cast<Window*>(data);
     wl_callback_destroy(callback);
     w.frameCallback = nullptr;
+    // Paced: drawn later, by the loop, when the plan says.
+    if (w.pacing && w.frames.active())
+        if (const auto plan = w.pacer.plan(nowOn(w.clock))) {
+            w.planned = plan;
+            return;
+        }
     w.draw();
 }
 const wl_callback_listener kFrameListener{frameDone};
@@ -262,14 +328,37 @@ void Window::scheduleFrame() {
     wl_callback_add_listener(frameCallback, &kFrameListener, this);
 }
 
-void Window::draw() {
+void Window::feedbackDone(Feedback* f) {
+    wp_presentation_feedback_destroy(f->proxy);
+    std::erase_if(feedbacks, [f](const auto& p) { return p.get() == f; });
+}
+
+std::vector<std::string> Window::timingLines() const {
+    const auto s = pacer.stats();
+    const bool paced = pacing && pacer.plan(nowOn(clock)).has_value();
+    return {
+        std::format("pacing: {}  (margin {:.1f} ms + draw {:.1f} ms before vblank)",
+                    !presentation ? "immediate (no presentation feedback)"
+                    : !pacing     ? "immediate (--overlay-immediate)"
+                    : paced       ? "late"
+                                  : "immediate (no fixed refresh known)",
+                    s.marginMs, s.drawMs),
+        std::format("read -> on screen: avg {:.1f} ms, max {:.1f} ms  (last {} frames)", s.latencyAvgMs, s.latencyMaxMs, s.frames),
+        std::format("presented every {:.1f} ms, refresh {:.2f} ms  missed vblanks {}, discarded {}", s.intervalAvgMs,
+                    s.refreshMs, s.missed, s.discarded),
+    };
+}
+
+void Window::draw(std::optional<std::int64_t> target) {
     if (eglSurface == EGL_NO_SURFACE) return;
     const auto now = std::chrono::steady_clock::now();
+    const std::int64_t read = nowOn(clock);
     const bool active = test || frames.active();
     if (!active && drewEmpty) return;  // nothing to draw, and it's already clear
     DrawList list = frames.frame(static_cast<float>(width), static_cast<float>(height), now);
     if (test) {
-        DrawList pattern = frames.testPattern(static_cast<float>(width), static_cast<float>(height), list);
+        const auto timing = timingLines();
+        DrawList pattern = frames.testPattern(static_cast<float>(width), static_cast<float>(height), list, timing);
         list.items.insert(list.items.begin(), std::make_move_iterator(pattern.items.begin()),
                           std::make_move_iterator(pattern.items.end()));
     }
@@ -314,8 +403,26 @@ void Window::draw() {
     glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    // Paced: finished on the GPU before the commit, so the draw time covers it and the buffer is ready
+    // when the compositor wants it.
+    if (pacing && presentation) glFinish();
     if (active) scheduleFrame();  // before the swap, which commits the surface with it
+    if (presentation && active) {
+        auto f = std::make_unique<Feedback>(Feedback{this, wp_presentation_feedback(presentation, surface), read, target});
+        wp_presentation_feedback_add_listener(f->proxy, &kFeedbackListener, f.get());
+        feedbacks.push_back(std::move(f));
+    }
     eglSwapBuffers(egl, eglSurface);
+    if (active) pacer.drew(nowOn(clock) - read, target);
+
+    if (active && now - lastStatsLog >= kStatsLogInterval) {
+        if (lastStatsLog != decltype(lastStatsLog){})
+            for (const auto& line : timingLines()) {
+                if (test) log::info("overlay: {}", line);
+                else log::debug("overlay: {}", line);
+            }
+        lastStatsLog = now;
+    }
 }
 
 Window::~Window() {
@@ -324,6 +431,8 @@ Window::~Window() {
         ImGui::DestroyContext();
     }
     if (frameCallback) wl_callback_destroy(frameCallback);
+    for (const auto& f : feedbacks) wp_presentation_feedback_destroy(f->proxy);
+    if (presentation) wp_presentation_destroy(presentation);
     if (egl != EGL_NO_DISPLAY) {
         eglMakeCurrent(egl, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         if (eglSurface != EGL_NO_SURFACE) eglDestroySurface(egl, eglSurface);
@@ -345,20 +454,30 @@ Window::~Window() {
 std::expected<void, std::string> runOverlayWindow(std::stop_token stop, const WindowOptions& options, Frames& frames) {
     Window w(frames, options.output);
     w.test = options.test;
+    w.pacing = options.pacing;
     if (auto opened = w.open(options); !opened) return opened;
     w.draw();
     pollfd fd{.fd = wl_display_get_fd(w.display), .events = POLLIN, .revents = 0};
     while (!stop.stop_requested() && !w.closed) {
         while (wl_display_prepare_read(w.display) != 0) wl_display_dispatch_pending(w.display);
         wl_display_flush(w.display);
-        if (poll(&fd, 1, kIdleCheckMs) > 0) {
+        // Until the planned frame's start, or a while to notice the frames turning active.
+        const std::int64_t wait =
+            w.planned ? std::clamp<std::int64_t>(w.planned->start - nowOn(w.clock), 0, kIdleCheck) : kIdleCheck;
+        const timespec timeout{.tv_sec = 0, .tv_nsec = static_cast<long>(wait)};
+        if (ppoll(&fd, 1, &timeout, nullptr) > 0) {
             if (wl_display_read_events(w.display) < 0) return std::unexpected("lost the Wayland connection");
         } else {
             wl_display_cancel_read(w.display);
         }
         wl_display_dispatch_pending(w.display);
+        if (w.planned && nowOn(w.clock) >= w.planned->start) {
+            const auto target = w.planned->target;
+            w.planned.reset();
+            w.draw(target);
+        }
         // Woken up: start drawing again, or draw the clear frame, if no frame is pending.
-        if (!w.frameCallback && (w.test || w.frames.active() || !w.drewEmpty)) w.draw();
+        if (!w.frameCallback && !w.planned && (w.test || w.frames.active() || !w.drewEmpty)) w.draw();
     }
     if (w.closed) return std::unexpected("the compositor closed the overlay surface");
     return {};

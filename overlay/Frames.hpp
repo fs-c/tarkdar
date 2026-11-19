@@ -7,6 +7,8 @@
 #include "overlay/DrawList.hpp"
 
 #include <deque>
+#include <span>
+#include <string>
 
 namespace radar::overlay {
 
@@ -50,8 +52,10 @@ public:
     [[nodiscard]] DrawList frame(float width, float height, sched::Clock::time_point now);
 
     // A test pattern for a surface of this size: its edges, its centre, and a status line saying why
-    // `scene` (the frame just built) has what it has, e.g. the overlay off in the frontend, no camera.
-    [[nodiscard]] DrawList testPattern(float width, float height, const DrawList& scene) const;
+    // `scene` (the frame just built) has what it has, e.g. the overlay off in the frontend, no camera;
+    // then the `extra` lines (the window's timing).
+    [[nodiscard]] DrawList testPattern(float width, float height, const DrawList& scene,
+                                       std::span<const std::string> extra = {}) const;
 
 private:
     const eft::WorldState& world_;
@@ -59,6 +63,7 @@ private:
     bool stretch_ = false;
     CameraHistory history_;
     std::uint64_t historyRaid_ = 0;
+    std::uint64_t fallbacks_ = 0;  // frames drawn with the tracker's camera: both reads failed
 };
 
 }  // namespace radar::overlay

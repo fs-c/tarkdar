@@ -33,9 +33,16 @@ DrawList Frames::frame(float width, float height, sched::Clock::time_point now) 
         historyRaid_ = reader->raidId();
     }
     const auto camera = world_.camera.get();
-    // Read right before drawing; the scope's camera only while it renders.
+    // Read right before drawing; the scope's camera only while it renders. A failed read (usually
+    // torn: the game writing the matrices meanwhile) is retried at once: the tracker's last good one
+    // can be a whole tick (16 ms) old.
     CameraReading reading{.at = now, .fps = reader->fps(), .optic = camera->scoped ? reader->optic() : std::nullopt};
-    if (!reading.fps && camera->raidId == reader->raidId()) reading.fps = camera->fps;  // a failed read: the last good one
+    if (!reading.fps) reading.fps = reader->fps();
+    if (!reading.optic && camera->scoped) reading.optic = reader->optic();
+    if (!reading.fps && camera->raidId == reader->raidId() && camera->fps) {
+        reading.fps = camera->fps;
+        ++fallbacks_;
+    }
     history_.add(std::move(reading));
     const auto shown = history_.at(now - config->delay);
     if (!shown) return {};
@@ -55,7 +62,7 @@ DrawList Frames::frame(float width, float height, sched::Clock::time_point now) 
                        .stretch = stretch_});
 }
 
-DrawList Frames::testPattern(float width, float height, const DrawList& scene) const {
+DrawList Frames::testPattern(float width, float height, const DrawList& scene, std::span<const std::string> extra) const {
     const auto config = config_.get();
     const auto reader = world_.cameraReader.get()->reader;
     const auto camera = world_.camera.get();
@@ -83,11 +90,15 @@ DrawList Frames::testPattern(float width, float height, const DrawList& scene) c
                     config->raid, config->marks.size(), config->otherPlayers ? "shown" : "hidden", config->lootRange),
         std::format("reader raid: {}  camera raid: {} ({})  players: {} (raid {})", reader ? reader->raidId() : 0,
                     camera->raidId, camera->fps ? "fps ok" : "no fps", players->players.size(), players->raidId),
-        std::format("scene items: {}", scene.items.size()),
+        std::format("scene items: {}  camera fallbacks (both reads failed): {}", scene.items.size(), fallbacks_),
     };
     float y = 24;
     for (const auto& line : lines) {
         d.items.push_back(DrawList::Text{{24, y}, line, y == 24 ? magenta : line.starts_with("status") ? yellow : white, 18});
+        y += 22;
+    }
+    for (const auto& line : extra) {
+        d.items.push_back(DrawList::Text{{24, y}, line, white, 18});
         y += 22;
     }
     return d;

@@ -15,6 +15,9 @@ struct WindowOptions {
     // Draw a test pattern over every frame (Frames::testPattern), and keep drawing even while the
     // frames are inactive: to see that the window shows at all, and why it has nothing else to draw.
     bool test = false;
+    // Draw each frame just in time for the next vblank, the camera read as late as possible (with the
+    // compositor's presentation feedback; overlay/Pacing.hpp). Off: as soon as the compositor asks.
+    bool pacing = true;
 };
 
 // Runs the overlay window until `stop` is requested: a transparent, click-through layer over the whole

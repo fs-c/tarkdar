@@ -169,7 +169,8 @@ int main(int argc, char** argv) {
     if (options->overlay)
         overlayThread = std::jthread([&](std::stop_token stop) {
             const overlay::WindowOptions windowOptions{
-                .output = options->overlayOutput, .font = options->overlayFont, .test = options->overlayTest};
+                .output = options->overlayOutput, .font = options->overlayFont, .test = options->overlayTest,
+                .pacing = !options->overlayImmediate};
             if (auto r = overlay::runOverlayWindow(stop, windowOptions, overlayFrames); !r)
                 log::error("overlay: {}", r.error());
         });

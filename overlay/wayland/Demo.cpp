@@ -156,11 +156,12 @@ int main(int argc, char** argv) {
         else if (arg == "--scoped") scoped = true;
         else if (arg == "--test") options.test = true;
         else if (arg == "--stretch") stretch = true;
+        else if (arg == "--immediate") options.pacing = false;
         else if (arg == "--seconds" && hasValue) {
             const std::string_view v = argv[++i];
             std::from_chars(v.data(), v.data() + v.size(), seconds);
         } else {
-            std::fprintf(stderr, "usage: %s [--output <name>] [--font <file>] [--scoped] [--test] [--stretch] [--seconds <n>]\n", argv[0]);
+            std::fprintf(stderr, "usage: %s [--output <name>] [--font <file>] [--scoped] [--test] [--stretch] [--immediate] [--seconds <n>]\n", argv[0]);
             return 2;
         }
     }

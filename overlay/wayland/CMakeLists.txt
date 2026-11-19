@@ -1,11 +1,13 @@
 # Protocol code generated with wayland-scanner: wlr-layer-shell (protocols/, from wlroots'
-# wlr-protocols) and xdg-shell, which it refers to (from the system's wayland-protocols).
+# wlr-protocols), xdg-shell, which it refers to, and presentation-time (both from the system's
+# wayland-protocols).
 set(gen ${CMAKE_CURRENT_BINARY_DIR}/protocols)
 file(MAKE_DIRECTORY ${gen})
 set(protocol_sources)
 foreach(spec
         "${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-layer-shell-unstable-v1.xml"
-        "${RADAR_WAYLAND_PROTOCOLS}/stable/xdg-shell/xdg-shell.xml")
+        "${RADAR_WAYLAND_PROTOCOLS}/stable/xdg-shell/xdg-shell.xml"
+        "${RADAR_WAYLAND_PROTOCOLS}/stable/presentation-time/presentation-time.xml")
     get_filename_component(name ${spec} NAME_WE)
     add_custom_command(
         OUTPUT ${gen}/${name}-client-protocol.h ${gen}/${name}-protocol.c

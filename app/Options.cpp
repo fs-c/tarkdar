@@ -39,6 +39,8 @@ void printUsage(const char* argv0) {
                  "  --overlay-font <file> TrueType font for its labels\n"
                  "  --overlay-stretch     the game's picture is stretched to fill the monitor (e.g. 4:3 stretched),\n"
                  "                        not letterboxed to its aspect\n"
+                 "  --overlay-immediate   draw as soon as the compositor asks, not just in time for the vblank\n"
+                 "                        (to compare)\n"
                  "  --overlay-test        draw a test pattern and why nothing else shows (implies --overlay)\n"
                  "\n"
                  "  --verbose             debug logging\n",
@@ -133,6 +135,8 @@ std::optional<Options> parseOptions(int argc, char** argv, std::string& error) {
             opt.overlay = true;
         } else if (arg == "--overlay-stretch") {
             opt.overlayStretch = true;
+        } else if (arg == "--overlay-immediate") {
+            opt.overlayImmediate = true;
         } else if (arg == "--overlay-test") {
             opt.overlay = true;
             opt.overlayTest = true;

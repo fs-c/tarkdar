@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { memoryCache } from "./cache";
 import { SlimCatalog, loadCatalog, slimCategories, slimItems } from "./catalog";
 import { totalValue } from "./items";
 
@@ -21,11 +22,6 @@ const itemsFeed = {
 };
 const enFeed = { data: { "a Name": "Alpha thing", "a ShortName": "Alpha", "b Name": "Bravo", barter: "Barter items" } };
 
-class MemoryStorage {
-  data = new Map<string, string>();
-  getItem(k: string) { return this.data.get(k) ?? null; }
-  setItem(k: string, v: string) { this.data.set(k, v); }
-}
 
 const okFetch = () =>
   vi.fn(async (url: string) => ({
@@ -72,25 +68,25 @@ describe("slimItems", () => {
 
 describe("loadCatalog", () => {
   it("downloads once, then serves from cache until it's a day old", async () => {
-    const storage = new MemoryStorage();
+    const cache = memoryCache();
     const fetchFn = okFetch();
-    const first = await loadCatalog({ now: 1000, storage, fetchFn });
+    const first = await loadCatalog({ now: 1000, cache, fetchFn });
     expect(first.status.state).toBe("ready");
     expect(fetchFn).toHaveBeenCalledTimes(2);
-    const second = await loadCatalog({ now: 1000 + 3600_000, storage, fetchFn });
+    const second = await loadCatalog({ now: 1000 + 3600_000, cache, fetchFn });
     expect(second.catalog?.lookup("a")?.shortName).toBe("Alpha");
     expect(fetchFn).toHaveBeenCalledTimes(2); // cached
-    await loadCatalog({ now: 1000 + 25 * 3600_000, storage, fetchFn });
+    await loadCatalog({ now: 1000 + 25 * 3600_000, cache, fetchFn });
     expect(fetchFn).toHaveBeenCalledTimes(4); // refreshed
   });
   it("falls back to a stale cache, or reports unavailable", async () => {
-    const storage = new MemoryStorage();
-    await loadCatalog({ now: 0, storage, fetchFn: okFetch() });
+    const cache = memoryCache();
+    await loadCatalog({ now: 0, cache, fetchFn: okFetch() });
     const failing = vi.fn(async () => ({ ok: false, status: 503 })) as unknown as typeof fetch;
-    const stale = await loadCatalog({ now: 48 * 3600_000, storage, fetchFn: failing });
+    const stale = await loadCatalog({ now: 48 * 3600_000, cache, fetchFn: failing });
     expect(stale.status.state).toBe("stale");
     expect(stale.catalog?.lookup("a")).toBeDefined();
-    const none = await loadCatalog({ now: 0, storage: new MemoryStorage(), fetchFn: failing });
+    const none = await loadCatalog({ now: 0, cache: memoryCache(), fetchFn: failing });
     expect(none.status.state).toBe("unavailable");
     expect(none.catalog).toBeNull();
   });

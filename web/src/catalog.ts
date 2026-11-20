@@ -5,13 +5,14 @@
 // inventory and a few stats the display rules can match on are kept: avg24hPrice (flea average), or
 // basePrice (the game's base value) for items without flea data, e.g. currencies; the handbook categories
 // (the game's handbook / flea market tree) with their names; ammo's penetration and damage, armor's class. The slim catalogue is
-// cached in localStorage and refreshed when older than MAX_AGE_MS, so the large download happens at
+// cached (cache.ts) and refreshed when older than MAX_AGE_MS, so the large download happens at
 // most once a day. If the download fails, a stale cache is better than nothing.
 
+import { type Cache, type CacheDef, feedCache, isFresh, readCache, writeCache } from "./cache";
 import type { ItemCatalog, ItemCategory, ItemInfo } from "./items";
 
 export const FEED_BASE = "https://json.tarkov.dev/pvp-season";
-const STORAGE_KEY = "radar.items.v4";
+const CACHE: CacheDef = { key: "items", version: 4 };
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** id → [name, shortName, price (0 = unknown), price is basePrice (1) or avg24hPrice (0), handbook
@@ -27,7 +28,6 @@ export type SlimStats = [number, number, number, number];
 export type SlimCategories = Record<string, [string, string | null]>;
 
 export interface CachedCatalog {
-  fetchedAt: number; // ms since epoch
   items: SlimItems;
   categories: SlimCategories;
 }
@@ -128,34 +128,22 @@ function toInfo(e: SlimItems[string]): ItemInfo {
   return info;
 }
 
-interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
-
-export function readCache(storage: StorageLike): CachedCatalog | null {
-  try {
-    const c = JSON.parse(storage.getItem(STORAGE_KEY) ?? "null") as CachedCatalog | null;
-    return c && typeof c.fetchedAt === "number" && c.items ? { ...c, categories: c.categories ?? {} } : null;
-  } catch {
-    return null;
-  }
-}
+const isCachedCatalog = (c: unknown): c is CachedCatalog =>
+  !!c && typeof c === "object" && !!(c as CachedCatalog).items && typeof (c as CachedCatalog).categories === "object";
 
 /**
  * Returns the catalogue: from the cache if it's fresh, otherwise freshly downloaded (and cached),
- * otherwise the stale cache. `fetchFn` and `storage` are injectable for tests.
+ * otherwise the stale cache. `fetchFn` and `cache` are injectable for tests.
  */
 export async function loadCatalog(
-  opts: { now?: number; storage?: StorageLike; fetchFn?: typeof fetch; force?: boolean } = {},
+  opts: { now?: number; cache?: Cache; fetchFn?: typeof fetch; force?: boolean } = {},
 ): Promise<{ catalog: SlimCatalog | null; status: CatalogStatus }> {
   const now = opts.now ?? Date.now();
-  const storage = opts.storage ?? localStorage;
+  const cache = opts.cache ?? feedCache;
   const fetchFn = opts.fetchFn ?? fetch.bind(globalThis);
-  const cached = readCache(storage);
-  const age = cached ? now - cached.fetchedAt : Infinity;
-  if (cached && !opts.force && age >= 0 && age < MAX_AGE_MS) {  // a future timestamp (clock change) is stale
-    const catalog = new SlimCatalog(cached.items, cached.categories);
+  const cached = await readCache(cache, CACHE, isCachedCatalog);
+  if (cached && !opts.force && isFresh(cached, now, MAX_AGE_MS)) {
+    const catalog = new SlimCatalog(cached.data.items, cached.data.categories);
     return { catalog, status: { state: "ready", count: catalog.size, fetchedAt: cached.fetchedAt } };
   }
   try {
@@ -167,17 +155,13 @@ export async function loadCatalog(
     const [items, en] = await Promise.all([get("items"), get("items_en")]);
     const slim = slimItems(items, en);
     const categories = slimCategories(items, en);
-    try {
-      storage.setItem(STORAGE_KEY, JSON.stringify({ fetchedAt: now, items: slim, categories } satisfies CachedCatalog));
-    } catch (e) {
-      console.warn("couldn't cache item data", e);
-    }
+    await writeCache(cache, CACHE, { items: slim, categories } satisfies CachedCatalog, now);
     const catalog = new SlimCatalog(slim, categories);
     return { catalog, status: { state: "ready", count: catalog.size, fetchedAt: now } };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
     if (cached) {
-      const catalog = new SlimCatalog(cached.items, cached.categories);
+      const catalog = new SlimCatalog(cached.data.items, cached.data.categories);
       return { catalog, status: { state: "stale", count: catalog.size, fetchedAt: cached.fetchedAt, error } };
     }
     return { catalog: null, status: { state: "unavailable", count: 0, fetchedAt: null, error } };

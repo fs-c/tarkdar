@@ -9,10 +9,11 @@
 // ids, so together with the backend's `quests` message (quests in progress and their completed
 // conditions) they tell which items on the map are still wanted. SPT uses the live game's quest ids.
 
+import { type Cache, type CacheDef, feedCache, isFresh, readCache, writeCache } from "./cache";
 import { FEED_BASE } from "./catalog";
 import type { LootEntry, QuestState } from "./protocol";
 
-const STORAGE_KEY = "radar.quests.v5";
+const CACHE: CacheDef = { key: "quests", version: 5 };
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** EQuestStatus: started (and not yet ready to hand in). */
@@ -261,44 +262,30 @@ export interface QuestData {
   status: QuestDataStatus;
 }
 
-interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
-
 interface CachedTasks {
-  fetchedAt: number;
   tasks: SlimTasks;
   items: ItemObjectives;
   outline: QuestOutline;
   names: QuestNames;
 }
 
-function readCache(storage: StorageLike): CachedTasks | null {
-  try {
-    const c = JSON.parse(storage.getItem(STORAGE_KEY) ?? "null") as CachedTasks | null;
-    return c && typeof c.fetchedAt === "number" && c.tasks && typeof c.tasks === "object" && c.items && typeof c.items === "object" && c.outline && typeof c.outline === "object" && c.names?.quests && c.names.items
-      ? c
-      : null;
-  } catch {
-    return null;
-  }
+function isCachedTasks(v: unknown): v is CachedTasks {
+  const c = v as Partial<CachedTasks> | null;
+  return !!c && !!c.tasks && typeof c.tasks === "object" && !!c.items && typeof c.items === "object" && !!c.outline && typeof c.outline === "object" && !!c.names?.quests && !!c.names.items;
 }
 
 /**
  * Returns the quest data: from the cache if it's fresh, otherwise freshly downloaded (and cached),
- * otherwise the stale cache. `fetchFn` and `storage` are injectable for tests.
+ * otherwise the stale cache. `fetchFn` and `cache` are injectable for tests.
  */
 export async function loadQuestData(
-  opts: { now?: number; storage?: StorageLike; fetchFn?: typeof fetch } = {},
+  opts: { now?: number; cache?: Cache; fetchFn?: typeof fetch } = {},
 ): Promise<QuestData> {
   const now = opts.now ?? Date.now();
-  const storage = opts.storage ?? localStorage;
+  const cache = opts.cache ?? feedCache;
   const fetchFn = opts.fetchFn ?? fetch.bind(globalThis);
-  const cached = readCache(storage);
-  const age = cached ? now - cached.fetchedAt : Infinity;
-  if (cached && age >= 0 && age < MAX_AGE_MS)
-    return { tasks: cached.tasks, items: cached.items, outline: cached.outline, names: cached.names, status: { state: "ready", fetchedAt: cached.fetchedAt } };
+  const cached = await readCache(cache, CACHE, isCachedTasks);
+  if (cached && isFresh(cached, now, MAX_AGE_MS)) return { ...cached.data, status: { state: "ready", fetchedAt: cached.fetchedAt } };
   try {
     const get = async (feed: string) => {
       const res = await fetchFn(`${FEED_BASE}/${feed}`);
@@ -310,16 +297,11 @@ export async function loadQuestData(
     const items = slimItemObjectives(feed);
     const outline = questOutline(feed);
     const names = questNames(feed, en, tasks, items);
-    try {
-      storage.setItem(STORAGE_KEY, JSON.stringify({ fetchedAt: now, tasks, items, outline, names } satisfies CachedTasks));
-    } catch (e) {
-      console.warn("couldn't cache quest data", e);
-    }
+    await writeCache(cache, CACHE, { tasks, items, outline, names } satisfies CachedTasks, now);
     return { tasks, items, outline, names, status: { state: "ready", fetchedAt: now } };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
-    if (cached)
-      return { tasks: cached.tasks, items: cached.items, outline: cached.outline, names: cached.names, status: { state: "stale", fetchedAt: cached.fetchedAt, error } };
+    if (cached) return { ...cached.data, status: { state: "stale", fetchedAt: cached.fetchedAt, error } };
     return { tasks: null, items: null, outline: null, names: null, status: { state: "unavailable", fetchedAt: null, error } };
   }
 }

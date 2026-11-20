@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { memoryCache } from "./cache";
 import type { LootEntry, QuestState } from "./protocol";
 import {
   SPECIFIC_ITEMS,
@@ -94,27 +95,26 @@ describe("quests", () => {
   });
 
   it("loads from the feed, then the cache, and falls back to a stale cache", async () => {
-    const store = new Map<string, string>();
-    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+    const cache = memoryCache();
     let calls = 0;
     const ok = (async (url: string) => (calls++, new Response(JSON.stringify(url.endsWith("_en") ? en : feed)))) as typeof fetch;
     const failing = (async () => (calls++, new Response("", { status: 503 }))) as typeof fetch;
 
-    const first = await loadQuestData({ now: 1000, storage, fetchFn: ok });
+    const first = await loadQuestData({ now: 1000, cache, fetchFn: ok });
     expect(first.status.state).toBe("ready");
     expect(first.tasks?.q2).toEqual([["o4", "itemC"]]);
     expect(first.items).toEqual({});
     expect(first.outline?.q1).toEqual([["o1", "findQuestItem"], ["o2", "giveQuestItem"], ["o3", "findQuestItem"]]);
-    const cached = await loadQuestData({ now: 2000, storage, fetchFn: failing });
+    const cached = await loadQuestData({ now: 2000, cache, fetchFn: failing });
     expect(cached.status.state).toBe("ready");
     expect(first.names).toEqual(NAMES);
     expect(cached.names).toEqual(first.names);
     expect(calls).toBe(2);
-    const stale = await loadQuestData({ now: 1000 + 2 * 24 * 3600 * 1000, storage, fetchFn: failing });
+    const stale = await loadQuestData({ now: 1000 + 2 * 24 * 3600 * 1000, cache, fetchFn: failing });
     expect(stale.status.state).toBe("stale");
     expect(stale.tasks).toEqual(first.tasks);
     expect(stale.outline).toEqual(first.outline);
-    const none = await loadQuestData({ now: 0, storage: { getItem: () => null, setItem: () => {} }, fetchFn: failing });
+    const none = await loadQuestData({ now: 0, cache: memoryCache(), fetchFn: failing });
     expect(none).toMatchObject({ tasks: null, items: null, outline: null, names: null, status: { state: "unavailable" } });
   });
 });

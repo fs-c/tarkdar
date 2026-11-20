@@ -2,6 +2,7 @@
 import "./styles/global.css";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { dropLocalStorageCaches } from "./cache";
 import { App } from "./components/App";
 import { PovPage } from "./components/PovPage";
 import { localStorageBackend, settings } from "./persist";
@@ -19,6 +20,8 @@ function Root() {
   }, []);
   return hash === "#pov" ? <PovPage /> : <App />;
 }
+
+dropLocalStorageCaches();
 
 // Stored settings are read synchronously once loaded (instant from localStorage).
 void settings.init(localStorageBackend()).then(() =>

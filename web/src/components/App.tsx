@@ -177,6 +177,8 @@ export function App() {
   // Side panel: open or collapsed, and which section it shows (for "list", the list tab in listPrefs).
   // The Raids view has two levels: the list of raids, and the shown raid's timeline.
   const [ui, setUi] = useSidebarPrefs();
+  // The Filters view's query syntax help: open from there, or from the highlight search's link.
+  const [syntaxHelp, setSyntaxHelp] = useState(false);
   const view: ViewId = ui.section === "list" ? listPrefs.tab : ui.section;
   const listShown = ui.open && ui.section === "list";
   const togglePanel = () => setUi((u) => ({ ...u, open: !u.open }));
@@ -386,6 +388,8 @@ export function App() {
             loot={lootPrefs}
             onLoot={setLootPrefs}
             questInfo={questInfo}
+            help={syntaxHelp}
+            onHelp={setSyntaxHelp}
           />
         );
       case "map":
@@ -530,6 +534,10 @@ export function App() {
             onPreview={setPreview}
             onPin={pinHighlight}
             onShow={showOnMap}
+            onSyntaxHelp={() => {
+              setSyntaxHelp(true);
+              setUi((u) => ({ ...u, open: true, section: "filters" }));
+            }}
           />
           {selection && (
             <DetailsPanel

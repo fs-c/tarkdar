@@ -54,6 +54,7 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
   const styleOf = (key: string, kind: SubjectKind) => scene.styles.get(key) ?? BASE[kind];
   // Markers draw as they go; their labels are collected and placed at the end, all together.
   const labels: LabelRequest[] = [];
+  const local = scene.players.find((p) => p.local && p.pos);
   drawLoot(ctx, pr, scene, labels);
   for (const e of scene.exfils) {
     const style = styleOf(`exfil:${e.id}`, "exfil");
@@ -65,7 +66,6 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
 
   if (scene.trails) drawTrails(ctx, pr, scene);
 
-  const local = scene.players.find((p) => p.local && p.pos);
   const groups = bossGroups(scene.players);
   const typed = scene.players.flatMap((p) => {
     const style = styleOf(`player:${p.id}`, "player");
@@ -75,10 +75,10 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
   });
   // Drawn bottom to top (style.ts: faint, the dead, normal, strong and loud, us).
   typed.sort((a, b) => a.look.order - b.look.order);
-  for (const { p, info, style, look } of typed) drawPlayer(ctx, pr, p, info, look, style, local?.pos?.[1] ?? null, scene.bodies, labels);
+  for (const { p, info, style, look } of typed) drawPlayer(ctx, pr, p, info, look, style, scene.bodies, labels);
 
   drawRings(ctx, pr, scene, styleOf);
-  drawLabels(ctx, labels);
+  drawLabels(ctx, labels, local?.pos?.[1] ?? null);
 
   if (scene.marked?.length) {
     ctx.strokeStyle = "#ffffff";
@@ -204,7 +204,6 @@ function drawPlayer(
   info: PlayerTypeInfo,
   look: PlayerLook,
   style: Style,
-  localY: number | null,
   bodies: boolean,
   labels: LabelRequest[],
 ): void {
@@ -271,13 +270,9 @@ function drawPlayer(
 
   const shownLabel = labelAt(style, pr.detail);
   if (!p.local && shownLabel) {
-    let label = look.namedLabel ? `${info.label} ${p.id}` : `${p.id}`;
-    if (localY !== null) {
-      const dy = p.pos[1] - localY;
-      if (Math.abs(dy) >= 2) label += dy > 0 ? ` ▲${Math.round(dy)}` : ` ▼${Math.round(-dy)}`;
-    }
+    const label = look.namedLabel ? `${info.label} ${p.id}` : `${p.id}`;
     labels.push({
-      x, y, texts: [label], font: look.labelFont, color: look.labelColor, alpha: look.alpha,
+      x, y, height: p.pos[1], texts: [label], font: look.labelFont, color: look.labelColor, alpha: look.alpha,
       gap: r + (look.halo ? 7 : 3), rank: LABEL_RANK.player, priority: look.order, forced: shownLabel.forced, fixed: true,
     });
   }
@@ -422,6 +417,19 @@ interface LabelRequest {
   forced: boolean;
   /** Only the spot right of the marker (players, exfils: a label that doesn't jump about). */
   fixed?: boolean;
+  /** The thing's height (world y): how far above or below us it is goes after each text. */
+  height?: number;
+}
+
+/** Things this far (m) above or below us or more get it said in their label. */
+const HEIGHT_TAG_MIN = 2;
+
+/** " ▲3" / " ▼12": how far above or below us, or "" when about level (or we're not on the map). */
+export function heightTag(height: number | undefined, localY: number | null): string {
+  if (height === undefined || localY === null) return "";
+  const dy = height - localY;
+  if (Math.abs(dy) < HEIGHT_TAG_MIN) return "";
+  return dy > 0 ? ` ▲${Math.round(dy)}` : ` ▼${Math.round(-dy)}`;
 }
 
 const LOOT_FONT = "10px sans-serif";
@@ -486,7 +494,7 @@ function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene, la
         break;
     }
     const label = (texts: string[], rank: number, priority: number, forced: boolean, color: string = COLORS.label) =>
-      labels.push({ x, y, texts, font: LOOT_FONT, color, gap: LABEL_GAP, rank, priority, forced });
+      labels.push({ x, y, height: l.pos[1], texts, font: LOOT_FONT, color, gap: LABEL_GAP, rank, priority, forced });
     // Ringed (highlighted): labelled at any zoom in the ring's colour, before the rest of the loot (but
     // only where there's room).
     if (style.ring) {
@@ -527,8 +535,12 @@ function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene, la
  * Places and draws all labels, on top of all markers: by rank and priority (declutter.ts), each in
  * the first free spot around its marker, dropped when there's none (unless forced).
  */
-function drawLabels(ctx: CanvasRenderingContext2D, labels: LabelRequest[]): void {
+function drawLabels(ctx: CanvasRenderingContext2D, labels: LabelRequest[], localY: number | null): void {
   labels.sort((a, b) => a.rank - b.rank || b.priority - a.priority);
+  for (const req of labels) {
+    const tag = heightTag(req.height, localY);
+    if (tag) req.texts = req.texts.map((t) => t + tag);
+  }
   ctx.textBaseline = "middle";
   ctx.lineJoin = "round";
   ctx.lineWidth = 3;
@@ -633,7 +645,7 @@ function drawExfil(ctx: CanvasRenderingContext2D, pr: Projector, e: Exfil, style
   // Zoomed out: just the name (the colour still tells the status).
   const full = `${e.name}${e.kind === "secret" ? " (secret)" : ` · ${status.label}`}`;
   const texts = pr.detail >= EXFIL_STATUS_DETAIL ? [full, e.name] : [e.name];
-  labels.push({ x, y, texts, font: "11px sans-serif", color, gap: 10, rank: LABEL_RANK.exfil, priority: 0, forced: shown.forced, fixed: true });
+  labels.push({ x, y, height: e.pos[1], texts, font: "11px sans-serif", color, gap: 10, rank: LABEL_RANK.exfil, priority: 0, forced: shown.forced, fixed: true });
 }
 
 /** BTR hull footprint (m): half width, half length. */
@@ -676,7 +688,7 @@ function drawVehicle(ctx: CanvasRenderingContext2D, pr: Projector, v: Vehicle, l
   const aboard = v.occupants.filter((o) => o.seat === "passenger").length;
   const name = v.state === 2 ? "BTR" : "BTR (stopped)";
   const texts = aboard ? [`${name} · ${aboard} aboard`, `BTR · ${aboard}`] : [name, "BTR"];
-  labels.push({ x: cx, y: cy, texts, font: "bold 11px sans-serif", color: COLORS.vehicle, gap: 14, rank: LABEL_RANK.exfil, priority: 1, forced: true, fixed: true });
+  labels.push({ x: cx, y: cy, height: v.pos[1], texts, font: "bold 11px sans-serif", color: COLORS.vehicle, gap: 14, rank: LABEL_RANK.exfil, priority: 1, forced: true, fixed: true });
 }
 
 function drawExplosives(ctx: CanvasRenderingContext2D, pr: Projector, ex: ExplosivesData, styleOf: (kind: "grenade" | "tripwire", id: number) => Style): void {

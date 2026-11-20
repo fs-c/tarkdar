@@ -14,6 +14,7 @@ import type { ItemCatalog } from "../items";
 import type { AnyRow } from "../list/rows";
 import type { Selection } from "../pick";
 import type { WorldPos } from "../protocol";
+import { Button } from "../ui";
 import s from "./Highlights.module.css";
 
 interface Props {
@@ -32,11 +33,13 @@ interface Props {
   onShow: (sel: Selection) => void;
   /** Pin it: a rule for this raid (the Filters view's "Pinned"). */
   onPin: (h: Highlight) => void;
+  /** Open the query syntax (in the Filters view). */
+  onSyntaxHelp: () => void;
 }
 
 let nextId = 1;
 
-export function Highlights({ highlights, setHighlights, matched, rows, catalog, local, onPreview, onShow, onPin }: Props) {
+export function Highlights({ highlights, setHighlights, matched, rows, catalog, local, onPreview, onShow, onPin, onSyntaxHelp }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -202,8 +205,16 @@ export function Highlights({ highlights, setHighlights, matched, rows, catalog, 
           )}
           {!query && (
             <div className={s.hint}>
-              Highlights mark things on the map and in the list, and show them even where filters or categories would hide them.
-              Queries work too: <code>is:boss</code> <code>item:LEDX</code> <code>cat:Electronics</code> <code>value&gt;=40k</code> <code>pen&gt;=40</code> <code>class&gt;=5</code> (Filters view: Query syntax).
+              Names, kinds or a query, e.g. <code>is:boss</code>.{" "}
+              <Button
+                variant="link"
+                onClick={() => {
+                  setOpen(false);
+                  onSyntaxHelp();
+                }}
+              >
+                Query syntax
+              </Button>
             </div>
           )}
         </div>

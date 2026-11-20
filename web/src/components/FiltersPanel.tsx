@@ -3,16 +3,16 @@
 // this raid) come first, then General: they win over the categories below. Within a category, the
 // rules higher up win.
 
-import { Plus } from "lucide-react";
-import { useState } from "react";
+import { Plus, RotateCcw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { compileQuery, QUERY_HELP } from "../highlight/query";
 import type { LootPrefs } from "../prefs";
 import type { ItemCatalog } from "../items";
 import type { AnyRow } from "../list/rows";
 import { CATEGORIES, type Category, HIDEABLE } from "../rules/defaults";
 import {
-  type RuleStore, type SetPinned, type SetRuleStore, type StoredRule, addRule, defaultStore, duplicateRule, isChanged, missingDefaults,
-  moveRule, newRuleId, removeRule, resetRule, restoreDefaults, updateRule,
+  type RuleStore, type SetPinned, type SetRuleStore, type StoredRule, addRule, categoryChanged, defaultStore, duplicateRule, missingDefaults,
+  moveRule, newRuleId, removeRule, resetCategory, restoreDefaults, updateRule,
 } from "../rules/store";
 import { Button, PanelBody, Segmented, type SegmentedOption } from "../ui";
 import { RuleRow } from "./RuleRow";
@@ -32,6 +32,9 @@ interface Props {
   onLoot: (l: LootPrefs) => void;
   /** What the quest item filter knows right now, e.g. "3 quests in progress". */
   questInfo: string;
+  /** The query syntax shown (opened from here, or from the highlight search). */
+  help: boolean;
+  onHelp: (shown: boolean) => void;
 }
 
 const HINTS: Record<Category, string> = {
@@ -55,7 +58,11 @@ export function FiltersPanel(p: Props) {
   const { rules, setRules, pinned, setPinned } = p;
   // One rule's editor open at a time.
   const [open, setOpen] = useState<string | null>(null);
-  const [help, setHelp] = useState(false);
+  const { help, onHelp } = p;
+  const helpRef = useRef<HTMLDListElement>(null);
+  useEffect(() => {
+    if (help) helpRef.current?.scrollIntoView({ block: "nearest" });
+  }, [help]);
   const opener = (id: string) => (o: boolean) => setOpen(o ? id : null);
   const setList = (update: (rs: StoredRule[]) => StoredRule[]) => setRules((r) => ({ ...r, rules: update(r.rules) }));
 
@@ -71,6 +78,11 @@ export function FiltersPanel(p: Props) {
     setList((rs) => addRule(rs, { ...r, id: newRuleId() }));
   };
   const missing = missingDefaults(rules.rules);
+  const reset = (c: Category) => {
+    const own = rules.rules.filter((r) => r.category === c && !r.origin).length;
+    const lose = own ? ` Your ${own} own rule${own === 1 ? "" : "s"} in it will be removed.` : "";
+    if (window.confirm(`Reset ${c} to the default rules?${lose}`)) setList((rs) => resetCategory(rs, c));
+  };
 
   const row = (r: StoredRule, pinnedRule: boolean) => {
     const set = pinnedRule ? setPinned : setList;
@@ -90,7 +102,6 @@ export function FiltersPanel(p: Props) {
           p.onHoverRule(null);
           set((rs) => removeRule(rs, r.id));
         }}
-        onReset={!pinnedRule && isChanged(r) ? () => setList((rs) => resetRule(rs, r.id)) : undefined}
         onKeep={pinnedRule ? () => keep(r) : undefined}
       />
     );
@@ -123,9 +134,16 @@ export function FiltersPanel(p: Props) {
               )}
               <small className={s.hint}>{HINTS[group]}</small>
               {shown && (
-                <Button variant="icon" className={s.add} title={`Add a rule to ${group}`} onClick={() => add(group)}>
-                  <Plus size={14} />
-                </Button>
+                <span className={s.headerActions}>
+                  {categoryChanged(rules.rules, group) && (
+                    <Button variant="icon" title={`Changed: reset ${group} to the defaults`} onClick={() => reset(group)}>
+                      <RotateCcw size={13} />
+                    </Button>
+                  )}
+                  <Button variant="icon" title={`Add a rule to ${group}`} onClick={() => add(group)}>
+                    <Plus size={14} />
+                  </Button>
+                </span>
               )}
             </header>
             {shown && list.length === 0 && <p className={s.empty}>No rules.</p>}
@@ -147,7 +165,7 @@ export function FiltersPanel(p: Props) {
       })}
       <section className={s.group}>
         <div className={s.ruleActions}>
-          <Button variant="link" onClick={() => setHelp((h) => !h)} aria-expanded={help}>
+          <Button variant="link" onClick={() => onHelp(!help)} aria-expanded={help}>
             Query syntax
           </Button>
           {missing > 0 && (
@@ -166,7 +184,7 @@ export function FiltersPanel(p: Props) {
           </Button>
         </div>
         {help && (
-          <dl className={s.help}>
+          <dl ref={helpRef} className={s.help}>
             <dt><code>words "a phrase"</code></dt>
             <dd>text, as in the list's search</dd>
             {QUERY_HELP.map((h) => (

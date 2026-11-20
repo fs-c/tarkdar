@@ -1,7 +1,7 @@
 // The default rules: how things look out of the box, as rules (rules.ts) instead of tables in code.
 // Players by type, loose items by value per slot, the other kinds of loot, exfils, explosives. The rule
 // store (rules/store.ts) starts from these; each can be changed, moved, duplicated and removed there,
-// and reset to (or restored from) its default.
+// and reset by category to (or restored from) its default.
 
 import { VALUE_TIERS, formatPrice } from "../items";
 import type { SubjectKind } from "../list/rows";

@@ -25,7 +25,7 @@
 .field { display: flex; flex-direction: column; gap: 4px; padding: 8px 6px 2px; }
 .caption { color: var(--muted); font-size: var(--fs-xs); }
 
-.add { margin-left: auto; align-self: center; }
+.headerActions { display: flex; gap: 2px; margin-left: auto; align-self: center; }
 .ruleActions { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 0 6px; font-size: var(--fs-xs); }
 .help {
   display: grid; grid-template-columns: max-content 1fr; gap: 4px 10px; margin: 8px 6px 0; font-size: var(--fs-xs);

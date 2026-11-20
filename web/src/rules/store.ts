@@ -15,7 +15,7 @@ import { EMPHASES, type Rule, type StyleProps } from "./rules";
 
 export interface StoredRule {
   id: string;
-  /** The default it was made from (reset goes back to it). */
+  /** The default it was made from (unchanged, it counts as that default). */
   origin?: string;
   category: Category;
   label: string;
@@ -112,12 +112,18 @@ export function isChanged(r: StoredRule): boolean {
 
 const sortKeys = (o: object) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined).sort(([a], [b]) => a.localeCompare(b)));
 
-/** Back to its default (in place). */
-export function resetRule(rules: StoredRule[], id: string): StoredRule[] {
-  return rules.map((r) => {
-    const d = r.id === id ? defaultOf(r) : undefined;
-    return d ? fromDefault(d, r.id) : r;
-  });
+/** A category's rules differ from its defaults: one changed, removed, added or moved. */
+export function categoryChanged(rules: readonly StoredRule[], category: Category): boolean {
+  const mine = rules.filter((r) => r.category === category);
+  const defaults = DEFAULT_RULES.filter((d) => d.category === category);
+  return mine.length !== defaults.length || mine.some((r, i) => r.origin !== defaults[i]!.id || isChanged(r));
+}
+
+/** A category back to its defaults: its own rules go, the defaults come back as they were (in place). */
+export function resetCategory(rules: readonly StoredRule[], category: Category): StoredRule[] {
+  let out = rules.filter((r) => r.category !== category);
+  for (const d of DEFAULT_RULES) if (d.category === category) out = addRule(out, fromDefault(d));
+  return out;
 }
 
 /** The defaults that were removed: back where they'd be (after the default before them). */

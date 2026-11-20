@@ -5,7 +5,7 @@ import { DEFAULT_RULES } from "./defaults";
 import { applyRules } from "./rules";
 import {
   type RuleStore, type StoredRule, addRule, defaultStore, duplicateRule, hiddenKinds, isChanged, missingDefaults, moveRule,
-  normalizeStore, removeRule, resetRule, restoreDefaults, ruleStore, storedRules, updateRule,
+  normalizeStore, removeRule, resetCategory, categoryChanged, restoreDefaults, ruleStore, storedRules, updateRule,
 } from "./store";
 import { decode } from "../persist/store";
 
@@ -54,13 +54,23 @@ describe("stored rules", () => {
     expect(addRule(rs, mine("y", "a")).at(-1)!.id).toBe("y"); // General: empty, last
   });
 
-  it("know what changed from a default, reset it, and restore removed defaults where they were", () => {
-    let rs = defaultStore().rules;
+  it("know what changed from a default, reset a category, and restore removed defaults where they were", () => {
+    const defaults = defaultStore().rules;
+    let rs = defaults;
     expect(rs.some(isChanged)).toBe(false);
+    expect(categoryChanged(rs, "Loot")).toBe(false);
     rs = updateRule(rs, "item.cheap", { query: "is:item value<5k" });
     expect(isChanged(rs.find((r) => r.id === "item.cheap")!)).toBe(true);
-    rs = resetRule(rs, "item.cheap");
-    expect(rs.some(isChanged)).toBe(false);
+    expect(categoryChanged(rs, "Loot")).toBe(true);
+    expect(categoryChanged(rs, "Players")).toBe(false);
+    rs = addRule(rs, mine("x", "a", { category: "Loot" }));
+    rs = moveRule(rs, "player.usec", 1);
+    expect(categoryChanged(rs, "Players")).toBe(true);
+    rs = resetCategory(rs, "Loot");
+    expect(categoryChanged(rs, "Loot")).toBe(false);
+    expect(categoryChanged(rs, "Players")).toBe(true); // other categories untouched
+    rs = resetCategory(rs, "Players");
+    expect(ids(rs)).toEqual(ids(defaults));
     const without = removeRule(removeRule(rs, "item.cheap"), "player.usec");
     expect(missingDefaults(without)).toBe(2);
     expect(ids(restoreDefaults(without))).toEqual(ids(rs));

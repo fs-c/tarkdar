@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { darken } from "./render";
+import { darken, heightTag } from "./render";
 import { COLORS, playerLook } from "./style";
 
 describe("darken", () => {
@@ -8,6 +8,16 @@ describe("darken", () => {
     expect(darken("#ff8000", 0.5)).toBe("rgb(128, 64, 0)");
     expect(darken("#ff8000", 2)).toBe("rgb(0, 0, 0)");
     expect(darken("rgba(1, 2, 3, 0.5)", 0.5)).toBe("rgba(1, 2, 3, 0.5)");
+  });
+});
+
+describe("height tags", () => {
+  it("say how far above or below us a labelled thing is, from 2 m on, and nothing without us", () => {
+    expect(heightTag(13.4, 10)).toBe(" ▲3");
+    expect(heightTag(-2, 10)).toBe(" ▼12");
+    expect(heightTag(11.9, 10)).toBe("");
+    expect(heightTag(20, null)).toBe("");
+    expect(heightTag(undefined, 10)).toBe("");
   });
 });
 

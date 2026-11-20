@@ -2,7 +2,7 @@
 // matches), opening into an editor: name, query (highlight/query.ts), style. Hovering it marks what it
 // matches on the map.
 
-import { ArrowDown, ArrowUp, Copy, Pin, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, Pin, Trash2 } from "lucide-react";
 import { CATEGORIES, SHOW_LEVELS } from "../rules/defaults";
 import type { Emphasis, LabelMode, StyleProps } from "../rules/rules";
 import type { StoredRule } from "../rules/store";
@@ -67,15 +67,13 @@ interface Props {
   onMove: (dir: -1 | 1) => void;
   onDuplicate?: () => void;
   onRemove: () => void;
-  /** Made from a default and changed since: back to the default. */
-  onReset?: () => void;
   /** Pinned: keep it as a rule of its category. */
   onKeep?: () => void;
   /** Its category can be picked (pinned rules: where it goes when kept). */
   pickCategory?: boolean;
 }
 
-export function RuleRow({ rule, open, onOpen, onChange, count, errors, onHover, onMove, onDuplicate, onRemove, onReset, onKeep, pickCategory = true }: Props) {
+export function RuleRow({ rule, open, onOpen, onChange, count, errors, onHover, onMove, onDuplicate, onRemove, onKeep, pickCategory = true }: Props) {
   const { style } = rule;
   const setStyle = (patch: StyleProps) => {
     const next: StyleProps = { ...style, ...patch };
@@ -97,11 +95,6 @@ export function RuleRow({ rule, open, onOpen, onChange, count, errors, onHover, 
         {onKeep && (
           <Button variant="icon" title="Keep: a rule of its own, beyond this raid" onClick={onKeep}>
             <Pin size={13} />
-          </Button>
-        )}
-        {onReset && (
-          <Button variant="icon" title="Changed: reset to the default" onClick={onReset}>
-            <RotateCcw size={13} />
           </Button>
         )}
       </div>

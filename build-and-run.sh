@@ -1,0 +1,1 @@
+cmake -S . -B build -G Ninja && cmake --build build && sudo XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" ./build/bin/radar-backend --device "qemu://hugepage-pid=$(pgrep -f 'guest=')"

@@ -1,10 +1,13 @@
 - improve assets system
     - frequently accidentally lose changes on pull, maybe do git style conflict resolution
 - minor improvements
-    - move the reset to default functionality from row-level to group-level
-    - think about how to visualize above/below better & more consistently (what gets it right now? players + anything with ring should get it IMO)
-    - better exfil names (maybe we can read them from the in-game translations? we have those now)
-- shuffle some menu contents around
-    - "Map" -> "Filters" (work in progress name)
-    - move trails group into a new "Map" menu, move the map-related settings (at the moment everything but overlay) into there as well
+    - don't give bear/usec any special status in visuals, everything should be encoded in changeable settings
 - backend/memory read optimization; there's noticeably more lag while the backend is running
+    - also noticed that frontend seems to be very delayed at times (maybe already backend, hard to tell)
+- cleanup/review round, some loose thoughts (not a thorough review)
+    - app/ seems to be more about probing than anything else at this point, we should consider moving that out
+    - having both scripts/ and tools/ seems a bit redundant unless there's a genuine categorical difference I'm missing
+    - code/architectural cleanliness started out very clean but the deeper one goes into the various systems (younger code) the more convoluted it gets
+        - both in terms of super dense code/syntax & in terms of wonky abstractions etc.
+- make frontend themeable
+    - want to play around with some different colors/fonts

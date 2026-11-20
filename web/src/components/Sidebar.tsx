@@ -1,7 +1,7 @@
 // VS Code-style navigation: an always-visible activity bar of icons on the left, and a collapsible
 // side panel showing the picked view. Clicking the active icon collapses the panel.
 
-import { Archive, Bug, DoorOpen, History, Layers, type LucideIcon, Package, PanelLeftClose, Settings, Users } from "lucide-react";
+import { Archive, DoorOpen, Funnel, History, type LucideIcon, Map as MapIcon, Package, PanelLeftClose, Settings, Users } from "lucide-react";
 import { type PointerEvent, type ReactNode, useRef } from "react";
 import { DEFAULT_SIDEBAR_WIDTH, useSidebarSize } from "../prefs";
 import { TABS } from "../list/columns";
@@ -9,8 +9,8 @@ import type { TabId } from "../list/rows";
 import { Button, cx } from "../ui";
 import s from "./Sidebar.module.css";
 
-/** The panel's views: one per list tab, plus map options, raid recordings, debugging and settings. */
-export type ViewId = TabId | "map" | "raids" | "debug" | "settings";
+/** The panel's views: one per list tab, plus the display rules, map options, raid recordings, and settings (with debugging). */
+export type ViewId = TabId | "filters" | "map" | "raids" | "settings";
 
 export const LIST_ICONS: Record<TabId, LucideIcon> = {
   players: Users,
@@ -19,17 +19,17 @@ export const LIST_ICONS: Record<TabId, LucideIcon> = {
   exfils: DoorOpen,
 };
 
-const TOP: ViewId[] = ["players", "items", "containers", "exfils", "map", "raids"];
+const TOP: ViewId[] = ["players", "items", "containers", "exfils", "filters", "map", "raids"];
 
 export const VIEW_TITLES: Record<ViewId, string> = {
   ...Object.fromEntries(Object.entries(TABS).map(([id, t]) => [id, t.label])),
+  filters: "Filters",
   map: "Map",
   raids: "Raids",
-  debug: "Debug",
   settings: "Settings",
 } as Record<ViewId, string>;
 
-const ICONS: Record<ViewId, LucideIcon> = { ...LIST_ICONS, map: Layers, raids: History, debug: Bug, settings: Settings };
+const ICONS: Record<ViewId, LucideIcon> = { ...LIST_ICONS, filters: Funnel, map: MapIcon, raids: History, settings: Settings };
 
 interface ActivityBarProps {
   /** The view shown in the panel, or null when it's collapsed. */
@@ -61,7 +61,6 @@ export function ActivityBar({ active, onPick, badges }: ActivityBarProps) {
     <nav className={s.activityBar}>
       {TOP.map(item)}
       <div className={s.spacer} />
-      {item("debug")}
       {item("settings")}
     </nav>
   );

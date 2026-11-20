@@ -331,6 +331,14 @@ exports[`radar.sidebar > from version 1 1`] = `
 {
   "open": false,
   "raidsLevel": "list",
+  "section": "filters",
+}
+`;
+
+exports[`radar.sidebar > from version 2 1`] = `
+{
+  "open": true,
+  "raidsLevel": "list",
   "section": "map",
 }
 `;

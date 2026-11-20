@@ -1,12 +1,12 @@
-// Debug view of the side panel: what's behind the quest item filter, and map debugging tools.
+// The debugging sections of the Settings view: what's behind the quest item filter, and map debugging tools.
 
 import type { MapPrefs } from "../prefs";
 import type { MapView } from "../map3d/Map3D";
 import { type QuestDebug, type QuestDebugQuest, questStatusName } from "../quests";
-import { Actions, Button, PanelBody, Section, ToggleRow, cx } from "../ui";
+import { Actions, Button, Section, ToggleRow, cx } from "../ui";
 import s from "./DebugPanel.module.css";
 
-interface Props {
+export interface DebugProps {
   prefs: MapPrefs;
   onPrefs: (p: MapPrefs) => void;
   /** A map is on screen (not just the grid of a location without one). */
@@ -25,13 +25,14 @@ interface Props {
   duplicates: number;
 }
 
-export function DebugPanel(p: Props) {
+/** Sections, not a view: shown at the bottom of SettingsPanel. */
+export function DebugSections(p: DebugProps) {
   const toggle = (key: keyof MapPrefs) => () => p.onPrefs({ ...p.prefs, [key]: !p.prefs[key] });
   return (
-    <PanelBody>
+    <>
       <QuestSection report={p.quests} duplicates={p.duplicates} />
       {p.mapShown && (
-        <Section title="Map debugging">
+        <Section title="Debug · Map">
           <ToggleRow
             label="Coordinate pick"
             hint="Click the map to record the world position under the cursor"
@@ -52,13 +53,13 @@ export function DebugPanel(p: Props) {
           )}
         </Section>
       )}
-      <Section title="Player's view">
+      <Section title="Debug · Player's view">
         <p className="muted">
           <a href="#pov">Player's view</a>: what the backend reads of the local player's camera and scope, as points
           projected from their eyes. For checking the camera offsets.
         </p>
       </Section>
-    </PanelBody>
+    </>
   );
 }
 
@@ -82,7 +83,7 @@ function QuestSection({ report: r, duplicates }: { report: QuestDebug; duplicate
     ["Copies merged", `${duplicates} loot entries`, "The same item at the same spot more than once (dedupe.ts)"],
   ];
   return (
-    <Section title="Quests">
+    <Section title="Debug · Quests">
       <dl className={s.readout}>
         {rows.map(([label, value, title]) => (
           <div key={label} title={title}>
@@ -185,7 +186,7 @@ const fixed = (v: number, digits = 1) => v.toFixed(digits);
 const xyz = (v: [number, number, number]) => v.map((c) => fixed(c)).join(", ");
 
 /** What map is shown and where the camera is: for setting a map's `up` (its home orientation). */
-function MapReadout({ info, view }: { info: NonNullable<Props["mapInfo"]>; view: MapView | null }) {
+function MapReadout({ info, view }: { info: NonNullable<DebugProps["mapInfo"]>; view: MapView | null }) {
   const heading = view && compass(view.heading);
   const off = view && turn(view.heading - info.up);
   const rows: [string, string, string?][] = [

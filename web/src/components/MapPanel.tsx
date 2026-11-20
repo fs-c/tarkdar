@@ -1,216 +1,216 @@
-// Map view of the side panel: the display rules (how things look, and whether and when they show),
-// by category, each hideable one with an on/off switch; then trails. Pinned rules (from highlights, for
-// this raid) come first, then General: they win over the categories below. Within a category, the
-// rules higher up win.
+// Map view of the side panel: how the map looks (style, palette, colours), how it's controlled, and
+// trails. (What shows on it and how: FiltersPanel. The overlay: SettingsPanel.)
 
-import { Plus } from "lucide-react";
-import { useState } from "react";
-import { compileQuery, QUERY_HELP } from "../highlight/query";
-import type { LootPrefs, TrailPrefs } from "../prefs";
-import type { ItemCatalog } from "../items";
-import type { AnyRow } from "../list/rows";
-import { CATEGORIES, type Category, HIDEABLE } from "../rules/defaults";
-import {
-  type RuleStore, type SetPinned, type SetRuleStore, type StoredRule, addRule, defaultStore, duplicateRule, isChanged, missingDefaults,
-  moveRule, newRuleId, removeRule, resetRule, restoreDefaults, updateRule,
-} from "../rules/store";
-import { Button, PanelBody, Segmented, type SegmentedOption, ToggleRow } from "../ui";
-import { RuleRow } from "./RuleRow";
+import type { MapPrefs, TrailPrefs } from "../prefs";
+import { COLOR_SCHEMES, type ColorGrade, type ColorSchemeName, PLAN_PALETTES, type PlanPalette, type PlanPaletteName, paletteOf, schemeOf } from "../map3d/settings";
+import { Actions, Button, PanelBody, Section, Segmented, SliderRow, ToggleRow } from "../ui";
 import s from "./MapPanel.module.css";
+import { PALETTE_LABELS } from "./StyleSwitch";
 
 interface Props {
-  rules: RuleStore;
-  setRules: SetRuleStore;
-  pinned: StoredRule[];
-  setPinned: SetPinned;
-  /** Rule id → what it matches now. */
-  matched: ReadonlyMap<string, AnyRow[]>;
-  catalog: ItemCatalog;
-  /** The rule whose matches to mark on the map (null: none). */
-  onHoverRule: (id: string | null) => void;
+  prefs: MapPrefs;
+  onPrefs: (p: MapPrefs) => void;
   trails: TrailPrefs;
   onTrails: (t: TrailPrefs) => void;
-  loot: LootPrefs;
-  onLoot: (l: LootPrefs) => void;
-  /** What the quest item filter knows right now, e.g. "3 quests in progress". */
-  questInfo: string;
 }
 
-const HINTS: Record<Category, string> = {
-  General: "Across kinds of thing: win over the categories below",
-  Players: "By type",
-  Loot: "Loose items by value per slot, and quest items",
-  Containers: "Containers, airdrops and corpses",
-  Exfils: "Extraction points; their colour tells their status",
-  Explosives: "Grenades and tripwires",
-};
-
-/** Shown top to bottom: what wins first. */
-const SHOWN_CATEGORIES = [...CATEGORIES].reverse();
-
-const QUEST_ITEM_OPTIONS: SegmentedOption<LootPrefs["questItems"]>[] = [
-  { value: "needed", label: "Needed", title: "Only quest items a started quest still needs to find" },
-  { value: "all", label: "All", title: "Every quest item on the map" },
+const SCHEMES: { value: ColorSchemeName; label: string; title: string }[] = [
+  { value: "standard", label: "Standard", title: "Lightened game colours" },
+  { value: "light", label: "Light", title: "Lighter and flatter" },
+  { value: "muted", label: "Muted", title: "Mostly grey, a hint of colour" },
+  { value: "game", label: "Game", title: "The game's colours as they are: dark" },
 ];
+
+const GRADE: { key: keyof ColorGrade; label: string; min: number; max: number }[] = [
+  { key: "exposure", label: "Exposure", min: 0.4, max: 2.5 },
+  { key: "lift", label: "Lift", min: 0, max: 0.8 },
+  { key: "contrast", label: "Contrast", min: 0, max: 1.2 },
+  { key: "saturation", label: "Saturation", min: 0, max: 2 },
+  { key: "groundSaturation", label: "Ground saturation", min: 0, max: 1.5 },
+];
+
+const DARK: PlanPaletteName[] = ["night", "midnight", "blueprint"];
+const PALETTES = (Object.keys(PLAN_PALETTES) as PlanPaletteName[]).map((value) => ({
+  value,
+  label: PALETTE_LABELS[value] + (DARK.includes(value) ? " (dark)" : ""),
+}));
 
 const TRAIL_LENGTHS: (number | null)[] = [0.5, 1, 2, 5, 10, 15, 30, null];
 
+const PALETTE_COLORS: { key: keyof PlanPalette; label: string; title?: string }[] = [
+  { key: "ground", label: "Ground" },
+  { key: "grass", label: "Grass" },
+  { key: "road", label: "Road" },
+  { key: "floor", label: "Floor", title: "Pavements, slabs, floors" },
+  { key: "water", label: "Water" },
+  { key: "tree", label: "Trees" },
+  { key: "cover", label: "Cover", title: "Obstacles up to 2 m: what one can look over" },
+  { key: "obstacle", label: "Obstacle", title: "Taller but narrow: walls, fences, containers, vehicles" },
+  { key: "building", label: "Building" },
+  { key: "buildingTall", label: "Tall building", title: "Buildings shade from Building to this at 24 m" },
+  { key: "outline", label: "Outline" },
+];
+
 export function MapPanel(p: Props) {
-  const { rules, setRules, pinned, setPinned } = p;
-  // One rule's editor open at a time.
-  const [open, setOpen] = useState<string | null>(null);
-  const [help, setHelp] = useState(false);
-  const opener = (id: string) => (o: boolean) => setOpen(o ? id : null);
-  const setList = (update: (rs: StoredRule[]) => StoredRule[]) => setRules((r) => ({ ...r, rules: update(r.rules) }));
-
-  const toggleCategory = (c: Category) =>
-    setRules((r) => ({ ...r, hidden: r.hidden.includes(c) ? r.hidden.filter((x) => x !== c) : [...r.hidden, c] }));
-  const add = (category: Category) => {
-    const id = newRuleId();
-    setList((rs) => addRule(rs, { id, category, label: "New rule", query: "", style: {}, on: true }));
-    setOpen(id);
-  };
-  const keep = (r: StoredRule) => {
-    setPinned((ps) => removeRule(ps, r.id));
-    setList((rs) => addRule(rs, { ...r, id: newRuleId() }));
-  };
-  const missing = missingDefaults(rules.rules);
-
-  const row = (r: StoredRule, pinnedRule: boolean) => {
-    const set = pinnedRule ? setPinned : setList;
-    return (
-      <RuleRow
-        key={r.id}
-        rule={r}
-        open={open === r.id}
-        onOpen={opener(r.id)}
-        count={p.matched.get(r.id)?.length ?? 0}
-        errors={compileQuery(r.query, p.catalog).errors}
-        onHover={(on) => p.onHoverRule(on ? r.id : null)}
-        onChange={(patch) => set((rs) => updateRule(rs, r.id, patch))}
-        onMove={(dir) => set((rs) => moveRule(rs, r.id, dir, !pinnedRule))}
-        onDuplicate={() => set((rs) => duplicateRule(rs, r.id))}
-        onRemove={() => {
-          p.onHoverRule(null);
-          set((rs) => removeRule(rs, r.id));
-        }}
-        onReset={!pinnedRule && isChanged(r) ? () => setList((rs) => resetRule(rs, r.id)) : undefined}
-        onKeep={pinnedRule ? () => keep(r) : undefined}
-      />
-    );
-  };
-
+  const toggle = (key: keyof MapPrefs) => () => p.onPrefs({ ...p.prefs, [key]: !p.prefs[key] });
+  const wasd = p.prefs.controls === "wasd";
+  const plan = p.prefs.style === "plan";
+  // A stored palette may predate a colour added since.
+  const palette: PlanPalette = { ...PLAN_PALETTES.paper, ...p.prefs.palette };
   return (
     <PanelBody>
-      <section className={s.group}>
-        <header className={s.header}>
-          <h3 className={s.title}>Pinned</h3>
-          <small className={s.hint}>This raid only; win over everything below</small>
-        </header>
-        {pinned.length === 0 && <p className={s.empty}>Pin a highlight (📌 on its pill) to keep it here for this raid.</p>}
-        {[...pinned].reverse().map((r) => row(r, true))}
-      </section>
-      {SHOWN_CATEGORIES.map((group) => {
-        const hideable = group in HIDEABLE;
-        const shown = !rules.hidden.includes(group);
-        const list = rules.rules.filter((r) => r.category === group).reverse();
-        return (
-          <section key={group} className={s.group} data-off={!shown}>
-            <header className={s.header}>
-              {hideable ? (
-                <label className={s.switchLabel} title={shown ? "Shown: click to hide all of them (ringed things, e.g. highlights, still show)" : "Hidden: click to show"}>
-                  <input type="checkbox" role="switch" className={s.switch} checked={shown} onChange={() => toggleCategory(group)} />
-                  <h3 className={s.title}>{group}</h3>
-                </label>
-              ) : (
-                <h3 className={s.title}>{group}</h3>
-              )}
-              <small className={s.hint}>{HINTS[group]}</small>
-              {shown && (
-                <Button variant="icon" className={s.add} title={`Add a rule to ${group}`} onClick={() => add(group)}>
-                  <Plus size={14} />
-                </Button>
-              )}
-            </header>
-            {shown && list.length === 0 && <p className={s.empty}>No rules.</p>}
-            {shown && list.map((r) => row(r, false))}
-            {shown && group === "Loot" && (
-              <div className={s.field}>
-                <span className={s.caption}>Quest items · {p.questInfo}</span>
-                <Segmented<LootPrefs["questItems"]>
-                  label="Quest items"
-                  title="Quest items: only those a quest in progress still needs, or all of them"
-                  options={QUEST_ITEM_OPTIONS}
-                  value={p.loot.questItems === "all" ? "all" : "needed"}
-                  onChange={(v) => p.onLoot({ ...p.loot, questItems: v })}
-                />
-              </div>
-            )}
-          </section>
-        );
-      })}
-      <section className={s.group}>
-        <div className={s.ruleActions}>
-          <Button variant="link" onClick={() => setHelp((h) => !h)} aria-expanded={help}>
-            Query syntax
-          </Button>
-          {missing > 0 && (
-            <Button variant="link" title="Put the default rules you removed back" onClick={() => setList(restoreDefaults)}>
-              Restore {missing} default{missing === 1 ? "" : "s"}
-            </Button>
-          )}
-          <Button
-            variant="link"
-            title="All rules back to the defaults (your own rules go)"
-            onClick={() => {
-              if (window.confirm("Reset all rules to the defaults? Your own rules will be removed.")) setRules(() => defaultStore());
+      <Section title="Map">
+        <div className={s.choice}>
+          <span>Style</span>
+          <Segmented
+            label="Style"
+            options={[
+              { value: "realistic" as const, label: "Realistic", title: "The game's colours, lit: what the place looks like" },
+              { value: "plan" as const, label: "Plan", title: "Drawn like a map: buildings, cover and open ground in flat colours, with outlines" },
+            ]}
+            value={p.prefs.style}
+            onChange={(style) => p.onPrefs({ ...p.prefs, style })}
+          />
+        </div>
+        <p className="muted">
+          {plan
+            ? "Sand: buildings, darker the taller. Dark grey: walls, vehicles, containers. Grey: cover one can look over."
+            : "The plan style is easier to read at a glance."}{" "}
+          M switches.
+        </p>
+        <ToggleRow
+          label="Material colours"
+          hint={plan ? "The plan style has its own colours" : "Off: one colour per kind of object"}
+          checked={p.prefs.colored}
+          onChange={toggle("colored")}
+        />
+        <ToggleRow label="Trees" hint="Simple markers where trees stand" checked={p.prefs.trees} onChange={toggle("trees")} />
+        <ToggleRow label="Contour lines" hint="Every 2 m of terrain height" checked={p.prefs.contours} onChange={toggle("contours")} />
+        <ToggleRow
+          label="Player figures"
+          hint="Up close, players are drawn from their skeleton instead of as dots"
+          checked={p.prefs.bodies}
+          onChange={toggle("bodies")}
+        />
+        <div className={s.choice}>
+          <span>Projection</span>
+          <Segmented
+            label="Projection"
+            options={[
+              { value: false, label: "Perspective" },
+              { value: true, label: "Orthographic", title: "Parallel projection: buildings never lean" },
+            ]}
+            value={p.prefs.orthographic}
+            onChange={(orthographic) => p.onPrefs({ ...p.prefs, orthographic })}
+          />
+        </div>
+        <div className={s.choice}>
+          <span>Controls</span>
+          <Segmented
+            label="Controls"
+            options={[
+              { value: "map" as const, label: "Map" },
+              { value: "wasd" as const, label: "WASD" },
+            ]}
+            value={p.prefs.controls}
+            onChange={(controls) => p.onPrefs({ ...p.prefs, controls })}
+          />
+        </div>
+        <p className="muted">
+          {wasd
+            ? "W A S D move (Shift: faster), drag tilts and turns the camera, right-drag moves the map, the wheel zooms."
+            : "Drag moves the map, the wheel zooms, right-drag tilts and turns it."}{" "}
+          0 resets the view.
+        </p>
+      </Section>
+      <Section title="Trails">
+        <ToggleRow
+          label="Selected player"
+          hint="Where they've been this raid"
+          checked={p.trails.selected}
+          onChange={() => p.onTrails({ ...p.trails, selected: !p.trails.selected })}
+        />
+        <ToggleRow
+          label="Everyone"
+          hint="Recent paths of all players (those the list's filters let through)"
+          checked={p.trails.all}
+          onChange={() => p.onTrails({ ...p.trails, all: !p.trails.all })}
+        />
+        {p.trails.all && (
+          <Segmented
+            label="Trail duration"
+            title="How far back everyone's trails reach (the selected player's always shows the whole raid)"
+            options={TRAIL_LENGTHS.map((m) => ({ value: m, label: m === null ? "Whole raid" : m < 1 ? `${m * 60} s` : `${m} min` }))}
+            value={p.trails.minutes}
+            onChange={(m) => p.onTrails({ ...p.trails, minutes: m })}
+          />
+        )}
+      </Section>
+      <Section title="Plan palette">
+        <label className={s.choice}>
+          <span>Palette</span>
+          <select
+            className={s.select}
+            value={paletteOf(palette) ?? "custom"}
+            onChange={(e) => {
+              const picked = e.target.value === "custom" ? p.prefs.customPalette : PLAN_PALETTES[e.target.value as PlanPaletteName];
+              if (picked) p.onPrefs({ ...p.prefs, palette: picked });
             }}
           >
-            Reset all
-          </Button>
-        </div>
-        {help && (
-          <dl className={s.help}>
-            <dt><code>words "a phrase"</code></dt>
-            <dd>text, as in the list's search</dd>
-            {QUERY_HELP.map((h) => (
-              <div key={h.example}>
-                <dt><code>{h.example}</code></dt>
-                <dd>{h.text}</dd>
-              </div>
+            {PALETTES.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
             ))}
-            <dd className={s.helpNote}>Spaces: all must hold. Commas: any of them (<code>is:boss,raider</code>). Quotes for names with spaces. Compare with &gt;= &gt; &lt;= &lt; =.</dd>
-          </dl>
-        )}
-      </section>
-      <section className={s.group}>
-        <header className={s.header}>
-          <h3 className={s.title}>Trails</h3>
-        </header>
-        <div className={s.inset}>
-          <ToggleRow
-            label="Selected player"
-            hint="Where they've been this raid"
-            checked={p.trails.selected}
-            onChange={() => p.onTrails({ ...p.trails, selected: !p.trails.selected })}
-          />
-          <ToggleRow
-            label="Everyone"
-            hint="Recent paths of all players (those the list's filters let through)"
-            checked={p.trails.all}
-            onChange={() => p.onTrails({ ...p.trails, all: !p.trails.all })}
-          />
-          {p.trails.all && (
-            <Segmented
-              label="Trail duration"
-              title="How far back everyone's trails reach (the selected player's always shows the whole raid)"
-              options={TRAIL_LENGTHS.map((m) => ({ value: m, label: m === null ? "Whole raid" : m < 1 ? `${m * 60} s` : `${m} min` }))}
-              value={p.trails.minutes}
-              onChange={(m) => p.onTrails({ ...p.trails, minutes: m })}
-            />
-          )}
+            {(p.prefs.customPalette || !paletteOf(palette)) && <option value="custom">Custom</option>}
+          </select>
+        </label>
+        <div className={s.swatches}>
+          {PALETTE_COLORS.map((c) => (
+            <label key={c.key} className={s.swatch} title={c.title}>
+              <input type="color" value={palette[c.key]} onChange={(e) => {
+                  const custom = { ...palette, [c.key]: e.target.value };
+                  p.onPrefs({ ...p.prefs, palette: custom, customPalette: custom });
+                }} />
+              <span>{c.label}</span>
+            </label>
+          ))}
         </div>
-      </section>
+        <p className="muted">
+          {plan ? "" : "Used by the plan style (M). "}Change any colour to make the palette your own: it stays available as "Custom" next to
+          the pre-made ones. A level surface has exactly the colour chosen, walls are a little darker.
+        </p>
+        <Actions>
+          <Button onClick={() => void navigator.clipboard?.writeText(JSON.stringify(palette))} title="As JSON, to share or keep">
+            Copy palette
+          </Button>
+        </Actions>
+      </Section>
+      <Section title="Map colours">
+        <div className={s.choice}>
+          <Segmented
+            label="Colour scheme"
+            options={SCHEMES}
+            value={schemeOf(p.prefs)}
+            onChange={(name) => name && p.onPrefs({ ...p.prefs, ...COLOR_SCHEMES[name] })}
+          />
+        </div>
+        {GRADE.map((g) => (
+          <SliderRow
+            key={g.key}
+            label={g.label}
+            value={p.prefs[g.key]}
+            min={g.min}
+            max={g.max}
+            step={0.01}
+            onChange={(value) => p.onPrefs({ ...p.prefs, [g.key]: value })}
+          />
+        ))}
+        <p className="muted">
+          Applied live to the material colours of the realistic style: map luma = lift + contrast × game luma. Exposure
+          also lights the one-colour-per-kind view.
+        </p>
+      </Section>
     </PanelBody>
   );
 }

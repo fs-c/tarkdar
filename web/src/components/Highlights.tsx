@@ -2,7 +2,7 @@
 // without hiding anything (filtering is the list's job). Typing suggests what the query could mean;
 // the active suggestion previews on the map; Enter (or a click) keeps it as a pill. Pills: click to
 // switch on/off, the count steps through the matches (nearest first), the pin keeps it as a pinned
-// rule for this raid (the Map view, where it can be edited and kept for good), × removes. The search
+// rule for this raid (the Filters view, where it can be edited and kept for good), × removes. The search
 // takes the query syntax too (highlight/query.ts): "is:item pen>=40".
 
 import { Highlighter, Pin, X } from "lucide-react";
@@ -30,7 +30,7 @@ interface Props {
   onPreview: (query: string | null) => void;
   /** Select a match and bring it into view. */
   onShow: (sel: Selection) => void;
-  /** Pin it: a rule for this raid (the Map view's "Pinned"). */
+  /** Pin it: a rule for this raid (the Filters view's "Pinned"). */
   onPin: (h: Highlight) => void;
 }
 
@@ -136,7 +136,7 @@ export function Highlights({ highlights, setHighlights, matched, rows, catalog, 
               <button type="button" className={s.count} disabled={!n} title={n ? `Show the next one (${n} in all, nearest first)` : "Nothing matches right now"} onClick={() => step(h)}>
                 {n}
               </button>
-              <button type="button" className={s.pin} title="Pin for this raid (Map view: edit it, or keep it for good)" onClick={() => onPin(h)}>
+              <button type="button" className={s.pin} title="Pin for this raid (Filters view: edit it, or keep it for good)" onClick={() => onPin(h)}>
                 <Pin size={11} />
               </button>
               <button type="button" className={s.remove} title="Remove" onClick={() => remove(h.id)}>
@@ -203,7 +203,7 @@ export function Highlights({ highlights, setHighlights, matched, rows, catalog, 
           {!query && (
             <div className={s.hint}>
               Highlights mark things on the map and in the list, and show them even where filters or categories would hide them.
-              Queries work too: <code>is:boss</code> <code>item:LEDX</code> <code>cat:Electronics</code> <code>value&gt;=40k</code> <code>pen&gt;=40</code> <code>class&gt;=5</code> (Map view: Query syntax).
+              Queries work too: <code>is:boss</code> <code>item:LEDX</code> <code>cat:Electronics</code> <code>value&gt;=40k</code> <code>pen&gt;=40</code> <code>class&gt;=5</code> (Filters view: Query syntax).
             </div>
           )}
         </div>

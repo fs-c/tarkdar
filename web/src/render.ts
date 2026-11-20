@@ -29,7 +29,7 @@ export interface Scene {
   hovered: [number, number, number] | null;
   /** World positions picked with the coordinate tool (3D map debugging), drawn numbered. */
   debugPoints: [number, number, number][];
-  /** Things a rule matches, marked while it's hovered in the Map view. */
+  /** Things a rule matches, marked while it's hovered in the Filters view. */
   marked?: readonly WorldPos[];
   trails: TrailScene | null;
   /** Up close, draw players with a known skeleton as figures instead of dots (3D map). */

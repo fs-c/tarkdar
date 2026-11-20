@@ -10,7 +10,7 @@ import { ui } from "../theme";
 import type { Emphasis, Rule, StyleProps } from "./rules";
 
 /**
- * The categories the Map view lists rules in. A rule's category is where it's listed (and what switching
+ * The categories the Filters view lists rules in. A rule's category is where it's listed (and what switching
  * the category off hides, for the hideable ones); the cascade goes by category in this order, bottom to
  * top, so General (rules that span kinds of thing) wins over the others.
  */

@@ -1,4 +1,4 @@
-// One display rule in the Map view: a compact row (on/off, its colour, name, query, how many things it
+// One display rule in the Filters view: a compact row (on/off, its colour, name, query, how many things it
 // matches), opening into an editor: name, query (highlight/query.ts), style. Hovering it marks what it
 // matches on the map.
 

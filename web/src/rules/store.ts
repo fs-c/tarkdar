@@ -1,5 +1,5 @@
 // What's kept of the rules (localStorage): every rule (made from the defaults, then changed, moved,
-// duplicated, removed or added in the Map view), the categories switched off, and the pinned rules of
+// duplicated, removed or added in the Filters view), the categories switched off, and the pinned rules of
 // the current raid. And how that turns into the rules to apply, bottom to top: the rules by category
 // (defaults.ts CATEGORIES), then the pinned ones. Highlights go on top of all of them (useRules.ts).
 //
@@ -51,7 +51,7 @@ export function hiddenKinds(store: RuleStore): Set<SubjectKind> {
   return new Set(store.hidden.flatMap((c) => HIDEABLE[c] ?? []));
 }
 
-// ---- Changes (pure, for the Map view) ----
+// ---- Changes (pure, for the Filters view) ----
 
 let counter = 0;
 export const newRuleId = (): string => `r:${Date.now().toString(36)}${(counter++).toString(36)}`;

@@ -1,6 +1,6 @@
 // Highlights: rules made in the global search (components/Highlights.tsx), matching by a query
 // (highlight/query.ts). A highlight never hides anything; it wins over what hides things (the list's
-// filters, the groups switched off in the Map view).
+// filters, the groups switched off in the Filters view).
 
 import type { ItemCatalog } from "../items";
 import type { AnyRow, TabRows } from "../list/rows";

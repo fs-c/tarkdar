@@ -121,7 +121,7 @@ export const overlayStore = defineStore<OverlayPrefs>({
 
 export const useOverlayPrefs = () => usePersisted(overlayStore);
 
-export const SECTIONS = ["list", "map", "raids", "debug", "settings"] as const;
+export const SECTIONS = ["list", "filters", "map", "raids", "settings"] as const;
 export type Section = (typeof SECTIONS)[number];
 
 /** The side panel: open or collapsed, and which section it shows (for "list", the list tab in the
@@ -132,15 +132,23 @@ export interface SidebarPrefs {
   raidsLevel: "list" | "timeline";
 }
 
+/** Sections of version 1 that are now elsewhere. */
+const SECTION_RENAMES: Record<string, Section> = { map: "filters", debug: "settings" };
+
 const sidebarDefaults = (): SidebarPrefs => ({ open: false, section: "list", raidsLevel: "list" });
 
 export const sidebarStore = defineStore<SidebarPrefs>({
   key: "radar.sidebar",
-  version: 1,
+  version: 2,
   scope: "device",
   defaults: sidebarDefaults,
-  // The timeline was a section of its own: now inside Raids.
-  migrations: { 0: (d) => (isObject(d) && d.section === "timeline" ? { ...d, section: "raids", raidsLevel: "timeline" } : d) },
+  migrations: {
+    // The timeline was a section of its own: now inside Raids.
+    0: (d) => (isObject(d) && d.section === "timeline" ? { ...d, section: "raids", raidsLevel: "timeline" } : d),
+    // "map" was the display rules, now "filters"; "map" is the map's settings (from Settings) and trails.
+    // Debug is part of Settings now.
+    1: (d) => (isObject(d) && typeof d.section === "string" ? { ...d, section: SECTION_RENAMES[d.section] ?? d.section } : d),
+  },
   normalize: (data) => {
     const p = flatNormalize(sidebarDefaults)(data);
     return {

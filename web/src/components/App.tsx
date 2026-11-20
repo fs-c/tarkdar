@@ -27,10 +27,10 @@ import type { Scene } from "../render";
 import { DetailsPanel } from "./DetailsPanel";
 import { Highlights } from "./Highlights";
 import { ListPanel } from "./ListPanel";
+import { FiltersPanel } from "./FiltersPanel";
 import { MapPanel } from "./MapPanel";
 import { RaidsPanel } from "./RaidsPanel";
 import type { RadarHandle } from "./Radar";
-import { DebugPanel } from "./DebugPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { StyleSwitch } from "./StyleSwitch";
 import { PlaybackBar } from "./PlaybackBar";
@@ -142,7 +142,7 @@ export function App() {
   // Highlights (the global search): kept for the session. The search's preview counts as one.
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
-  // The display rules (rules/): the stored ones (as changed in the Map view), the pinned ones (this
+  // The display rules (rules/): the stored ones (as changed in the Filters view), the pinned ones (this
   // raid's); highlights on top; categories switched off hide what isn't ringed.
   const [ruleStore, setRuleStore] = useRuleStore();
   const raidKey = !review && conn.raid !== null && locationId ? `${conn.raid}:${locationId}` : null;
@@ -157,7 +157,7 @@ export function App() {
     setPinned((ps) => [...ps, { id: newRuleId(), category: categoryFor(kinds), label: h.label, query: h.query, style: highlightStyle(h.color), on: true }]);
     setHighlights((hs) => hs.filter((x) => x.id !== h.id));
   };
-  // Hovering a rule in the Map view marks what it matches.
+  // Hovering a rule in the Filters view marks what it matches.
   const [hoverRule, setHoverRule] = useState<string | null>(null);
   const highlightMatches = useMemo(() => new Map(highlights.map((h) => [h.id, styled.matched.get(highlightId(h.id)) ?? []])), [highlights, styled.matched]);
   const everything = useMemo(() => allRows(list.all), [list.all]);
@@ -199,7 +199,7 @@ export function App() {
   }, [listShown]);
   const pickView = (v: ViewId) => {
     if (ui.open && v === view) return setUi((u) => ({ ...u, open: false }));
-    if (v === "map" || v === "raids" || v === "debug" || v === "settings") return setUi((u) => ({ ...u, open: true, section: v }));
+    if (v === "filters" || v === "map" || v === "raids" || v === "settings") return setUi((u) => ({ ...u, open: true, section: v }));
     setListPrefs((p) => ({ ...p, tab: v }));
     setUi((u) => ({ ...u, open: true, section: "list" }));
   };
@@ -373,9 +373,9 @@ export function App() {
             focusRef={focusListSearch}
           />
         );
-      case "map":
+      case "filters":
         return (
-          <MapPanel
+          <FiltersPanel
             rules={ruleStore}
             setRules={setRuleStore}
             pinned={pinned}
@@ -383,13 +383,13 @@ export function App() {
             matched={styled.matched}
             catalog={catalog}
             onHoverRule={setHoverRule}
-            trails={trailPrefs}
-            onTrails={setTrailPrefs}
             loot={lootPrefs}
             onLoot={setLootPrefs}
             questInfo={questInfo}
           />
         );
+      case "map":
+        return <MapPanel prefs={mapPrefs} onPrefs={setMapPrefs} trails={trailPrefs} onTrails={setTrailPrefs} />;
       case "raids":
         return ui.raidsLevel === "timeline" ? (
           <TimelinePanel
@@ -421,32 +421,27 @@ export function App() {
             onCurrent={openCurrent}
           />
         );
-      case "debug":
-        return (
-          <DebugPanel
-            prefs={mapPrefs}
-            onPrefs={setMapPrefs}
-            mapShown={!!map}
-            stats={map ? mapStats : null}
-            mapInfo={map && { folder: map.folder, name: map.config.name, locationId, up: map.config.up ?? 0 }}
-            view={map ? mapView : null}
-            pickOutput={pickOutput()}
-            onClearPicks={() => setDebugPicks([])}
-            quests={questDebugReport({
-              quests: unfiltered.quests,
-              loot: deduped,
-              filterOn: filterQuest,
-              itemName: (tpl) => catalog.lookup(tpl)?.name,
-            })}
-            duplicates={unfiltered.loot.length - deduped.length}
-          />
-        );
       case "settings":
         return (
           <SettingsPanel
-            prefs={mapPrefs}
-            onPrefs={setMapPrefs}
             overlay={{ available: conn.overlay, prefs: overlayPrefs, onPrefs: setOverlayPrefs, marks: overlayConfig?.marks.length ?? null }}
+            debug={{
+              prefs: mapPrefs,
+              onPrefs: setMapPrefs,
+              mapShown: !!map,
+              stats: map ? mapStats : null,
+              mapInfo: map && { folder: map.folder, name: map.config.name, locationId, up: map.config.up ?? 0 },
+              view: map ? mapView : null,
+              pickOutput: pickOutput(),
+              onClearPicks: () => setDebugPicks([]),
+              quests: questDebugReport({
+                quests: unfiltered.quests,
+                loot: deduped,
+                filterOn: filterQuest,
+                itemName: (tpl) => catalog.lookup(tpl)?.name,
+              }),
+              duplicates: unfiltered.loot.length - deduped.length,
+            }}
           />
         );
     }
@@ -484,7 +479,7 @@ export function App() {
               onPan={() => setFollow(false)}
               onTurn={() => setFollowHeading(false)}
               onTap={onTap}
-              onStats={ui.open && ui.section === "debug" ? onMapStats : undefined}
+              onStats={ui.open && ui.section === "settings" ? onMapStats : undefined}
             />
           </Suspense>
           {timeline && range && (

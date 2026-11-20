@@ -85,9 +85,9 @@ the count of each object type (`typeCounts`). Scenes do not reference NavMesh da
   top-down with north up (or the map's usual orientation: `up` in map.json, from `MAPS` in
   `t3d/maps.py`; Woods and Shoreline are south up like the common hand-drawn maps; the compass
   button turns back to it), `+`/`-` zoom, `F` follows the local player.
-- **Settings → Controls → WASD**: `W A S D` move along the ground (Shift: faster, speed follows the
+- **Map → Controls → WASD**: `W A S D` move along the ground (Shift: faster, speed follows the
   zoom), drag tilts and turns the camera, right-drag moves the map.
-- **Settings → Projection**: perspective (25° field of view) or orthographic (parallel: buildings
+- **Map → Projection**: perspective (25° field of view) or orthographic (parallel: buildings
   never lean). Switching keeps target, direction and zoom.
 - **The style button** in the map's top right corner opens a row of the styles with a small
   preview of each: Realistic, the pre-made plan palettes, and your own palette if you made one
@@ -98,10 +98,10 @@ the count of each object type (`typeCounts`). Scenes do not reference NavMesh da
   map turns so that the player's view points up (`Map3D.turnTo`). Moving the map by hand or `F`
   stops following; turning it by hand stops following the direction. Centring on something from a
   list or the timeline flies there as well.
-- **Settings → Style**: **Realistic** shows what the place looks like (the game's material
+- **Map → Style**: **Realistic** shows what the place looks like (the game's material
   colours, lit); **Plan** is drawn like a map, for reading a situation at a glance (below). Same
   camera, same geometry: switching costs one frame.
-- **Settings → Map colours**: colour schemes and sliders for the colour grade (below), live.
+- **Map → Map colours**: colour schemes and sliders for the colour grade (below), live.
 - Markers (players, loot, exfils, explosives, trails, labels) are drawn on a canvas over the map
   through the map's camera (`web/src/projector.ts`, `web/src/render.ts`). They show through
   buildings.
@@ -111,7 +111,7 @@ the count of each object type (`typeCounts`). Scenes do not reference NavMesh da
 - **Orthographic and straight down** (the view during a raid) **is drawn from tiles**: a frame
   costs a twentieth of any other view's, and edges and outlines are smooth. See "The top-down
   view" below.
-- **Settings → 3D map**: material colours, trees, contour lines. **Map debugging**: coordinate pick
+- **Map → 3D map**: material colours, trees, contour lines. **Map debugging**: coordinate pick
   (click the map: world position, the mesh under the cursor and the camera, as JSON to paste into
   a bug report), wireframe, render statistics.
 - three.js is loaded only when a 3D map is shown (a separate chunk, ~155 kB gzipped,
@@ -198,7 +198,7 @@ bare ground are the same grey-beige. The plan style gets there from geometry alo
   containers, vehicles, pylons), or the building colour where a building stands, shading towards
   a second one with height (reached at 24 m).
 - **Roads** are one colour (a little lighter for sand and slabs than for asphalt).
-- **The colours are a palette** (`settings.ts` `PlanPalette`, **Settings → Plan palette**): six
+- **The colours are a palette** (`settings.ts` `PlanPalette`, **Map → Plan palette**): six
   pre-made ones (Paper, Atlas, Mono, and the dark Night, Midnight, Blueprint), and every colour
   can be changed, which makes it a custom palette, stored with the other settings. The plan style
   is neither lit nor tone mapped: a level surface has exactly the palette's colour, walls are a

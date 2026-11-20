@@ -3,7 +3,7 @@
 // base style (BASE); each rule that matches it sets its properties on top, in order, so later rules win
 // property by property: "BEAR: red" and "Gear ≥ 500k: ringed" together give a ringed red marker.
 //
-// The order, bottom to top: the rules (rules/defaults.ts out of the box, as changed in the Map view;
+// The order, bottom to top: the rules (rules/defaults.ts out of the box, as changed in the Filters view;
 // rules/store.ts), the pinned ones, then highlights (the global search). Last, groups switched off hide
 // their kinds of thing, except what's ringed: highlights (and rules that ring) beat hiding. What stays
 // in code, outside the rules: shapes (how each kind is drawn), the state of a thing (the dead are grey,

@@ -4,6 +4,7 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./components/App";
 import { PovPage } from "./components/PovPage";
+import { localStorageBackend, settings } from "./persist";
 import { applyTheme } from "./theme";
 
 applyTheme();
@@ -19,8 +20,11 @@ function Root() {
   return hash === "#pov" ? <PovPage /> : <App />;
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <Root />
-  </StrictMode>,
+// Stored settings are read synchronously once loaded (instant from localStorage).
+void settings.init(localStorageBackend()).then(() =>
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <Root />
+    </StrictMode>,
+  ),
 );

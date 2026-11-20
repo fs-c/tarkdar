@@ -1,34 +1,18 @@
-// The quest logic on real data: quests.fixture.json is tarkov.dev's tasks feed (pvp-season, November
-// 2026) trimmed to the quests that matter here, with the `quests` message and the quest items of an SPT
-// raid on Reserve (recordings/2026-11-19_21-14-07_RezervBase). Its quest items come in copies (dedupe.ts),
-// and 37 of the started quests aren't in the feed.
+// The quest logic on real data: quests.fixture.json's `quests` is an SPT profile's 126 quests in
+// progress (2026-11-20), as the backend sends them, converted from a quest probe dump (--quest-probe);
+// completed conditions weren't in the dump, so none are done. Its `questLoot` is the quest items of an
+// SPT raid on Reserve (2026-11-19, a day earlier), which come in copies (dedupe.ts).
 
 import { describe, expect, it } from "vitest";
 import { withoutDuplicateLoot } from "./dedupe";
 import type { LootEntry, QuestState } from "./protocol";
 import fixture from "./quests.fixture.json";
-import {
-  type QuestData,
-  knownQuestItems,
-  neededQuestItems,
-  questDebugReport,
-  questItemLabels,
-  questNames,
-  questOutline,
-  slimItemObjectives,
-  slimTasks,
-  withoutUnneededQuestItems,
-} from "./quests";
+import { questDebugReport, questItemLabels, questLabel, questNeeds, withoutUnneededQuestItems } from "./quests";
 
 const quests = fixture.quests as QuestState[];
 const loot = fixture.questLoot as LootEntry[];
-const tasks = slimTasks(fixture.tasks);
-const items = slimItemObjectives(fixture.tasks);
-const outline = questOutline(fixture.tasks);
-const names = questNames(fixture.tasks, fixture.tasksEn, tasks, items);
-const data: QuestData = { tasks, items, outline, names, status: { state: "ready", fetchedAt: 0 } };
 
-describe("quests on real data (SPT, Reserve)", () => {
+describe("quests on real data (SPT)", () => {
   it("merges the copies of quest items", () => {
     const merged = withoutDuplicateLoot(loot);
     expect(loot).toHaveLength(49);
@@ -36,39 +20,36 @@ describe("quests on real data (SPT, Reserve)", () => {
     expect(new Set(merged.map((l) => l.tpl)).size).toBe(18);
   });
 
-  it("can't filter quest items while started quests are missing from the feed", () => {
-    const needed = neededQuestItems(quests, tasks)!;
-    expect(needed.started).toBe(110);
-    expect(needed.complete).toBe(false);
+  it("knows every started quest's objectives, so quest items can be filtered", () => {
+    const needs = questNeeds(quests)!;
+    expect(needs.started).toBe(126);
+    expect(needs.complete).toBe(true);
     const merged = withoutDuplicateLoot(loot);
-    const known = knownQuestItems(tasks);
-    // 1 needed, 7 the feed doesn't know (kept), 10 left out.
-    expect(merged.filter((l) => needed.items.has(l.tpl))).toHaveLength(1);
-    expect(merged.filter((l) => !known.has(l.tpl))).toHaveLength(7);
-    expect(withoutUnneededQuestItems(merged, needed, known)).toHaveLength(8);
+    expect(withoutUnneededQuestItems(merged, needs)).toHaveLength(3);
   });
 
-  it("labels quest items with their quest's name", () => {
-    const labels = questItemLabels(quests, tasks, names);
-    const merged = withoutDuplicateLoot(loot);
-    const known = knownQuestItems(tasks);
-    for (const l of merged.filter((l) => known.has(l.tpl))) expect(labels.get(l.tpl)).toBeTruthy();
+  it("names quests, including those tarkov.dev doesn't have", () => {
+    const byId = new Map(quests.map((q) => [q.id, q]));
+    expect(questLabel(byId.get("5969f90786f77420d2328015")!)).toBe("Charity");
+    expect(questLabel(byId.get("6a4f833633bd1e904c091ef2")!)).toBe("[KORD BREACH] Riding the Wave");
+    expect(questLabel(byId.get("68cbd33676fe74b1e80bfd91")!)).toBe("Tour");
+    const repeatables = quests.filter((q) => q.kind === "daily" || q.kind === "weekly").map(questLabel).sort();
+    expect(repeatables).toEqual(["Jaeger weekly", "Mechanic daily", "Mechanic daily", "Skier daily", "Therapist daily"]);
   });
 
-  it("reports the missing quests and why each quest item shows", () => {
-    const r = questDebugReport({ data, quests, loot: withoutDuplicateLoot(loot), filterOn: true, itemName: () => undefined });
-    expect(r.backend).toBe("read");
-    expect(r.started).toBe(110);
-    expect(r.readyToHandIn).toBe(3);
-    expect(r.missing).toHaveLength(37);
-    expect(r.filter.effect).toMatch(/37 started quests unknown/);
-    // Missing quests are listed first.
-    expect(r.quests.slice(0, 37).every((q) => !q.inData)).toBe(true);
-    // The completed condition ids SPT reports are the feed's objective ids.
-    expect(r.quests.flatMap((q) => q.unknownDone)).toEqual([]);
-    expect(r.questItems).toHaveLength(18);
-    expect(r.questItems.filter((i) => i.shown)).toHaveLength(8);
-    expect(r.questItems.filter((i) => i.needed)).toHaveLength(1);
-    expect(r.questItems.filter((i) => !i.shown).every((i) => i.why === "no started quest needs it")).toBe(true);
+  it("counts hidden story steps as story", () => {
+    const r = questDebugReport({ quests, loot: withoutDuplicateLoot(loot), filterOn: true, itemName: () => undefined });
+    expect(r.byKind).toEqual({ story: 24, side: 97, daily: 4, weekly: 1 });
+    expect(r.unknown).toEqual([]);
+    const hidden = r.quests.filter((q) => q.hidden);
+    expect(hidden).toHaveLength(9);
+    expect(hidden.every((q) => q.kind === "story")).toBe(true);
+    expect(r.questItems.filter((i) => i.shown).map((i) => i.label)).toEqual(["Disease History", "Disease History", "Story"]);
+  });
+
+  it("labels every needed quest item", () => {
+    const needs = questNeeds(quests)!;
+    const labels = questItemLabels(needs);
+    for (const tpl of needs.items.keys()) expect(labels.get(tpl)).toBeTruthy();
   });
 });

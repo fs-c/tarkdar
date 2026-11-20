@@ -79,6 +79,13 @@
       "class": "EFT.GamePlayerOwner",
       "required": true,
       "value": "0x2215"
+    },
+    {
+      "group": "LocalizationManager",
+      "name": "TypeIndex",
+      "class": "EFT.LocalizationManager",
+      "required": false,
+      "value": "0x21AE"
     }
   ],
   "fields": [
@@ -1293,6 +1300,33 @@
       "static": false,
       "required": false,
       "value": "0x40"
+    },
+    {
+      "group": "LocalizationManager",
+      "name": "Instance",
+      "class": "EFT.LocalizationManager",
+      "field": "_instance",
+      "static": true,
+      "required": false,
+      "value": "0x8"
+    },
+    {
+      "group": "LocalizationManager",
+      "name": "Locales",
+      "class": "EFT.LocalizationManager",
+      "field": "_locales",
+      "static": false,
+      "required": false,
+      "value": "0x38"
+    },
+    {
+      "group": "LocalizationManager",
+      "name": "Culture",
+      "class": "EFT.LocalizationManager",
+      "field": "<Culture>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x70"
     }
   ],
   "literals": [
@@ -1300,13 +1334,13 @@
       "group": "PlayerBody",
       "name": "SkeletonRootJoint",
       "value": "0x40",
-      "note": "EFT.PlayerBody \u2192 skeleton root joint object (field name unverified)"
+      "note": "EFT.PlayerBody → skeleton root joint object (field name unverified)"
     },
     {
       "group": "Skeleton",
       "name": "Values",
       "value": "0x30",
-      "note": "skeleton \u2192 List<Transform> of bones, indexed by Unity bone index (field name unverified)"
+      "note": "skeleton → List<Transform> of bones, indexed by Unity bone index (field name unverified)"
     },
     {
       "group": "MongoID",
@@ -1318,13 +1352,13 @@
       "group": "GrenadeCollection",
       "name": "List",
       "value": "0x18",
-      "note": "GameWorld.Grenades collection object \u2192 List<Throwable> (field name unverified)"
+      "note": "GameWorld.Grenades collection object → List<Throwable> (field name unverified)"
     },
     {
       "group": "BindableList",
       "name": "List",
       "value": "0x58",
-      "note": "Diz.Binding.BindableList`1 \u2192 List<T> (generic class: the dump has no offset; from the field order, confirmed on SPT 2026-11-20)"
+      "note": "Diz.Binding.BindableList`1 → List<T> (generic class: the dump has no offset; from the field order, confirmed on SPT 2026-11-20)"
     }
   ]
 }

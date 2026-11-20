@@ -14,6 +14,7 @@ struct Options {
     bool once = false;                   // connectivity check only
     bool diagnose = false;               // one-shot check of the whole read chain
     std::filesystem::path questProbe;    // --quest-probe: also dump quest templates there (implies --diagnose)
+    std::filesystem::path localeProbe;   // --locale-probe: also dump the game's text table lookups there (implies --diagnose)
     std::optional<int> timeoutSeconds;   // give up if not attached in time
     bool verbose = false;
 

@@ -19,6 +19,7 @@ void printUsage(const char* argv0) {
                  "  --once                attach, print module info and exit (connectivity check)\n"
                  "  --diagnose            check the whole read chain once (best in a raid), print a report, exit\n"
                  "  --quest-probe <file>  with --diagnose: also dump the quests' templates and progress as JSON\n"
+                 "  --locale-probe <file> with --diagnose: also look the exfils up in the game's text table, as JSON\n"
                  "  --timeout <sec>       give up if not attached within <sec> seconds\n"
                  "\n"
                  "Server:\n"
@@ -81,6 +82,10 @@ std::optional<Options> parseOptions(int argc, char** argv, std::string& error) {
         } else if (arg == "--quest-probe") {
             VALUE_OR_FAIL(v);
             opt.questProbe = *v;
+            opt.diagnose = true;
+        } else if (arg == "--locale-probe") {
+            VALUE_OR_FAIL(v);
+            opt.localeProbe = *v;
             opt.diagnose = true;
         } else if (arg == "--timeout") {
             VALUE_OR_FAIL(v);

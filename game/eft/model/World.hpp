@@ -15,7 +15,8 @@ struct Exfil {
     enum class Kind { Regular, Secret };
     std::uint32_t id = 0;
     Kind kind = Kind::Regular;
-    std::string name;        // the game's internal exit name (display names are a frontend concern)
+    std::string key{};       // the game's internal exit name (ExitSettings.Name), e.g. "ex_customs_pmc_auto"
+    std::string name;        // its name in the game's texts (Locale.hpp), else the key
     std::int32_t status = 0; // EExfiltrationStatus: 1 NotPresent, 2 UncompleteRequirements, 3 Countdown,
                              // 4 RegularMode (open), 5 Pending, 6 AwaitsManualActivation
     std::optional<math::Vec3> position;

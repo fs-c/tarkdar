@@ -181,6 +181,7 @@ std::string encodeExfils(const eft::ExfilsSnapshot& snap) {
         crow::json::wvalue v;
         v["id"] = e.id;
         v["kind"] = e.kind == eft::Exfil::Kind::Secret ? "secret" : "regular";
+        v["key"] = e.key;
         v["name"] = e.name;
         v["status"] = e.status;
         if (e.position) v["pos"] = vec(*e.position);

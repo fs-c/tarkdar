@@ -108,11 +108,12 @@ the `players` message (same `rev`, sent right before it; not sent while no playe
 
 ### `exfils`
 ```json
-{ "exfils": [ { "id": 1, "kind": "regular", "name": "ZB-1011", "status": 4, "pos": [180.0, 0.0, 150.0] } ] }
+{ "exfils": [ { "id": 1, "kind": "regular", "key": "ex_customs_pmc_zb1011", "name": "ZB-1011", "status": 4, "pos": [180.0, 0.0, 150.0] } ] }
 ```
 - **`kind`:** `regular` (only the ones the local player can use) or `secret`.
-- **`name`:** the game's internal exit name. Mapping it to a display name is the frontend's job (not
-  done yet).
+- **`key`:** the game's internal exit name (`ExitSettings.Name`).
+- **`name`:** its name in the game's own texts (the client's language, else English), or `key` if it
+  has none. Recordings from before `key` existed have the internal name here.
 - **`status`:** the game's `EExfiltrationStatus`: 1 closed, 2 requirements not met, 3 countdown,
   4 open, 5 pending, 6 awaiting manual activation.
 - **`pos`:** `null` if the position couldn't be read.

@@ -2,6 +2,7 @@
 
 #include "core/log/Log.hpp"
 #include "core/mem/ReadBatch.hpp"
+#include "game/eft/Locale.hpp"
 #include "game/eft/Read.hpp"
 #include "game/eft/model/Players.hpp"
 
@@ -97,19 +98,31 @@ void Exfils::discover() {
         Entry e;
         e.instance = c.instance;
         e.exfil.kind = c.kind;
-        e.exfil.name = std::move(*name);
+        e.exfil.key = std::move(*name);
         found.push_back(std::move(e));
         transforms.push_back(transformOfComponent(game_, c.instance).value_or(0));
     }
     if (found.empty()) return;
+
+    std::vector<std::string> unnamed;
+    for (const auto& e : found)
+        if (!names_.contains(e.exfil.key) && std::ranges::find(unnamed, e.exfil.key) == unnamed.end()) unnamed.push_back(e.exfil.key);
+    if (!unnamed.empty()) {
+        auto texts = lookupTexts(game_, unnamed);
+        for (auto& k : unnamed) {
+            const auto it = texts.find(k);
+            names_.emplace(k, it != texts.end() ? std::move(it->second) : k);
+        }
+    }
+    for (auto& e : found) e.exfil.name = names_.at(e.exfil.key);
 
     const auto poses = game_.transforms.worldPoses(transforms, Freshness::Cached);
     for (std::size_t i = 0; i < found.size(); ++i) {
         Entry& e = found[i];
         if (poses[i]) e.exfil.position = poses[i]->position;
         e.exfil.id = nextId_++;
-        log::debug("exfils: +{} '{}'{}", e.exfil.kind == Exfil::Kind::Secret ? "secret" : "regular", e.exfil.name,
-                   e.exfil.position ? "" : " (no position)");
+        log::debug("exfils: +{} '{}' ({}){}", e.exfil.kind == Exfil::Kind::Secret ? "secret" : "regular", e.exfil.name,
+                   e.exfil.key, e.exfil.position ? "" : " (no position)");
         entries_.emplace(e.instance, std::move(e));
     }
     readStatus();

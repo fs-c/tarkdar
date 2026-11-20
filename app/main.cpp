@@ -142,7 +142,7 @@ int main(int argc, char** argv) {
     mem::Target target(backend, std::string(eft::kProcessName), modules);
 
     if (options->once) return runOnce(target, options->timeoutSeconds);
-    if (options->diagnose) return app::runDiagnose(target, options->timeoutSeconds.value_or(30), stdout, options->questProbe);
+    if (options->diagnose) return app::runDiagnose(target, options->timeoutSeconds.value_or(30), stdout, options->questProbe, options->localeProbe);
 
     eft::WorldState world;
     eft::Lifecycle lifecycle(target, [&world](std::shared_ptr<const eft::RaidSession> session) {

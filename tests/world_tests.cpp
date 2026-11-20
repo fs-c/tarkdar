@@ -75,7 +75,7 @@ bool near(Vec3 a, Vec3 b) { return std::fabs(a.x - b.x) < 1e-3f && std::fabs(a.y
 
 }  // namespace
 
-TEST_CASE("Exfils: eligibility, secret exfils, status") {
+TEST_CASE("Exfils: eligibility, secret exfils, names, status") {
     FakeWorld w;
     w.newWorld(u"bigmap", 1);
     auto& h = w.heap;
@@ -106,13 +106,39 @@ TEST_CASE("Exfils: eligibility, secret exfils, status") {
                    h.array(std::vector<Address>{mine, view.read<Address>(0) /*null entry*/, makeExfil(u"Other", {u"x"}, 4, {1, 1, 1})}));
     h.put<Address>(controller + off::ExfiltrationController::MSecretExfiltrationPoints, h.array(std::vector<Address>{secret}));
 
+    // The game's texts: EFT.LocalizationManager._instance._locales, culture → EFT.Locale (keys ignore case).
+    struct TextEntry {
+        std::int32_t hashCode, next;
+        Address key, value;
+    };
+    const auto textTable = [&](std::vector<TextEntry> entries) {
+        const Address d = h.object(h.klass("Locale", "EFT"), 0x50);
+        h.put<Address>(d + kIl2Cpp.dictEntries, h.array(entries));
+        h.put<std::int32_t>(d + kIl2Cpp.dictCount, static_cast<std::int32_t>(entries.size()));
+        return d;
+    };
+    const auto text = [&](std::u16string_view k, std::u16string_view v) { return TextEntry{1, -1, h.managedString(k), h.managedString(v)}; };
+    const Address english = textTable({text(u"Gate 3", u"Gate 3"), {-1, -1, 0, 0} /*freed*/, text(u"secret DOOR", u"Smugglers' Passage")});
+    const Address russian = textTable({text(u"Secret door", u"Проход контрабандистов")});
+    const Address managerClass = h.klass("LocalizationManager", "EFT");
+    const Address managerStatics = h.alloc(0x20), manager = h.object(managerClass, 0x80);
+    h.put<Address>(managerClass + kIl2Cpp.classStaticFields, managerStatics);
+    h.put<Address>(w.typeInfoTable + static_cast<Address>(off::LocalizationManager::TypeIndex) * 8, managerClass);
+    h.put<Address>(managerStatics + off::LocalizationManager::Instance, manager);
+    h.put<Address>(manager + off::LocalizationManager::Culture, h.managedString(u"en"));
+    h.put<Address>(manager + off::LocalizationManager::Locales,
+                   textTable({{1, -1, h.managedString(u"ru"), russian}, {1, -1, h.managedString(u"en"), english}}));
+
     eft::WorldState world;
     {
         eft::Exfils exfils(makeSession(w), world);
         exfils.discover();
         auto snap = world.exfils.get();
         REQUIRE(snap->exfils.size() == 2);
-        CHECK(snap->exfils[0].name == "ZB-1011");
+        CHECK(snap->exfils[0].name == "ZB-1011");  // no text: its exit name
+        CHECK(snap->exfils[0].key == "ZB-1011");
+        CHECK(snap->exfils[1].name == "Smugglers' Passage");  // the current culture's, ignoring case
+        CHECK(snap->exfils[1].key == "Secret door");
         CHECK(snap->exfils[0].kind == eft::Exfil::Kind::Regular);
         CHECK(snap->exfils[0].status == 4);
         CHECK(near(*snap->exfils[0].position, {10, 1, 20}));

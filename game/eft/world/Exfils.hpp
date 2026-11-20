@@ -18,6 +18,7 @@ namespace radar::eft {
 //    scav: the exfil's EligibleIds contains Profile.Id (both compared trimmed, case-insensitive).
 //    With an empty eligibility id no regular exfils are shown;
 //  - secret exfils, unfiltered.
+// Names: the game's own for the exit name (lookupTexts, Locale.hpp), looked up once per name.
 // Positions are read once (exfils don't move), and retried with each status refresh until they
 // succeed. Status is refreshed every kStatusInterval.
 class Exfils final : public RaidSubsystem {
@@ -54,6 +55,7 @@ private:
     const Game& game_;
     WorldState& world_;
     std::unordered_map<Address, Entry> entries_;
+    std::unordered_map<std::string, std::string> names_;  // exit name → display name (itself if not found)
     std::uint32_t nextId_ = 1;
     std::uint64_t revision_ = 0;
 };

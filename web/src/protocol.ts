@@ -73,7 +73,9 @@ export interface SkeletonsData {
 export interface Exfil {
   id: number;
   kind: "regular" | "secret";
-  /** The game's internal exit name. */
+  /** The game's internal exit name (missing in older recordings). */
+  key?: string;
+  /** Its in-game name, or the internal one if the game has none (older recordings: always internal). */
   name: string;
   /** EExfiltrationStatus: 1 closed, 2 requirements, 3 countdown, 4 open, 5 pending, 6 manual. */
   status: number;

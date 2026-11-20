@@ -2,6 +2,7 @@ add_library(radar_eft STATIC
     eft/BuildCheck.cpp
     eft/Game.cpp
     eft/Lifecycle.cpp
+    eft/Locale.cpp
     eft/Maps.cpp
     eft/raid/RaidFinder.cpp
     eft/raid/RaidMonitor.cpp

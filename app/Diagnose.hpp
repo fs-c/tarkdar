@@ -12,7 +12,9 @@ namespace radar::app {
 // pass of every subsystem (players, positions, equipment, exfils, explosives, loot) with a summary
 // of what came out. Each step prints what it read and which offsets it depended on, so a failure
 // points at what to check. Returns 0 if a raid was found and every step produced data, 1 otherwise.
-// With `questProbe`, also writes the quest probe (QuestProbe.hpp) there.
-int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out, const std::filesystem::path& questProbe = {});
+// With `questProbe`, also writes the quest probe (QuestProbe.hpp) there; with `localeProbe`, the locale
+// probe (LocaleProbe.hpp).
+int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out, const std::filesystem::path& questProbe = {},
+                const std::filesystem::path& localeProbe = {});
 
 }  // namespace radar::app

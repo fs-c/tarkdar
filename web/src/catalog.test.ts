@@ -5,7 +5,10 @@ import { totalValue } from "./items";
 const itemsFeed = {
   data: {
     items: {
-      a: { id: "a", name: "a Name", shortName: "a ShortName", avg24hPrice: 1200, handbookCategories: ["elec", "barter"] },
+      a: { id: "a", name: "a Name", shortName: "a ShortName", avg24hPrice: 1200, handbookCategories: ["elec", "barter"], width: 2, height: 1 },
+      ammo: { id: "ammo", name: "ammo", shortName: "ammo", penetrationPower: 40, damage: 50, armorDamage: 45, width: 1, height: 1 },
+      gun: { id: "gun", name: "gun", shortName: "gun", width: 2, height: 1, properties: { defaultWidth: 4, defaultHeight: 2 } },
+      plate: { id: "plate", name: "plate", shortName: "plate", properties: { class: 5 } },
       b: { id: "b", name: "b Name", shortName: "b ShortName", avg24hPrice: null, basePrice: 120 },
       c: { id: "c", name: "c Name", shortName: "c ShortName" },
       d: { id: "d", name: "d Name", shortName: "d ShortName", avg24hPrice: 900, basePrice: 500 },
@@ -32,9 +35,9 @@ const okFetch = () =>
   })) as unknown as typeof fetch;
 
 describe("slimItems", () => {
-  it("resolves translations and keeps only name, short name and price", () => {
+  it("resolves translations and keeps only name, short name, price, size and stats", () => {
     const slim = slimItems(itemsFeed, enFeed);
-    expect(slim.a).toEqual(["Alpha thing", "Alpha", 1200, 0, ["elec", "barter"]]);
+    expect(slim.a).toEqual(["Alpha thing", "Alpha", 1200, 0, ["elec", "barter"], 2]);
     expect(slim.b).toEqual(["Bravo", "b ShortName", 120, 1]); // missing translation → key; base price
     expect(slim.c![2]).toBe(0); // no price at all
     expect(slim.d![2]).toBe(900); // flea price preferred over base price
@@ -44,6 +47,12 @@ describe("slimItems", () => {
     expect(cat.lookup("c")?.price).toBeUndefined();
     expect(cat.lookup("zzz")).toBeUndefined();
     expect(cat.lookup("constructor")).toBeUndefined();
+    expect(cat.lookup("a")?.slots).toBe(2);
+    expect(cat.lookup("b")?.slots).toBeUndefined();
+    expect(cat.lookup("ammo")).toMatchObject({ penetration: 40, damage: 50, armorDamage: 45 });
+    expect(cat.lookup("gun")?.slots).toBe(8); // as assembled
+    expect(cat.lookup("plate")).toMatchObject({ armorClass: 5 });
+    expect(cat.lookup("plate")?.categories).toBeUndefined();
   });
   it("keeps the handbook categories, with names and parents", () => {
     const cat = new SlimCatalog(slimItems(itemsFeed, enFeed), slimCategories(itemsFeed, enFeed));
@@ -53,7 +62,7 @@ describe("slimItems", () => {
       { id: "barter", name: "Barter items", parent: null, path: "" },
       { id: "elec", name: "electronics", parent: "barter", path: "Barter items" }, // untranslated: normalized name
     ]);
-    expect([...cat.items()].map(([id]) => id)).toEqual(["a", "b", "c", "d"]);
+    expect([...cat.items()].map(([id]) => id)).toEqual(["a", "ammo", "gun", "plate", "b", "c", "d"]);
     expect(slimCategories({ data: {} }, enFeed)).toEqual({});
   });
   it("rejects an unexpected format", () => {

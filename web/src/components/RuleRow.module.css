@@ -28,3 +28,7 @@
 .value { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
 .value input { width: 70px; }
 .actions { display: flex; justify-content: flex-end; gap: 4px; padding-top: 2px; }
+.error { color: var(--danger); }
+.text, .query { flex: 1; min-width: 0; }
+.query { font-family: var(--mono); font-size: var(--fs-xs); }
+.query[data-error="true"] { border-color: var(--danger); }

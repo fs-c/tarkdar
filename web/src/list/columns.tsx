@@ -129,14 +129,21 @@ const items: TabDef<ItemRow> = {
       ),
     }),
     i.accessor("kind", { header: "kind", sortFn: "text" }),
+    // Per inventory slot (what loose loot is priced by); the unit price in the tooltip.
     i.accessor((r) => r.value, {
       id: "price",
-      header: "₽",
+      header: "₽/slot",
       sortUndefined: "last",
       sortDescFirst: true,
-      cell: (c) => (
-        <Price base={c.row.original.basePrice}>{price(c.getValue())}</Price>
-      ),
+      cell: (c) => {
+        const r = c.row.original;
+        const title = r.price !== undefined ? `${formatPrice(r.price)} ₽ each, ${r.slots} slot${r.slots === 1 ? "" : "s"}` : undefined;
+        return (
+          <span title={title}>
+            <Price base={r.basePrice}>{price(c.getValue())}</Price>
+          </span>
+        );
+      },
     }),
     ...distanceColumns<ItemRow>(),
   ],

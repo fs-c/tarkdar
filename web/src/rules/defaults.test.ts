@@ -5,11 +5,11 @@ import type { AnyRow, SubjectKind } from "../list/rows";
 import type { PlayerType } from "../roles";
 import { EMPHASIS_SCALE, MARKER_SIZE } from "../style";
 import { ui } from "../theme";
-import { BUILTIN_RULES } from "./defaults";
+import { DEFAULT_RULES } from "./defaults";
 import { type Emphasis, type Style, applyRules } from "./rules";
 
-// The looks as they were before they became rules (style.ts, f2193bc): the built-in rules must give
-// exactly these.
+// The looks as they were before they became rules (style.ts, f2193bc): the default rules must give
+// exactly these (loose items: by value per slot now).
 const OLD_PLAYER_TYPES_LOOK: Record<Exclude<PlayerType, "self">, { color: string; prominence: "minor" | "normal" | "special" | "boss" }> = {
   usec: { color: ui.link, prominence: "normal" },
   bear: { color: ui.danger, prominence: "normal" },
@@ -33,14 +33,14 @@ const OLD_LOOT_LOOK = {
 };
 const PROMINENCE_TO_EMPHASIS: Record<string, Emphasis> = { minor: "faint", normal: "normal", special: "strong", boss: "loud" };
 
-const DEFAULTS = [...BUILTIN_RULES];
+const DEFAULTS = [...DEFAULT_RULES];
 
 /** A row of just what the rules look at. */
 const row = (key: string, subject: SubjectKind, extra: Partial<AnyRow> & Record<string, unknown> = {}) =>
   ({ key, subject, tpls: [], search: "", pos: null, sel: { kind: "loot", id: 0 }, ...extra }) as unknown as AnyRow;
 const styleOf = (r: AnyRow, rules = DEFAULTS, catalog: ItemCatalog = emptyCatalog): Style => applyRules([r], rules, catalog).styles.get(r.key)!;
 
-describe("built-in rules", () => {
+describe("default rules", () => {
   it("give each player type the colour and emphasis it had", () => {
     for (const [type, old] of Object.entries(OLD_PLAYER_TYPES_LOOK)) {
       const s = styleOf(row(`player:${type}`, "player", { type, local: false }));
@@ -54,7 +54,7 @@ describe("built-in rules", () => {
   });
 
   it("give loose items the colour and size of their old value tier (unpriced: low)", () => {
-    const cases: [number | undefined, keyof typeof OLD_ITEM_LOOK][] = [[undefined, "low"], [19_999, "low"], [20_000, "mid"], [99_999, "mid"], [100_000, "high"]];
+    const cases: [number | undefined, keyof typeof OLD_ITEM_LOOK][] = [[undefined, "low"], [9_999, "low"], [10_000, "mid"], [39_999, "mid"], [40_000, "high"]];
     for (const [value, tier] of cases) {
       const s = styleOf(row("loot:1", "item", { value }));
       expect({ value, color: s.color, size: MARKER_SIZE.item * EMPHASIS_SCALE[s.emphasis] }).toEqual({ value, ...OLD_ITEM_LOOK[tier] });
@@ -70,7 +70,7 @@ describe("built-in rules", () => {
 
   it("drop cheaper items first as you zoom out (the old default density, \"fewer\")", () => {
     expect(styleOf(row("loot:1", "item", { value: 5_000 })).show).toBe(1);
-    expect(styleOf(row("loot:1", "item", { value: 50_000 })).show).toBe(0.4);
+    expect(styleOf(row("loot:1", "item", { value: 20_000 })).show).toBe(0.4);
     expect(styleOf(row("loot:1", "item", { value: 500_000 })).show).toBe(0);
     expect(styleOf(row("loot:1", "quest")).show).toBe(0);
   });

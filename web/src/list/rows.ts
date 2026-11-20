@@ -3,7 +3,7 @@
 // tested without React.
 
 import type { RadarState } from "../connection";
-import { type ItemCatalog, containerName, equipmentValue, exfilStatus } from "../items";
+import { type ItemCatalog, containerName, equipmentValue, exfilStatus, slotValue } from "../items";
 import { type Selection, midpoint, selectionKey } from "../pick";
 import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, WorldPos } from "../protocol";
 import { type QuestNeed, formatQuestNeed, isSpecific } from "../quests";
@@ -28,9 +28,11 @@ export interface RowBase {
   /** Templates the thing is (loose items, containers) or carries (players and corpses: their
    *  equipment, as far as it could be read). */
   tpls: readonly string[];
-  /** Roubles: a loose item's unit price; the equipment value of players and corpses. Undefined when
-   *  unknown (unpriced, not read). */
+  /** Roubles: a loose item's value per inventory slot (items.ts slotValue); the equipment value of
+   *  players and corpses. Undefined when unknown (unpriced, not read). */
   value?: number;
+  /** Roubles: a loose item's unit price. */
+  price?: number;
   /** Lowercase text the search matches against: names, kinds, carried items' names. */
   search: string;
   /** Loose items a started quest still needs: what for, e.g. "Shooter Born in Heaven (×3, FIR)". */
@@ -56,6 +58,8 @@ export interface ItemRow extends RowBase {
   shortName: string;
   kind: "item" | "quest";
   basePrice: boolean;
+  /** Inventory slots it takes. */
+  slots: number;
 }
 
 export interface ContainerRow extends RowBase {
@@ -192,7 +196,9 @@ export function lootRows(
       const needs = itemNeeds?.map(formatQuestNeed);
       items.push({
         ...base(sel, kind, l.pos, text(name, info?.shortName, l.tpl, kind, ...(needs ?? [])), l.tpl ? [l.tpl] : NO_TPLS),
-        value: info?.price,
+        value: slotValue(info),
+        price: info?.price,
+        slots: info?.slots ?? 1,
         name, shortName: info?.shortName ?? name, kind, basePrice: info?.priceSource === "base",
         ...(needs?.length ? { questNeeds: needs, questNeeded: itemNeeds!.some(isSpecific) } : {}),
       });
@@ -238,7 +244,7 @@ export interface TabFilter {
   humans?: boolean;
   /** Players: bosses, guards, raiders, rogues, cultists only. */
   special?: boolean;
-  /** Items: minimum unit price (roubles). */
+  /** Items: minimum value per slot (roubles). */
   minValue?: number;
 }
 

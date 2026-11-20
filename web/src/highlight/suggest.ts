@@ -1,19 +1,21 @@
-// The global search's suggestions: what a query could mean, as highlight rules. Free text first (what
-// you typed, matched like the list's search), then the more specific readings: a value threshold,
-// kinds of players and things, kinds of container, item categories, single items.
+// The global search's suggestions: what a query could mean, as queries (highlight/query.ts). Typed in
+// the query syntax: that, as it is. Otherwise free text first (what you typed, matched like the list's
+// search), then the more specific readings: a value threshold, kinds of players and things, examples of
+// the syntax, kinds of container, item categories, single items.
 
-import { type ItemCatalog, containerTypes } from "../items";
-import type { SubjectKind } from "../list/rows";
-import { type PlayerType, SPECIAL_TYPES } from "../roles";
-import type { Match } from "./match";
+import { type ItemCatalog, containerTypes, formatPrice } from "../items";
+import { QUERY_HELP, isStructured, parseQuery, quote } from "./query";
 
 export interface Suggestion {
   /** Pill and list text. */
   label: string;
-  group: "Text" | "Value" | "Players" | "Things" | "Container" | "Category" | "Item";
-  /** Secondary text: a category's parents, an item's full name. */
+  group: "Query" | "Text" | "Syntax" | "Value" | "Players" | "Things" | "Container" | "Category" | "Item";
+  /** Secondary text: a category's parents, an item's full name, what's wrong with a query. */
   detail?: string;
-  match: Match;
+  /** What it matches (highlight/query.ts). */
+  query: string;
+  /** The query doesn't work as typed. */
+  error?: boolean;
 }
 
 interface Preset {
@@ -21,32 +23,33 @@ interface Preset {
   /** Extra words it's found by. */
   words?: string;
   group: "Players" | "Things";
-  match: Match;
+  query: string;
 }
 
-const players = (label: string, types: PlayerType[], words?: string): Preset => ({ label, words, group: "Players", match: { playerTypes: types } });
-const things = (label: string, subjects: SubjectKind[], words?: string): Preset => ({ label, words, group: "Things", match: { subjects } });
+const players = (label: string, query: string, words?: string): Preset => ({ label, words, group: "Players", query });
+const things = (label: string, query: string, words?: string): Preset => ({ label, words, group: "Things", query });
 
 const PRESETS: Preset[] = [
-  players("Special", [...SPECIAL_TYPES], "bosses guards raiders rogues cultists bd"),
-  players("PMCs", ["usec", "bear"], "usec bear"),
-  players("USEC", ["usec"]),
-  players("BEAR", ["bear"]),
-  players("Player scavs", ["p-scav"], "pscav"),
-  players("Bosses", ["boss"]),
-  players("Guards", ["follower"], "followers"),
-  players("Raiders", ["raider"]),
-  players("Rogues", ["rogue"]),
-  players("Cultists", ["cultist"]),
-  players("Black Division", ["bd"], "bd"),
-  players("Infected", ["zombie"], "zombies"),
-  players("AI scavs", ["ai-scav"], "bots"),
-  things("Quest items", ["quest"], "task"),
-  things("Airdrops", ["airdrop"], "drop"),
-  things("Corpses", ["corpse"], "bodies dead"),
-  things("Containers", ["container"], "crates"),
-  things("Exfils", ["exfil"], "extracts exits"),
-  things("Explosives", ["grenade", "tripwire"], "grenades tripwires mines"),
+  players("Special", "is:special", "bosses guards raiders rogues cultists bd"),
+  players("PMCs", "is:pmc", "usec bear"),
+  players("USEC", "is:usec"),
+  players("BEAR", "is:bear"),
+  players("Player scavs", "is:pscav", "pscav"),
+  players("Bosses", "is:boss"),
+  players("Guards", "is:guard", "followers"),
+  players("Raiders", "is:raider"),
+  players("Rogues", "is:rogue"),
+  players("Cultists", "is:cultist"),
+  players("Black Division", "is:bd", "bd"),
+  players("Infected", "is:infected", "zombies"),
+  players("AI scavs", "is:scav", "bots"),
+  things("Quest items", "is:quest", "task"),
+  things("Needed for quests", "is:item is:needed", "quest task"),
+  things("Airdrops", "is:airdrop", "drop"),
+  things("Corpses", "is:corpse", "bodies dead"),
+  things("Containers", "is:container", "crates"),
+  things("Exfils", "is:exfil", "extracts exits"),
+  things("Explosives", "is:explosive", "grenades tripwires mines"),
 ];
 
 const CONTAINER_TYPES = containerTypes();
@@ -64,37 +67,55 @@ export function parseValue(q: string): number | null {
   return Math.round(n * unit);
 }
 
-const formatValue = (v: number) => (v >= 1_000_000 ? `${+(v / 1_000_000).toFixed(2)}M` : v >= 1_000 ? `${+(v / 1_000).toFixed(1)}k` : `${v}`);
+/** Value thresholds in queries: "50k", "1.5m". */
+const formatValue = (v: number) => (v >= 1_000_000 ? `${+(v / 1_000_000).toFixed(2)}m` : v >= 1_000 ? `${+(v / 1_000).toFixed(1)}k` : `${v}`);
 
 export function suggest(query: string, catalog: ItemCatalog): Suggestion[] {
-  const q = query.trim().toLowerCase();
+  const raw = query.trim();
+  const q = raw.toLowerCase();
   if (!q) return [];
-  const out: Suggestion[] = [{ label: `"${query.trim()}"`, group: "Text", detail: "anything mentioning it", match: { text: q } }];
+  // Written in the query syntax (or meant to be): just that, as typed.
+  const parsed = parseQuery(raw);
+  if (parsed.errors.length) return [{ label: raw, group: "Query", detail: parsed.errors[0], query: raw, error: true }];
+  if (isStructured(raw)) return [{ label: raw, group: "Query", query: raw }];
+
+  const out: Suggestion[] = [{ label: `"${raw}"`, group: "Text", detail: "anything mentioning it", query: q }];
 
   const value = parseValue(q);
   if (value !== null) {
-    out.push({ label: `Items ≥ ${formatValue(value)}`, group: "Value", detail: "loose items, per unit", match: { subjects: ["item"], minValue: value } });
-    out.push({ label: `Gear ≥ ${formatValue(value)}`, group: "Value", detail: "players and corpses, equipment value", match: { subjects: ["player", "corpse"], minValue: value } });
+    const v = formatValue(value);
+    out.push({ label: `Items ≥ ${formatPrice(value)}/slot`, group: "Value", detail: "loose items, per inventory slot", query: `is:item value>=${v}` });
+    out.push({ label: `Gear ≥ ${formatPrice(value)}`, group: "Value", detail: "players and corpses, equipment value", query: `is:player,corpse value>=${v}` });
     return out;
   }
 
   for (const p of PRESETS) {
     const words = `${p.label} ${p.words ?? ""}`.toLowerCase().split(/\s+/);
-    if (words.some((w) => w.startsWith(q))) out.push({ label: p.label, group: p.group, match: p.match });
+    if (words.some((w) => w.startsWith(q))) out.push({ label: p.label, group: p.group, detail: p.query, query: p.query });
   }
+
+  // Learning the syntax: a field's name gives an example of it.
+  if (q.length >= 2 && !q.includes(" "))
+    for (const h of QUERY_HELP) if (h.words.split(" ").some((w) => w.startsWith(q))) out.push({ label: h.example, group: "Syntax", detail: h.text, query: h.example });
 
   if (q.length >= 2) {
     const kinds = CONTAINER_TYPES.filter((c) => rank(c.name, q) < 9)
       .sort((a, b) => rank(a.name, q) - rank(b.name, q) || a.name.localeCompare(b.name))
       .slice(0, MAX_CONTAINERS);
-    for (const c of kinds) out.push({ label: c.name, group: "Container", match: { subjects: ["container"], tpls: c.tpls } });
+    for (const c of kinds) out.push({ label: c.name, group: "Container", query: `is:container item:${quote(c.name)}` });
 
     const cats = catalog
       .categories()
       .filter((c) => c.name.toLowerCase().includes(q))
       .sort((a, b) => rank(a.name, q) - rank(b.name, q) || a.path.length - b.path.length)
       .slice(0, MAX_CATEGORIES);
-    for (const c of cats) out.push({ label: c.name, group: "Category", detail: c.path || undefined, match: { categories: [c.id] } });
+    // Categories that share a name (in different branches) are one.
+    const seen = new Set<string>();
+    for (const c of cats) {
+      if (seen.has(c.name.toLowerCase())) continue;
+      seen.add(c.name.toLowerCase());
+      out.push({ label: c.name, group: "Category", detail: c.path || undefined, query: `cat:${quote(c.name)}` });
+    }
 
     const items: { tpl: string; name: string; shortName: string; r: number }[] = [];
     for (const [tpl, info] of catalog.items()) {
@@ -102,13 +123,10 @@ export function suggest(query: string, catalog: ItemCatalog): Suggestion[] {
       if (r < 9) items.push({ tpl, name: info.name, shortName: info.shortName, r });
     }
     items.sort((a, b) => a.r - b.r || a.shortName.length - b.shortName.length || a.shortName.localeCompare(b.shortName));
-    // Items that share a name (variants of one thing) are one suggestion.
-    const byName = new Map<string, Suggestion & { match: { tpls: string[] } }>();
-    for (const it of items) {
-      const known = byName.get(it.name);
-      if (known) known.match.tpls.push(it.tpl);
-      else if (byName.size < MAX_ITEMS) byName.set(it.name, { label: it.shortName, group: "Item", detail: it.name, match: { tpls: [it.tpl] } });
-    }
+    // Items that share a name (variants of one thing) are one suggestion: the name matches them all.
+    const byName = new Map<string, Suggestion>();
+    for (const it of items)
+      if (!byName.has(it.name) && byName.size < MAX_ITEMS) byName.set(it.name, { label: it.shortName, group: "Item", detail: it.name, query: `item:${quote(it.name)}` });
     out.push(...byName.values());
   }
   return out;

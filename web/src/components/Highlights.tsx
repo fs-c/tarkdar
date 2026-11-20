@@ -1,13 +1,14 @@
 // The global search (top left of the map, or /): highlights things across everything the radar knows,
 // without hiding anything (filtering is the list's job). Typing suggests what the query could mean;
 // the active suggestion previews on the map; Enter (or a click) keeps it as a pill. Pills: click to
-// switch on/off, the count steps through the matches (nearest first), the pin keeps it as a standing
-// rule (the Map view), × removes.
+// switch on/off, the count steps through the matches (nearest first), the pin keeps it as a pinned
+// rule for this raid (the Map view, where it can be edited and kept for good), × removes. The search
+// takes the query syntax too (highlight/query.ts): "is:item pen>=40".
 
 import { Highlighter, Pin, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isTyping } from "../hooks";
-import { type Highlight, type Match, matchingRows, nextColor } from "../highlight/match";
+import { type Highlight, matchingRows, nextColor } from "../highlight/match";
 import { type Suggestion, suggest } from "../highlight/suggest";
 import type { ItemCatalog } from "../items";
 import type { AnyRow } from "../list/rows";
@@ -25,11 +26,11 @@ interface Props {
   catalog: ItemCatalog;
   /** The local player's position: matches are stepped through nearest first. */
   local: WorldPos | null;
-  /** The match to preview on the map while searching (null: none). */
-  onPreview: (m: Match | null) => void;
+  /** The query to preview on the map while searching (null: none). */
+  onPreview: (query: string | null) => void;
   /** Select a match and bring it into view. */
   onShow: (sel: Selection) => void;
-  /** Keep it as a standing rule (the Map view's "Mine"). */
+  /** Pin it: a rule for this raid (the Map view's "Pinned"). */
   onPin: (h: Highlight) => void;
 }
 
@@ -44,10 +45,10 @@ export function Highlights({ highlights, setHighlights, matched, rows, catalog, 
   const steps = useRef(new Map<number, number>());
 
   const suggestions = useMemo(() => suggest(query, catalog), [query, catalog]);
-  const counts = useMemo(() => suggestions.map((sg) => matchingRows(rows, sg.match, catalog).length), [suggestions, rows, catalog]);
+  const counts = useMemo(() => suggestions.map((sg) => matchingRows(rows, sg.query, catalog).length), [suggestions, rows, catalog]);
   const current = open ? suggestions[Math.min(active, suggestions.length - 1)] : undefined;
 
-  useEffect(() => onPreview(current?.match ?? null), [current]);
+  useEffect(() => onPreview(current && !current.error ? current.query : null), [current?.query, current?.error]);
   useEffect(() => () => onPreview(null), []);
 
   // Opened: the search takes the focus, its old text selected (typing replaces it). In the commit, not
@@ -83,10 +84,11 @@ export function Highlights({ highlights, setHighlights, matched, rows, catalog, 
   };
 
   const add = (sg: Suggestion) => {
+    if (sg.error) return;
     setHighlights((hs) => {
       const same = hs.find((h) => h.label === sg.label && h.group === sg.group);
       if (same) return hs.map((h) => (h === same ? { ...h, on: true } : h));
-      return [...hs, { id: nextId++, label: sg.label, group: sg.group, match: sg.match, color: nextColor(hs), on: true }];
+      return [...hs, { id: nextId++, label: sg.label, group: sg.group, query: sg.query, color: nextColor(hs), on: true }];
     });
     setQuery("");
     setActive(0);
@@ -127,14 +129,14 @@ export function Highlights({ highlights, setHighlights, matched, rows, catalog, 
           const n = matched.get(h.id)?.length ?? 0;
           return (
             <span key={h.id} className={s.pill} data-on={h.on} style={{ "--c": h.color } as React.CSSProperties}>
-              <button type="button" className={s.pillLabel} title={`${h.group}: ${h.on ? "click to switch off" : "off, click to switch on"}`} onClick={() => toggle(h.id)}>
+              <button type="button" className={s.pillLabel} title={`${h.group}: ${h.query}\n${h.on ? "Click to switch off" : "Off: click to switch on"}`} onClick={() => toggle(h.id)}>
                 <span className={s.dot} />
                 {h.label}
               </button>
               <button type="button" className={s.count} disabled={!n} title={n ? `Show the next one (${n} in all, nearest first)` : "Nothing matches right now"} onClick={() => step(h)}>
                 {n}
               </button>
-              <button type="button" className={s.pin} title="Keep as a standing rule (Map view, Mine)" onClick={() => onPin(h)}>
+              <button type="button" className={s.pin} title="Pin for this raid (Map view: edit it, or keep it for good)" onClick={() => onPin(h)}>
                 <Pin size={11} />
               </button>
               <button type="button" className={s.remove} title="Remove" onClick={() => remove(h.id)}>
@@ -154,7 +156,7 @@ export function Highlights({ highlights, setHighlights, matched, rows, catalog, 
           <input
             ref={inputRef}
             className={s.input}
-            placeholder="highlight: item, category, boss, ≥50k, any text…"
+            placeholder="highlight: item, category, boss, ≥50k, is:item pen>=40…"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -183,6 +185,7 @@ export function Highlights({ highlights, setHighlights, matched, rows, catalog, 
                   role="option"
                   aria-selected={sg === current}
                   data-empty={counts[i] === 0}
+                  data-error={!!sg.error}
                   className={s.suggestion}
                   onPointerEnter={() => setActive(i)}
                   onClick={() => add(sg)}
@@ -199,7 +202,8 @@ export function Highlights({ highlights, setHighlights, matched, rows, catalog, 
           )}
           {!query && (
             <div className={s.hint}>
-              Highlights mark things on the map and in the list, and show them even where filters or layers would hide them.
+              Highlights mark things on the map and in the list, and show them even where filters or categories would hide them.
+              Queries work too: <code>is:boss</code> <code>item:LEDX</code> <code>cat:Electronics</code> <code>value&gt;=40k</code> <code>pen&gt;=40</code> <code>class&gt;=5</code> (Map view: Query syntax).
             </div>
           )}
         </div>

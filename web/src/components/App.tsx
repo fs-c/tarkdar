@@ -9,8 +9,10 @@ import { DEFAULT_OVERLAY_PREFS, type OverlayPrefs, overlayData, overlayMarks } f
 import { useOverlaySync } from "../overlay/useOverlaySync";
 import type { MapStats, MapView } from "../map3d/Map3D";
 import { findMap, mapUrl } from "../maps";
-import { type Highlight, type Match, allRows } from "../highlight/match";
-import { standingRuleId, storedRules, useRuleStore } from "../rules/store";
+import { type Highlight, allRows } from "../highlight/match";
+import { categoryFor } from "../rules/defaults";
+import { explainStyle, highlightStyle } from "../rules/rules";
+import { hiddenKinds, newRuleId, storedRules, usePinned, useRuleStore } from "../rules/store";
 import { highlightId, highlightRules, useRules } from "../rules/useRules";
 import { isFiltered, rowKeys } from "../list/rows";
 import { withoutGunners } from "../vehicles";
@@ -138,22 +140,24 @@ export function App() {
 
   // Highlights (the global search): kept for the session. The search's preview counts as one.
   const [highlights, setHighlights] = useState<Highlight[]>([]);
-  const [preview, setPreview] = useState<Match | null>(null);
-  // The display rules (rules/): built-in ones (as changed in the Map view), hidden groups, standing
-  // rules; highlights on top.
+  const [preview, setPreview] = useState<string | null>(null);
+  // The display rules (rules/): the stored ones (as changed in the Map view), the pinned ones (this
+  // raid's); highlights on top; categories switched off hide what isn't ringed.
   const [ruleStore, setRuleStore] = useRuleStore();
-  const stored = useMemo(() => storedRules(ruleStore), [ruleStore]);
+  const raidKey = !review && conn.raid !== null && locationId ? `${conn.raid}:${locationId}` : null;
+  const [pinned, setPinned] = usePinned(raidKey);
+  const stored = useMemo(() => storedRules(ruleStore, pinned), [ruleStore, pinned]);
+  const hidden = useMemo(() => hiddenKinds(ruleStore), [ruleStore]);
   const rules = useMemo(() => [...stored, ...highlightRules(highlights, preview)], [stored, highlights, preview]);
-  /** A highlight becomes a standing rule (on top of the others): its matches keep its colour and show
-   *  at every zoom, whatever the groups say. */
+  const styled = useRules(list.all, rules, catalog, hidden);
+  /** A highlight becomes a pinned rule (on top of the others, for this raid): it looks just the same. */
   const pinHighlight = (h: Highlight) => {
-    setRuleStore((r) => {
-      const n = Math.max(0, ...r.mine.map((m) => Number(m.id.split(":")[1]) || 0)) + 1;
-      return { ...r, mine: [...r.mine, { id: standingRuleId(n), label: h.label, kind: h.group, match: h.match, style: { color: h.color, show: 0 }, on: true }] };
-    });
+    const kinds = [...new Set((styled.matched.get(highlightId(h.id)) ?? []).map((r) => r.subject))];
+    setPinned((ps) => [...ps, { id: newRuleId(), category: categoryFor(kinds), label: h.label, query: h.query, style: highlightStyle(h.color), on: true }]);
     setHighlights((hs) => hs.filter((x) => x.id !== h.id));
   };
-  const styled = useRules(list.all, rules, catalog);
+  // Hovering a rule in the Map view marks what it matches.
+  const [hoverRule, setHoverRule] = useState<string | null>(null);
   const highlightMatches = useMemo(() => new Map(highlights.map((h) => [h.id, styled.matched.get(highlightId(h.id)) ?? []])), [highlights, styled.matched]);
   const everything = useMemo(() => allRows(list.all), [list.all]);
 
@@ -241,6 +245,9 @@ export function App() {
   const raid = `${review?.info.name ?? "live"}:${state.status?.state === "inRaid" ? state.raid : null}`;
   const [picked, setPicked] = useState<{ raid: string | null; sel: Selection | null }>({ raid: null, sel: null });
   const selection = picked.raid === raid ? picked.sel : null;
+  // Why the selected thing looks the way it does (the details panel).
+  const selectedRow = useMemo(() => (selection ? everything.find((r) => r.key === selectionKey(selection)) : undefined), [selection, everything]);
+  const selectedLook = useMemo(() => (selectedRow ? explainStyle(selectedRow, rules, catalog, hidden) : null), [selectedRow, rules, catalog, hidden]);
   const select = (sel: Selection | null) => setPicked({ raid, sel });
 
   /** Selects something and brings it into view: centred. */
@@ -359,6 +366,7 @@ export function App() {
     selected: selectedPosition(selection, state),
     hovered: listShown ? selectedPosition(hovered, state) : null,
     debugPoints: map && mapPrefs.coordinatePick ? debugPicks.map((p) => p.pos) : [],
+    marked: hoverRule ? (styled.matched.get(hoverRule) ?? []).flatMap((r) => (r.pos ? [r.pos] : [])) : [],
     trails: trailScene(),
     bodies: mapPrefs.bodies,
   };
@@ -384,7 +392,11 @@ export function App() {
           <MapPanel
             rules={ruleStore}
             setRules={setRuleStore}
+            pinned={pinned}
+            setPinned={setPinned}
             matched={styled.matched}
+            catalog={catalog}
+            onHoverRule={setHoverRule}
             trails={trailPrefs}
             onTrails={setTrailPrefs}
             loot={lootPrefs}
@@ -545,6 +557,7 @@ export function App() {
               state={state}
               catalog={catalog}
               questNeeds={questNeeds}
+              look={selectedLook}
               history={timeline && range && at !== null ? { timeline, at, start: range[0], onPick: pickEvent } : null}
             />
           )}

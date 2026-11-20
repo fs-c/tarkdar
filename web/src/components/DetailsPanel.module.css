@@ -24,3 +24,5 @@
   &[data-future="true"] { opacity: 0.45; }
 }
 .time { color: var(--faint); font: var(--fs-xs) var(--mono); }
+.look { margin: 0; padding: 0; list-style: none; }
+.overridden { color: var(--faint); text-decoration: line-through; }

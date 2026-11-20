@@ -116,9 +116,9 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
           </>
         )}
         {tab === "items" && (
-          <select value={filter.minValue ?? 0} title="Minimum price (per unit)" onChange={(e) => setFilter({ minValue: Number(e.target.value) })}>
+          <select value={filter.minValue ?? 0} title="Minimum value per inventory slot" onChange={(e) => setFilter({ minValue: Number(e.target.value) })}>
             {MIN_VALUES.map((v) => (
-              <option key={v} value={v}>{v === 0 ? "any ₽" : `≥ ${v / 1000}k ₽`}</option>
+              <option key={v} value={v}>{v === 0 ? "any ₽" : `≥ ${v / 1000}k ₽/slot`}</option>
             ))}
           </select>
         )}

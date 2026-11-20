@@ -42,7 +42,7 @@ describe("pick", () => {
 
   it("picks highlighted things on a hidden layer", () => {
     const src = { players: [], exfils: [exfil(1, 0, 0)], loot: [], explosives: none };
-    const highlighted = stylesFor(src, storeFrom({ layers: { ...all, exfils: false } }), [highlightRule("h", "", { subjects: ["exfil"] }, "red", true)]);
+    const highlighted = stylesFor(src, storeFrom({ layers: { ...all, exfils: false } }), [highlightRule("h", "", "is:exfil", "red", true)]);
     expect(pick(view, src, highlighted, 100, 100)).toEqual({ kind: "exfil", id: 1 });
   });
 

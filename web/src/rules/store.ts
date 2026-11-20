@@ -1,68 +1,148 @@
-// What's kept of the rules (localStorage): changes to the built-in rules, the groups switched off, and
-// the standing rules (pinned highlights). And how that turns into the rules to apply, bottom to top:
-// the built-in rules (with their changes), the hidden groups, the standing rules. Highlights go on top
-// of all of them (useRules.ts).
+// What's kept of the rules (localStorage): every rule (made from the defaults, then changed, moved,
+// duplicated, removed or added in the Map view), the categories switched off, and the pinned rules of
+// the current raid. And how that turns into the rules to apply, bottom to top: the rules by category
+// (defaults.ts CATEGORIES), then the pinned ones. Highlights go on top of all of them (useRules.ts).
+//
+// Stored rules from another version are dropped for the defaults: there's no migration (yet).
 
-import type { Match } from "../highlight/match";
-import { isEmptyMatch } from "../highlight/match";
+import { useEffect, useMemo } from "react";
 import { usePersistentState } from "../hooks";
-import { useMemo } from "react";
-import { BUILTIN_RULES, DEFAULT_HIDDEN, type GroupedRule, HIDEABLE, type RuleGroup, SHOW_LEVELS } from "./defaults";
-import { EMPHASES, type StyleProps } from "./rules";
+import type { SubjectKind } from "../list/rows";
+import { CATEGORIES, type Category, DEFAULT_HIDDEN, DEFAULT_RULES, HIDEABLE } from "./defaults";
+import { EMPHASES, type Rule, type StyleProps } from "./rules";
 
-/** A change to a built-in rule: style properties, and its value bounds (rules that have them). */
-export type RuleEdit = StyleProps & Pick<Match, "minValue" | "maxValue">;
+export const RULES_VERSION = 3;
 
-/** A standing rule: made from a highlight, kept until removed. */
-export interface StandingRule {
+export interface StoredRule {
   id: string;
+  /** The default it was made from (reset goes back to it). */
+  origin?: string;
+  category: Category;
   label: string;
-  /** What kind of rule it was made from ("Item", "Category", ...). */
-  kind: string;
-  match: Match;
+  query: string;
   style: StyleProps;
   on: boolean;
 }
 
 export interface RuleStore {
-  /** Built-in rule id → what's changed. */
-  edits: Record<string, RuleEdit>;
-  /** Groups switched off: what's in them is hidden, except what standing rules or highlights show. */
-  hidden: RuleGroup[];
-  /** Standing rules, bottom to top. */
-  mine: StandingRule[];
+  version: number;
+  /** In order within each category, bottom to top. */
+  rules: StoredRule[];
+  /** Categories switched off: what's in them is hidden, except what's ringed (highlights). */
+  hidden: Category[];
 }
 
-export const EMPTY_STORE: RuleStore = { edits: {}, hidden: [...DEFAULT_HIDDEN], mine: [] };
+const fromDefault = (d: (typeof DEFAULT_RULES)[number], id = d.id): StoredRule => ({
+  id, origin: d.id, category: d.category, label: d.label, query: d.query, style: { ...d.style }, on: true,
+});
 
-/** A built-in rule with its changes. */
-export function editedRule(r: GroupedRule, edit: RuleEdit | undefined): GroupedRule {
-  if (!edit) return r;
-  const { minValue, maxValue, ...style } = edit;
-  const match = { ...r.match };
-  if (minValue !== undefined && r.match.minValue !== undefined) match.minValue = minValue;
-  if (maxValue !== undefined && r.match.maxValue !== undefined) match.maxValue = maxValue;
-  return { ...r, match, style: { ...r.style, ...style } };
+export const defaultStore = (): RuleStore => ({ version: RULES_VERSION, rules: DEFAULT_RULES.map((d) => fromDefault(d)), hidden: [...DEFAULT_HIDDEN] });
+
+const byCategory = (a: StoredRule, b: StoredRule) => CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category);
+
+export const asRule = (r: StoredRule): Rule => ({ id: r.id, label: r.label, query: r.query, style: r.style, on: r.on });
+
+/** The rules to apply, bottom to top: by category, then the pinned ones (without highlights). */
+export function storedRules(store: RuleStore, pinned: readonly StoredRule[] = []): Rule[] {
+  return [...[...store.rules].sort(byCategory), ...pinned].map(asRule); // sort is stable: order within a category kept
 }
 
-export const standingRuleId = (n: number) => `mine:${n}`;
+/** The kinds of thing switched off. */
+export function hiddenKinds(store: RuleStore): Set<SubjectKind> {
+  return new Set(store.hidden.flatMap((c) => HIDEABLE[c] ?? []));
+}
 
-/** The rules to apply, bottom to top (without highlights). */
-export function storedRules(store: RuleStore): GroupedRule[] {
-  const builtin = BUILTIN_RULES.map((r) => editedRule(r, store.edits[r.id]));
-  const hidden = store.hidden.flatMap((g): GroupedRule[] => {
-    const subjects = HIDEABLE[g];
-    return subjects ? [{ group: g, id: `hidden.${g}`, label: `${g} off`, match: { subjects }, style: { show: null } }] : [];
+// ---- Changes (pure, for the Map view) ----
+
+let counter = 0;
+export const newRuleId = (): string => `r:${Date.now().toString(36)}${(counter++).toString(36)}`;
+
+export const updateRule = (rules: StoredRule[], id: string, patch: Partial<StoredRule>): StoredRule[] =>
+  rules.map((r) => (r.id === id ? { ...r, ...patch } : r));
+
+export const removeRule = (rules: StoredRule[], id: string): StoredRule[] => rules.filter((r) => r.id !== id);
+
+/** Up (+1, wins over more) or down (−1): within its category, or (pinned rules) in the whole list. */
+export function moveRule(rules: StoredRule[], id: string, dir: -1 | 1, withinCategory = true): StoredRule[] {
+  const i = rules.findIndex((r) => r.id === id);
+  if (i < 0) return rules;
+  let j = i + dir;
+  while (withinCategory && j >= 0 && j < rules.length && rules[j]!.category !== rules[i]!.category) j += dir;
+  if (j < 0 || j >= rules.length) return rules;
+  const out = [...rules];
+  [out[i], out[j]] = [out[j]!, out[i]!];
+  return out;
+}
+
+/** A copy right above it (winning over it). */
+export function duplicateRule(rules: StoredRule[], id: string): StoredRule[] {
+  const i = rules.findIndex((r) => r.id === id);
+  if (i < 0) return rules;
+  const { origin: _, ...copy } = rules[i]!;
+  const out = [...rules];
+  out.splice(i + 1, 0, { ...copy, id: newRuleId(), label: `${copy.label} (copy)`, style: { ...copy.style } });
+  return out;
+}
+
+/** Added on top of its category. */
+export function addRule(rules: StoredRule[], rule: StoredRule): StoredRule[] {
+  let i = rules.length;
+  let top = -1;
+  rules.forEach((r, n) => {
+    if (r.category === rule.category) top = n;
   });
-  const mine = store.mine.map((m): GroupedRule => ({ group: "Mine", id: m.id, label: m.label, match: m.match, style: m.style, on: m.on, track: true }));
-  return [...builtin, ...hidden, ...mine];
+  if (top >= 0) i = top + 1;
+  else {
+    // An empty category: before the first rule of a later one.
+    const later = rules.findIndex((r) => CATEGORIES.indexOf(r.category) > CATEGORIES.indexOf(rule.category));
+    if (later >= 0) i = later;
+  }
+  const out = [...rules];
+  out.splice(i, 0, rule);
+  return out;
 }
 
-// ---- Stored state: checked when read, and made from the old Map panel settings the first time ----
+export const defaultOf = (r: StoredRule) => (r.origin ? DEFAULT_RULES.find((d) => d.id === r.origin) : undefined);
+
+/** Differs from the default it was made from. */
+export function isChanged(r: StoredRule): boolean {
+  const d = defaultOf(r);
+  if (!d) return false;
+  return r.label !== d.label || r.query !== d.query || r.category !== d.category || !r.on || JSON.stringify(sortKeys(r.style)) !== JSON.stringify(sortKeys(d.style));
+}
+
+const sortKeys = (o: object) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined).sort(([a], [b]) => a.localeCompare(b)));
+
+/** Back to its default (in place). */
+export function resetRule(rules: StoredRule[], id: string): StoredRule[] {
+  return rules.map((r) => {
+    const d = r.id === id ? defaultOf(r) : undefined;
+    return d ? fromDefault(d, r.id) : r;
+  });
+}
+
+/** The defaults that were removed: back where they'd be (after the default before them). */
+export function restoreDefaults(rules: StoredRule[]): StoredRule[] {
+  let out = [...rules];
+  DEFAULT_RULES.forEach((d, n) => {
+    if (out.some((r) => r.origin === d.id)) return;
+    const present = (p: (typeof DEFAULT_RULES)[number]) => p.category === d.category && out.some((r) => r.origin === p.id);
+    const before = DEFAULT_RULES.slice(0, n).reverse().find(present);
+    const after = DEFAULT_RULES.slice(n + 1).find(present);
+    if (before) out.splice(out.findIndex((r) => r.origin === before.id) + 1, 0, fromDefault(d));
+    else if (after) out.splice(out.findIndex((r) => r.origin === after.id), 0, fromDefault(d));
+    else out = addRule(out, fromDefault(d));
+  });
+  return out;
+}
+
+export const missingDefaults = (rules: readonly StoredRule[]): number => DEFAULT_RULES.filter((d) => !rules.some((r) => r.origin === d.id)).length;
+
+// ---- Stored state: checked when read ----
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
-function cleanStyle(v: unknown): StyleProps {
+export function cleanStyle(v: unknown): StyleProps {
   if (!isObject(v)) return {};
   const out: StyleProps = {};
   if (v.show === null || typeof v.show === "number") out.show = v.show;
@@ -74,55 +154,23 @@ function cleanStyle(v: unknown): StyleProps {
   return out;
 }
 
-/** Stored rules as they are, minus anything unknown or malformed (from older versions, or garbage). */
+export function cleanRules(v: unknown): StoredRule[] {
+  if (!Array.isArray(v)) return [];
+  const ids = new Set<string>();
+  return v.flatMap((r): StoredRule[] => {
+    if (!isObject(r) || typeof r.id !== "string" || ids.has(r.id) || typeof r.query !== "string" || !CATEGORIES.includes(r.category as Category)) return [];
+    ids.add(r.id);
+    const out: StoredRule = { id: r.id, category: r.category as Category, label: String(r.label ?? ""), query: r.query, style: cleanStyle(r.style), on: r.on !== false };
+    if (typeof r.origin === "string" && DEFAULT_RULES.some((d) => d.id === r.origin)) out.origin = r.origin;
+    return [out];
+  });
+}
+
+/** Stored rules as they are, minus anything malformed; another version (or garbage): the defaults. */
 export function normalizeStore(stored: unknown): RuleStore {
-  if (!isObject(stored)) return EMPTY_STORE;
-  const known = new Set(BUILTIN_RULES.map((r) => r.id));
-  const edits: Record<string, RuleEdit> = {};
-  if (isObject(stored.edits))
-    for (const [id, e] of Object.entries(stored.edits)) {
-      if (!known.has(id) || !isObject(e)) continue;
-      const edit: RuleEdit = cleanStyle(e);
-      if (typeof e.minValue === "number") edit.minValue = e.minValue;
-      if (typeof e.maxValue === "number") edit.maxValue = e.maxValue;
-      edits[id] = edit;
-    }
-  const hidden = Array.isArray(stored.hidden) ? stored.hidden.filter((g): g is RuleGroup => typeof g === "string" && g in HIDEABLE) : [...DEFAULT_HIDDEN];
-  const mine = Array.isArray(stored.mine)
-    ? stored.mine.flatMap((m): StandingRule[] =>
-        isObject(m) && typeof m.id === "string" && isObject(m.match) && !isEmptyMatch(m.match as Match)
-          ? [{ id: m.id, label: String(m.label ?? ""), kind: String(m.kind ?? ""), match: m.match as Match, style: cleanStyle(m.style), on: m.on !== false }]
-          : [],
-      )
-    : [];
-  return { edits, hidden, mine };
-}
-
-/** The old Map panel settings (radar.layers, radar.loot), as rules: hidden groups, and loose items'
- *  density and label threshold as changes to the item rules. */
-export function fromLegacyPrefs(layers: unknown, loot: unknown): RuleStore {
-  const store: RuleStore = { edits: {}, hidden: [...DEFAULT_HIDDEN], mine: [] };
-  if (isObject(layers)) {
-    const off: [string, RuleGroup][] = [["loot", "Loot"], ["containers", "Containers"], ["exfils", "Exfils"], ["explosives", "Explosives"]];
-    store.hidden = off.filter(([k]) => layers[k] === false).map(([, g]) => g);
-  }
-  if (isObject(loot)) {
-    // "fewer" is what the built-in rules say already.
-    if (loot.density === "all") store.edits = { "item.all": { show: SHOW_LEVELS.always }, "item.cheap": { show: SHOW_LEVELS.always } };
-    if (loot.density === "fewest") store.edits = { "item.all": { show: SHOW_LEVELS.mid }, "item.cheap": { show: SHOW_LEVELS.close } };
-    // A label threshold: cheap items get none.
-    if (typeof loot.minLabelPrice === "number" && loot.minLabelPrice > 0) store.edits["item.cheap"] = { ...store.edits["item.cheap"], label: "never" };
-  }
-  return store;
-}
-
-function legacyStore(): RuleStore {
-  try {
-    const read = (k: string) => JSON.parse(localStorage.getItem(k) ?? "null") as unknown;
-    return fromLegacyPrefs(read("radar.layers"), read("radar.loot"));
-  } catch {
-    return EMPTY_STORE;
-  }
+  if (!isObject(stored) || stored.version !== RULES_VERSION) return defaultStore();
+  const hidden = Array.isArray(stored.hidden) ? stored.hidden.filter((g): g is Category => typeof g === "string" && g in HIDEABLE) : [...DEFAULT_HIDDEN];
+  return { version: RULES_VERSION, rules: cleanRules(stored.rules), hidden };
 }
 
 const STORAGE_KEY = "radar.rules";
@@ -130,9 +178,29 @@ const STORAGE_KEY = "radar.rules";
 export type SetRuleStore = (update: (prev: RuleStore) => RuleStore) => void;
 
 export function useRuleStore(): [RuleStore, SetRuleStore] {
-  // The first time (nothing stored yet): made from the old settings.
-  const initial = useMemo(() => (localStorage.getItem(STORAGE_KEY) === null ? legacyStore() : EMPTY_STORE), []);
+  const initial = useMemo(defaultStore, []);
   const [stored, setStored] = usePersistentState<RuleStore>(STORAGE_KEY, initial);
   const store = useMemo(() => normalizeStore(stored), [stored]);
   return [store, (update) => setStored((s) => update(normalizeStore(s)))];
+}
+
+// ---- Pinned rules: kept for one raid (across reloads), then dropped ----
+
+export interface PinnedStore {
+  /** The raid they're for (useRaidKey); null: none yet. */
+  raid: string | null;
+  rules: StoredRule[];
+}
+
+export type SetPinned = (update: (prev: StoredRule[]) => StoredRule[]) => void;
+
+/** `raid`: the live raid's key, null outside one (the pinned rules then stay as they are). */
+export function usePinned(raid: string | null): [StoredRule[], SetPinned] {
+  const [stored, setStored] = usePersistentState<PinnedStore>("radar.pinned", { raid: null, rules: [] });
+  // A new raid: the last one's pinned rules go.
+  useEffect(() => {
+    if (raid !== null && stored.raid !== raid) setStored((p) => ({ raid, rules: p.raid === null ? cleanRules(p.rules) : [] }));
+  }, [raid, stored.raid]);
+  const rules = useMemo(() => cleanRules(stored.rules), [stored.rules]);
+  return [rules, (update) => setStored((p) => ({ raid: p.raid ?? raid, rules: update(cleanRules(p.rules)) }))];
 }

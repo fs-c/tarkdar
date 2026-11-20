@@ -1,21 +1,33 @@
 // Map view of the side panel: the display rules (how things look, and whether and when they show),
-// grouped, each group with an on/off switch where it can be hidden as a whole; then trails.
-// Standing rules (pinned highlights) come first: they win over the built-in rules below them.
+// by category, each hideable one with an on/off switch; then trails. Pinned rules (from highlights, for
+// this raid) come first, then General: they win over the categories below. Within a category, the
+// rules higher up win.
 
+import { Plus } from "lucide-react";
 import { useState } from "react";
+import { compileQuery, QUERY_HELP } from "../highlight/query";
 import type { LootPrefs, TrailPrefs } from "../hooks";
+import type { ItemCatalog } from "../items";
 import type { AnyRow } from "../list/rows";
-import { BUILTIN_RULES, HIDEABLE, type RuleGroup } from "../rules/defaults";
-import { type RuleEdit, type RuleStore, type SetRuleStore, editedRule } from "../rules/store";
-import { PanelBody, Segmented, type SegmentedOption, ToggleRow } from "../ui";
+import { CATEGORIES, type Category, HIDEABLE } from "../rules/defaults";
+import {
+  type RuleStore, type SetPinned, type SetRuleStore, type StoredRule, addRule, defaultStore, duplicateRule, isChanged, missingDefaults,
+  moveRule, newRuleId, removeRule, resetRule, restoreDefaults, updateRule,
+} from "../rules/store";
+import { Button, PanelBody, Segmented, type SegmentedOption, ToggleRow } from "../ui";
 import { RuleRow } from "./RuleRow";
 import s from "./MapPanel.module.css";
 
 interface Props {
   rules: RuleStore;
   setRules: SetRuleStore;
-  /** Rule id → what it matches now (standing rules). */
+  pinned: StoredRule[];
+  setPinned: SetPinned;
+  /** Rule id → what it matches now. */
   matched: ReadonlyMap<string, AnyRow[]>;
+  catalog: ItemCatalog;
+  /** The rule whose matches to mark on the map (null: none). */
+  onHoverRule: (id: string | null) => void;
   trails: TrailPrefs;
   onTrails: (t: TrailPrefs) => void;
   loot: LootPrefs;
@@ -24,13 +36,17 @@ interface Props {
   questInfo: string;
 }
 
-const GROUPS: { group: RuleGroup; hint: string }[] = [
-  { group: "Players", hint: "By type" },
-  { group: "Loot", hint: "Loose items by value, and quest items" },
-  { group: "Containers", hint: "Containers, airdrops and corpses" },
-  { group: "Exfils", hint: "Extraction points; their colour tells their status" },
-  { group: "Explosives", hint: "Grenades and tripwires" },
-];
+const HINTS: Record<Category, string> = {
+  General: "Across kinds of thing: win over the categories below",
+  Players: "By type",
+  Loot: "Loose items by value per slot, and quest items",
+  Containers: "Containers, airdrops and corpses",
+  Exfils: "Extraction points; their colour tells their status",
+  Explosives: "Grenades and tripwires",
+};
+
+/** Shown top to bottom: what wins first. */
+const SHOWN_CATEGORIES = [...CATEGORIES].reverse();
 
 const QUEST_ITEM_OPTIONS: SegmentedOption<LootPrefs["questItems"]>[] = [
   { value: "needed", label: "Needed", title: "Only quest items a started quest still needs to find" },
@@ -40,81 +56,84 @@ const QUEST_ITEM_OPTIONS: SegmentedOption<LootPrefs["questItems"]>[] = [
 const TRAIL_LENGTHS: (number | null)[] = [0.5, 1, 2, 5, 10, 15, 30, null];
 
 export function MapPanel(p: Props) {
-  const { rules, setRules } = p;
+  const { rules, setRules, pinned, setPinned } = p;
   // One rule's editor open at a time.
   const [open, setOpen] = useState<string | null>(null);
+  const [help, setHelp] = useState(false);
   const opener = (id: string) => (o: boolean) => setOpen(o ? id : null);
+  const setList = (update: (rs: StoredRule[]) => StoredRule[]) => setRules((r) => ({ ...r, rules: update(r.rules) }));
 
-  const edit = (id: string, patch: RuleEdit) => setRules((r) => ({ ...r, edits: { ...r.edits, [id]: { ...r.edits[id], ...patch } } }));
-  const reset = (id: string) =>
-    setRules((r) => {
-      const { [id]: _, ...edits } = r.edits;
-      return { ...r, edits };
-    });
-  const toggleGroup = (g: RuleGroup) =>
-    setRules((r) => ({ ...r, hidden: r.hidden.includes(g) ? r.hidden.filter((x) => x !== g) : [...r.hidden, g] }));
-  const updateMine = (id: string, update: (m: RuleStore["mine"][number]) => RuleStore["mine"][number] | null) =>
-    setRules((r) => ({ ...r, mine: r.mine.flatMap((m) => (m.id === id ? (update(m) ?? []) : [m])) }));
-  const moveMine = (id: string, dir: -1 | 1) =>
-    setRules((r) => {
-      const i = r.mine.findIndex((m) => m.id === id), j = i + dir;
-      if (i < 0 || j < 0 || j >= r.mine.length) return r;
-      const mine = [...r.mine];
-      [mine[i], mine[j]] = [mine[j]!, mine[i]!];
-      return { ...r, mine };
-    });
+  const toggleCategory = (c: Category) =>
+    setRules((r) => ({ ...r, hidden: r.hidden.includes(c) ? r.hidden.filter((x) => x !== c) : [...r.hidden, c] }));
+  const add = (category: Category) => {
+    const id = newRuleId();
+    setList((rs) => addRule(rs, { id, category, label: "New rule", query: "", style: {}, on: true }));
+    setOpen(id);
+  };
+  const keep = (r: StoredRule) => {
+    setPinned((ps) => removeRule(ps, r.id));
+    setList((rs) => addRule(rs, { ...r, id: newRuleId() }));
+  };
+  const missing = missingDefaults(rules.rules);
+
+  const row = (r: StoredRule, pinnedRule: boolean) => {
+    const set = pinnedRule ? setPinned : setList;
+    return (
+      <RuleRow
+        key={r.id}
+        rule={r}
+        open={open === r.id}
+        onOpen={opener(r.id)}
+        count={p.matched.get(r.id)?.length ?? 0}
+        errors={compileQuery(r.query, p.catalog).errors}
+        onHover={(on) => p.onHoverRule(on ? r.id : null)}
+        onChange={(patch) => set((rs) => updateRule(rs, r.id, patch))}
+        onMove={(dir) => set((rs) => moveRule(rs, r.id, dir, !pinnedRule))}
+        onDuplicate={() => set((rs) => duplicateRule(rs, r.id))}
+        onRemove={() => {
+          p.onHoverRule(null);
+          set((rs) => removeRule(rs, r.id));
+        }}
+        onReset={!pinnedRule && isChanged(r) ? () => setList((rs) => resetRule(rs, r.id)) : undefined}
+        onKeep={pinnedRule ? () => keep(r) : undefined}
+      />
+    );
+  };
 
   return (
     <PanelBody>
       <section className={s.group}>
         <header className={s.header}>
-          <h3 className={s.title}>Mine</h3>
-          <small className={s.hint}>Win over everything below</small>
+          <h3 className={s.title}>Pinned</h3>
+          <small className={s.hint}>This raid only; win over everything below</small>
         </header>
-        {rules.mine.length === 0 && <p className={s.empty}>Pin a highlight (📌 on its pill) to keep it here as a standing rule.</p>}
-        {/* Top to bottom: the last one wins. */}
-        {[...rules.mine].reverse().map((m) => (
-          <RuleRow
-            key={m.id}
-            rule={{ ...m, on: m.on }}
-            kind={m.kind}
-            open={open === m.id}
-            onOpen={opener(m.id)}
-            count={p.matched.get(m.id)?.length ?? 0}
-            onEdit={(patch) => updateMine(m.id, (x) => ({ ...x, style: { ...x.style, ...patch } }))}
-            onToggle={() => updateMine(m.id, (x) => ({ ...x, on: !x.on }))}
-            onMove={(dir) => moveMine(m.id, dir)}
-            onRemove={() => updateMine(m.id, () => null)}
-          />
-        ))}
+        {pinned.length === 0 && <p className={s.empty}>Pin a highlight (📌 on its pill) to keep it here for this raid.</p>}
+        {[...pinned].reverse().map((r) => row(r, true))}
       </section>
-      {GROUPS.map(({ group, hint }) => {
+      {SHOWN_CATEGORIES.map((group) => {
         const hideable = group in HIDEABLE;
         const shown = !rules.hidden.includes(group);
+        const list = rules.rules.filter((r) => r.category === group).reverse();
         return (
           <section key={group} className={s.group} data-off={!shown}>
             <header className={s.header}>
               {hideable ? (
-                <label className={s.switchLabel} title={shown ? "Shown: click to hide all of them (highlights and your rules still show)" : "Hidden: click to show"}>
-                  <input type="checkbox" role="switch" className={s.switch} checked={shown} onChange={() => toggleGroup(group)} />
+                <label className={s.switchLabel} title={shown ? "Shown: click to hide all of them (ringed things, e.g. highlights, still show)" : "Hidden: click to show"}>
+                  <input type="checkbox" role="switch" className={s.switch} checked={shown} onChange={() => toggleCategory(group)} />
                   <h3 className={s.title}>{group}</h3>
                 </label>
               ) : (
                 <h3 className={s.title}>{group}</h3>
               )}
-              <small className={s.hint}>{hint}</small>
+              <small className={s.hint}>{HINTS[group]}</small>
+              {shown && (
+                <Button variant="icon" className={s.add} title={`Add a rule to ${group}`} onClick={() => add(group)}>
+                  <Plus size={14} />
+                </Button>
+              )}
             </header>
-            {shown &&
-              BUILTIN_RULES.filter((r) => r.group === group).map((r) => (
-                <RuleRow
-                  key={r.id}
-                  rule={editedRule(r, rules.edits[r.id])}
-                  open={open === r.id}
-                  onOpen={opener(r.id)}
-                  onEdit={(patch) => edit(r.id, patch)}
-                  onReset={rules.edits[r.id] ? () => reset(r.id) : undefined}
-                />
-              ))}
+            {shown && list.length === 0 && <p className={s.empty}>No rules.</p>}
+            {shown && list.map((r) => row(r, false))}
             {shown && group === "Loot" && (
               <div className={s.field}>
                 <span className={s.caption}>Quest items · {p.questInfo}</span>
@@ -130,6 +149,40 @@ export function MapPanel(p: Props) {
           </section>
         );
       })}
+      <section className={s.group}>
+        <div className={s.ruleActions}>
+          <Button variant="link" onClick={() => setHelp((h) => !h)} aria-expanded={help}>
+            Query syntax
+          </Button>
+          {missing > 0 && (
+            <Button variant="link" title="Put the default rules you removed back" onClick={() => setList(restoreDefaults)}>
+              Restore {missing} default{missing === 1 ? "" : "s"}
+            </Button>
+          )}
+          <Button
+            variant="link"
+            title="All rules back to the defaults (your own rules go)"
+            onClick={() => {
+              if (window.confirm("Reset all rules to the defaults? Your own rules will be removed.")) setRules(() => defaultStore());
+            }}
+          >
+            Reset all
+          </Button>
+        </div>
+        {help && (
+          <dl className={s.help}>
+            <dt><code>words "a phrase"</code></dt>
+            <dd>text, as in the list's search</dd>
+            {QUERY_HELP.map((h) => (
+              <div key={h.example}>
+                <dt><code>{h.example}</code></dt>
+                <dd>{h.text}</dd>
+              </div>
+            ))}
+            <dd className={s.helpNote}>Spaces: all must hold. Commas: any of them (<code>is:boss,raider</code>). Quotes for names with spaces. Compare with &gt;= &gt; &lt;= &lt; =.</dd>
+          </dl>
+        )}
+      </section>
       <section className={s.group}>
         <header className={s.header}>
           <h3 className={s.title}>Trails</h3>

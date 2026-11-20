@@ -148,19 +148,34 @@ for a raid → in raid → cooldown → waiting for a raid.
 ## Frontend: what shows, and how
 
 - **Rows** (`web/src/list/rows.ts`). Everything the radar knows becomes one row per thing (what it is,
-  the items it is or carries, its value). Display rules, highlights and list filters all match rows.
+  the items it is or carries, its value: per inventory slot for loose items, the equipment's for
+  players and corpses). Display rules, highlights and list filters all match rows.
+- **Queries** (`web/src/highlight/query.ts`) say what a rule or a highlight matches, as text: free
+  words, `is:boss,raider`, `item:LEDX`, `cat:Electronics`, `value>=40k`, `pen>=40`, `class>=5`.
+  Spaces AND, commas OR, no negation (yet). Item conditions hold for things that are or carry such an
+  item. A query is compiled once per catalog (names resolved, item conditions as template sets); one
+  that doesn't parse or resolve matches nothing and says why. A syntax over a form: learnable, and the
+  same in the search and in the rule editor.
 - **Display rules** (`web/src/rules/`) decide how each thing looks and whether and when it shows: one
-  ordered list of rules, each a match (`web/src/highlight/match.ts`) and the style properties it sets
-  (visibility from a level of detail on, colour, emphasis, label, ring). A thing starts from its kind's
-  base style; every rule that matches sets its properties on top, later rules winning property by
-  property. Bottom to top: the built-in rules (looks by player type, loose items by value, the other
-  kinds of things), groups switched off (the old map layers), standing rules (pinned highlights), then
-  highlights from the global search; so standing rules and highlights beat anything that hides. Map,
-  figures, trails, picking and the list all read the result.
-- **The Map view edits the rules** (`web/src/components/MapPanel.tsx`). Built-in rules can be changed
-  and reset, not removed; only the changes are stored (`web/src/rules/store.ts`, by rule id), so
-  changed defaults in code still reach every rule nobody touched. Loot density and the label
-  threshold are no settings of their own: they are the item rules' "shown" and "label".
+  ordered list of rules, each a query and the style properties it sets (visibility from a level of
+  detail on, colour, emphasis, label, ring). A thing starts from its kind's base style; every rule that
+  matches sets its properties on top, later rules winning property by property. Only players are shown
+  by their base style; everything else is shown by a rule (each kind's catch-all default: "Items",
+  "Containers", ...), so switching off the rules that match a thing hides it. Bottom to top: the
+  rules by category (Players, Loot, Containers, Exfils, Explosives, then General, which spans kinds),
+  pinned rules, then highlights from the global search. Last, categories switched off (the old map
+  layers) hide their kinds of thing, except what's ringed: so highlights, and any rule that rings,
+  beat hiding. Map, figures, trails, picking and the list all read the result; the details panel shows
+  which rules made the selected thing's look.
+- **Every rule is the user's** (`web/src/components/MapPanel.tsx`, `web/src/rules/store.ts`). The store
+  starts from the defaults (`web/src/rules/defaults.ts`); any rule can be edited (name, query, style,
+  category), moved within its category, duplicated, removed and added. Rules made from a default keep
+  its id (`origin`): reset one, or restore the removed ones where they were. No migration: a stored
+  version other than the current one is replaced by the defaults. Loot density and the label threshold
+  are no settings of their own: they are the item rules' "shown" and "label".
+- **Pinned rules** are highlights kept for the current raid (stored with its key, dropped when the next
+  raid starts), editable like any rule; "keep" moves one into its category for good. Pinning changes
+  nothing about the look.
 - **Not rules, on purpose:** each kind's shape and what an emphasis means for it (`web/src/style.ts`),
   a thing's state (the dead are grey, those who left faded, an exfil's colour is its status), the local
   player, and where labels go.

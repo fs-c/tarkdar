@@ -3,7 +3,6 @@ import { type ItemCatalog, emptyCatalog } from "./items";
 import { topDownProjector } from "./projector.fixture";
 import type { Exfil, LootEntry, Player } from "./protocol";
 import { type Scene, renderMarkers } from "./render";
-import type { Match } from "./highlight/match";
 import { highlightRule } from "./rules/rules";
 import { type LegacyPrefs, storeFrom, stylesFor } from "./rules/rules.fixture";
 
@@ -26,7 +25,7 @@ function fakeCtx() {
   return { ctx: ctx as unknown as CanvasRenderingContext2D, texts, rects };
 }
 
-const prices: Record<string, number> = { cheap: 5_000, mid: 50_000, dear: 500_000 };
+const prices: Record<string, number> = { cheap: 5_000, mid: 20_000, dear: 500_000 };
 const catalog: ItemCatalog = { ...emptyCatalog, lookup: (tpl) => (tpl in prices ? { name: tpl, shortName: tpl, price: prices[tpl] } : undefined) };
 const player = (id: number): Player => ({ id, local: false, ai: false, side: "usec", dead: false, absent: false, pos: [0, 0, 0], yaw: 0, pitch: 0 });
 const loot = (id: number, kind: LootEntry["kind"], tpl = ""): LootEntry => ({ id, kind, tpl, obj: "", pos: [0, 0, 0] });
@@ -34,7 +33,7 @@ const exfil: Exfil = { id: 1, kind: "regular", name: "Gate", status: 4, pos: [0,
 
 /** Draws the scene at a level of detail (declutter.ts), styled by the built-in rules as made from these
  *  (old) Map panel settings, and a highlight. */
-function draw(detail: number, patch: Partial<Scene>, prefs: LegacyPrefs = {}, highlight?: Match) {
+function draw(detail: number, patch: Partial<Scene>, prefs: LegacyPrefs = {}, highlight?: string) {
   const base: Scene = {
     players: [], catalog, exfils: [], explosives: { grenades: [], tripwires: [] }, vehicles: [], loot: [], questLabels: new Map(),
     styles: new Map(), selected: null, hovered: null, debugPoints: [], trails: null, bodies: false,
@@ -72,7 +71,7 @@ describe("labels", () => {
     const questLabels = new Map([["diary", "Missing Informant"]]);
     expect(draw(2, { loot: [loot(1, "quest", "diary")], questLabels }).texts).toEqual(["Missing Informant"]);
     expect(draw(2, { loot: [loot(1, "quest", "unknown")], questLabels }).texts).toEqual(["quest item"]);
-    expect(draw(2, { loot: [loot(1, "quest", "diary")], questLabels }, {}, { tpls: ["diary"] }).texts).toEqual(["Missing Informant"]);
+    expect(draw(2, { loot: [loot(1, "quest", "diary")], questLabels }, {}, "diary").texts).toEqual(["Missing Informant"]);
   });
 
   it("place the more important labels first", () => {
@@ -98,7 +97,7 @@ describe("item markers by zoom", () => {
   });
 
   it("keep highlighted items whatever their price", () => {
-    expect(draw(0.2, { loot: items }, { density: "fewest" }, { tpls: ["cheap"] }).rects).toHaveLength(2);
+    expect(draw(0.2, { loot: items }, { density: "fewest" }, "cheap").rects).toHaveLength(2);
   });
 
   it("fall back to the default for an unknown stored setting", () => {
@@ -117,6 +116,6 @@ describe("the old Map panel settings, as rules", () => {
     const things = { loot: [loot(1, "item", "cheap"), loot(2, "item", "dear")], exfils: [exfil] };
     const layers = { loot: false, containers: true, exfils: false, explosives: true };
     expect(draw(3, things, { layers }).texts).toEqual([]);
-    expect(draw(3, things, { layers }, { tpls: ["dear"] }).texts).toEqual(["dear 500k"]);
+    expect(draw(3, things, { layers }, "dear").texts).toEqual(["dear 500k"]);
   });
 });

@@ -11,6 +11,19 @@ export interface ItemInfo {
   priceSource?: "flea" | "base";
   /** Handbook category ids, the item's own and all above it ("Electronics", "Barter items"). */
   categories?: readonly string[];
+  /** Inventory slots it takes (width × height); undefined: one. */
+  slots?: number;
+  /** Ammo. */
+  penetration?: number;
+  damage?: number;
+  armorDamage?: number;
+  /** Armor, plates, helmets, armored rigs. */
+  armorClass?: number;
+}
+
+/** What an item is worth per inventory slot (roubles): how loose loot is priced. */
+export function slotValue(info: ItemInfo | undefined): number | undefined {
+  return info?.price === undefined ? undefined : Math.round(info.price / (info.slots ?? 1));
 }
 
 /** A handbook category: the tree the game's handbook and the flea market sort items into. */
@@ -54,15 +67,8 @@ export function formatPrice(roubles: number): string {
   return `${Math.round(roubles)}`;
 }
 
-/** How valuable a loose item is, for its map marker. Unpriced items count as low. */
-export type ValueTier = "low" | "mid" | "high";
-
-export const VALUE_TIERS = { mid: 20_000, high: 100_000 };
-
-export function valueTier(price: number | undefined): ValueTier {
-  if (price === undefined || price < VALUE_TIERS.mid) return "low";
-  return price < VALUE_TIERS.high ? "mid" : "high";
-}
+/** Loose items' value tiers (per slot, see slotValue): the built-in rules' cheap and valuable items. */
+export const VALUE_TIERS = { mid: 10_000, high: 40_000 };
 
 /** No item data loaded: every lookup misses. */
 export const emptyCatalog: ItemCatalog = { lookup: () => undefined, items: () => [], categories: () => [] };

@@ -1,7 +1,7 @@
 // Draws the radar's markers (players, loot, exfils, ...) over the map, through its camera (projector.ts).
 
 import { LabelPlacer, type Rect, candidatesAround } from "./labels";
-import { type ItemCatalog, containerName, exfilStatus, formatPrice } from "./items";
+import { type ItemCatalog, containerName, exfilStatus, formatPrice, slotValue } from "./items";
 import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type Vehicle, type WorldPos } from "./protocol";
 import { type PlayerTypeInfo, bossGroups, playerType } from "./roles";
 import { COLORS, DEFAULT_COLOR, EMPHASIS_SCALE, MARKER_SIZE, type PlayerLook, exfilColor, playerLook } from "./style";
@@ -29,6 +29,8 @@ export interface Scene {
   hovered: [number, number, number] | null;
   /** World positions picked with the coordinate tool (3D map debugging), drawn numbered. */
   debugPoints: [number, number, number][];
+  /** Things a rule matches, marked while it's hovered in the Map view. */
+  marked?: readonly WorldPos[];
   trails: TrailScene | null;
   /** Up close, draw players with a known skeleton as figures instead of dots (3D map). */
   bodies: boolean;
@@ -77,6 +79,20 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
 
   drawRings(ctx, pr, scene, styleOf);
   drawLabels(ctx, labels);
+
+  if (scene.marked?.length) {
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([2, 3]);
+    for (const pos of scene.marked) {
+      const [x, y] = pr.toScreen(pos);
+      if (!onScreen(pr, x, y, 16)) continue;
+      ctx.beginPath();
+      ctx.arc(x, y, 11, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
 
   if (scene.hovered) {
     const [x, y] = pr.toScreen(scene.hovered);
@@ -483,8 +499,10 @@ function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene, la
       case "item": {
         const info = catalog.lookup(l.tpl);
         if (!info) break;
-        const texts = info.price ? [`${info.shortName} ${formatPrice(info.price)}`, formatPrice(info.price)] : [info.shortName];
-        label(texts, LABEL_RANK.item, info.price ?? 0, shown.forced);
+        // Value per slot: what loose loot is priced by.
+        const v = slotValue(info);
+        const texts = v ? [`${info.shortName} ${formatPrice(v)}`, formatPrice(v)] : [info.shortName];
+        label(texts, LABEL_RANK.item, v ?? 0, shown.forced);
         break;
       }
       case "quest":
@@ -555,7 +573,8 @@ function ringTexts(l: LootEntry, catalog: ItemCatalog, questLabels: ReadonlyMap<
     case "item": {
       const info = catalog.lookup(l.tpl);
       if (!info) return ["item"];
-      return info.price ? [`${info.shortName} ${formatPrice(info.price)}`, info.shortName] : [info.shortName];
+      const v = slotValue(info);
+      return v ? [`${info.shortName} ${formatPrice(v)}`, info.shortName] : [info.shortName];
     }
     case "quest": return questTexts(l.tpl, questLabels);
     case "container": return [containerName(l.tpl) ?? "container"];

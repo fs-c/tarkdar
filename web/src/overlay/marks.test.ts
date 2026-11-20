@@ -34,6 +34,8 @@ describe("overlayMarks", () => {
     ["player:4", style({ color: "#f00", show: null })], // hidden on the map
     ["loot:10", style({ color: "#ffd84d", emphasis: "strong" })],
     ["loot:11", style({ color: "#888888" })], // plain: not marked
+    ["loot:12", style({})],
+    ["loot:13", style({})],
     ["exfil:1", style({})],
   ]);
   const marks = overlayMarks(rows, styles);

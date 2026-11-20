@@ -10,6 +10,7 @@ import { type QuestNeed, formatQuestNeed } from "../quests";
 import { WILD_SPAWN_TYPES, bossGroups, playerType } from "../roles";
 import type { Timeline, TimelineEvent } from "../timeline";
 import { formatDuration } from "../playback";
+import type { Contribution, Style } from "../rules/rules";
 import { Price } from "../ui";
 import s from "./DetailsPanel.module.css";
 
@@ -19,6 +20,13 @@ interface Props {
   catalog: ItemCatalog;
   /** Ordinary item template id → started quests that still need it (quests.ts). */
   questNeeds: ReadonlyMap<string, readonly QuestNeed[]>;
+}
+
+/** Why it looks the way it does (rules.ts explainStyle). */
+export interface Look {
+  parts: Contribution[];
+  style: Style;
+  hiddenByGroup: boolean;
 }
 
 /** The raid's history, for the History section. */
@@ -31,10 +39,11 @@ export interface HistoryProps {
   onPick: (e: TimelineEvent) => void;
 }
 
-export function DetailsPanel(props: Props & { history: HistoryProps | null }) {
+export function DetailsPanel(props: Props & { history: HistoryProps | null; look: Look | null }) {
   return (
     <div className={s.details}>
       <Details {...props} />
+      {props.look && <LookSection look={props.look} />}
       {props.history && <History selection={props.selection} catalog={props.catalog} {...props.history} />}
     </div>
   );
@@ -139,6 +148,44 @@ function Details({ selection: sel, state, catalog, questNeeds }: Props) {
       <Line label="kind" value={e.kind} />
       <Line label="status" value={exfilStatus(e.status).label} />
       <Line label="position" value={formatPos(e.pos)} />
+    </>
+  );
+}
+
+const PROP_TEXT: Record<keyof Style, (s: Style) => string> = {
+  color: (st) => `colour ${st.color ?? "own"}`,
+  ring: (st) => `ring ${st.ring}`,
+  emphasis: (st) => st.emphasis,
+  show: (st) => (st.show === null ? "hidden" : st.show === 0 ? "always shown" : `shown from detail ${st.show}`),
+  label: (st) => `label: ${st.label}`,
+  labelFrom: (st) => `labels from detail ${st.labelFrom}`,
+};
+
+/** The rules that make its look, the one that wins first; what a later rule overrides struck through. */
+function LookSection({ look }: { look: Look }) {
+  const { parts, hiddenByGroup } = look;
+  return (
+    <>
+      <h4 className={s.heading}>look</h4>
+      {hiddenByGroup && <div className="muted">hidden: its category is off</div>}
+      {!parts.length && <div className="muted">no rule matches: its kind's base look</div>}
+      <ul className={s.look}>
+        {[...parts].reverse().map((c) => (
+          <li key={c.rule.id} title={c.rule.query}>
+            <span className={s.label}>{c.rule.label || c.rule.id}: </span>
+            {c.set.map((k, i) => {
+              const one = { ...look.style, ...c.rule.style } as Style;
+              return (
+                <span key={k} className={c.overridden.includes(k) ? s.overridden : undefined}>
+                  {i ? ", " : ""}
+                  {PROP_TEXT[k](one)}
+                </span>
+              );
+            })}
+            {!c.set.length && <span className="muted">(sets nothing)</span>}
+          </li>
+        ))}
+      </ul>
     </>
   );
 }

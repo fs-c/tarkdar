@@ -1,0 +1,4 @@
+{
+  "0": { "selected": true, "all": true, "minutes": null },
+  "1": { "$v": 1, "data": { "selected": false, "all": false, "minutes": 10 } }
+}

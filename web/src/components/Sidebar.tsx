@@ -3,7 +3,7 @@
 
 import { Archive, Bug, DoorOpen, History, Layers, type LucideIcon, Package, PanelLeftClose, Settings, Users } from "lucide-react";
 import { type PointerEvent, type ReactNode, useRef } from "react";
-import { usePersistentState } from "../hooks";
+import { DEFAULT_SIDEBAR_WIDTH, useSidebarSize } from "../prefs";
 import { TABS } from "../list/columns";
 import type { TabId } from "../list/rows";
 import { Button, cx } from "../ui";
@@ -80,13 +80,12 @@ interface SidePanelProps {
 }
 
 /** Panel width in px: the same for every view, dragged with the sash on its right edge. */
-const DEFAULT_WIDTH = 420;
 const MIN_WIDTH = 260;
 /** Room always left for the map. */
 const MAP_MIN = 160;
 
 export function SidePanel({ view, aside, onClose, children }: SidePanelProps) {
-  const [{ width }, setSize] = usePersistentState("radar.sidebarSize", { width: DEFAULT_WIDTH });
+  const [{ width }, setSize] = useSidebarSize();
   const drag = useRef<{ x: number; width: number } | null>(null);
   const panelRef = useRef<HTMLElement>(null);
 
@@ -113,7 +112,7 @@ export function SidePanel({ view, aside, onClose, children }: SidePanelProps) {
         onPointerMove={onSashMove}
         onPointerUp={() => (drag.current = null)}
         onPointerCancel={() => (drag.current = null)}
-        onDoubleClick={() => setSize({ width: DEFAULT_WIDTH })}
+        onDoubleClick={() => setSize({ width: DEFAULT_SIDEBAR_WIDTH })}
       />
       <header className={s.header}>
         <h2 className={s.title}>{VIEW_TITLES[view]}</h2>

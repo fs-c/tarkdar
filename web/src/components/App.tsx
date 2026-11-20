@@ -1,11 +1,12 @@
 import { Locate, LocateFixed, Navigation } from "lucide-react";
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type RadarState, wsUrl } from "../connection";
-import { isTyping, useCatalog, useConnection, useLootPrefs, useMapIndex, useMapPrefs, usePersistentState, useQuestData, useTrailPrefs } from "../hooks";
+import { isTyping, useCatalog, useConnection, useMapIndex, useQuestData } from "../hooks";
+import { useLootPrefs, useMapPrefs, useOverlayPrefs, useSidebarPrefs, useTrailPrefs } from "../prefs";
 import { knownQuestItems, neededItems, neededQuestItems, questDebugReport, questItemLabels, withoutUnneededQuestItems } from "../quests";
 import { withoutDuplicateLoot } from "../dedupe";
 import { describeEvent } from "../events";
-import { DEFAULT_OVERLAY_PREFS, type OverlayPrefs, overlayData, overlayMarks } from "../overlay/marks";
+import { overlayData, overlayMarks } from "../overlay/marks";
 import { useOverlaySync } from "../overlay/useOverlaySync";
 import type { MapStats, MapView } from "../map3d/Map3D";
 import { findMap, mapUrl } from "../maps";
@@ -163,7 +164,7 @@ export function App() {
 
   // The overlay (radar-backend --overlay): configured from here, from the live raid only (a replay
   // or an earlier moment leaves it as it was).
-  const [overlayPrefs, setOverlayPrefs] = usePersistentState<OverlayPrefs>("radar.overlay", DEFAULT_OVERLAY_PREFS);
+  const [overlayPrefs, setOverlayPrefs] = useOverlayPrefs();
   const overlayLive = conn.overlay && !review && playback.cursor === null;
   const marksForOverlay = useMemo(() => (overlayLive ? overlayMarks(list.all, styled.styles) : []), [overlayLive, list.all, styled.styles]);
   const overlayRaid = conn.status?.state === "inRaid" ? conn.raid : null;
@@ -175,22 +176,7 @@ export function App() {
 
   // Side panel: open or collapsed, and which section it shows (for "list", the list tab in listPrefs).
   // The Raids view has two levels: the list of raids, and the shown raid's timeline.
-  type Section = "list" | "map" | "raids" | "debug" | "settings";
-  const [storedUi, setUi] = usePersistentState<{ open: boolean; section: Section; raidsLevel: "list" | "timeline" }>("radar.sidebar", {
-    open: false,
-    section: "list",
-    raidsLevel: "list",
-  });
-  // Sections stored by older versions: the timeline is now inside Raids; anything else falls back to the list.
-  const legacyTimeline = (storedUi.section as string) === "timeline";
-  useEffect(() => {
-    if (legacyTimeline) setUi((u) => ({ ...u, section: "raids", raidsLevel: "timeline" }));
-  }, [legacyTimeline, setUi]);
-  const ui = legacyTimeline
-    ? { ...storedUi, section: "raids" as const, raidsLevel: "timeline" as const }
-    : (["list", "map", "raids", "debug", "settings"] as string[]).includes(storedUi.section)
-      ? storedUi
-      : { ...storedUi, section: "list" as const };
+  const [ui, setUi] = useSidebarPrefs();
   const view: ViewId = ui.section === "list" ? listPrefs.tab : ui.section;
   const listShown = ui.open && ui.section === "list";
   const togglePanel = () => setUi((u) => ({ ...u, open: !u.open }));

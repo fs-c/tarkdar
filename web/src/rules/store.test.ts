@@ -4,9 +4,10 @@ import type { AnyRow, SubjectKind } from "../list/rows";
 import { DEFAULT_RULES } from "./defaults";
 import { applyRules } from "./rules";
 import {
-  RULES_VERSION, type RuleStore, type StoredRule, addRule, defaultStore, duplicateRule, hiddenKinds, isChanged, missingDefaults, moveRule,
-  normalizeStore, removeRule, resetRule, restoreDefaults, storedRules, updateRule,
+  type RuleStore, type StoredRule, addRule, defaultStore, duplicateRule, hiddenKinds, isChanged, missingDefaults, moveRule,
+  normalizeStore, removeRule, resetRule, restoreDefaults, ruleStore, storedRules, updateRule,
 } from "./store";
+import { decode } from "../persist/store";
 
 const row = (key: string, subject: SubjectKind, extra: Record<string, unknown> = {}) =>
   ({ key, subject, tpls: [], search: "", pos: null, sel: { kind: "loot", id: 0 }, ...extra }) as unknown as AnyRow;
@@ -65,9 +66,8 @@ describe("stored rules", () => {
     expect(ids(restoreDefaults(without))).toEqual(ids(rs));
   });
 
-  it("drop what they don't know when read; another version gives the defaults", () => {
+  it("drop what they don't know when read; an older format gives the defaults", () => {
     const n = normalizeStore({
-      version: RULES_VERSION,
       rules: [
         { id: "a", origin: "player.usec", category: "Players", label: "A", query: "is:usec", style: { color: "#fff", emphasis: "huge", bogus: 1 } },
         { id: "a", category: "Players", query: "" }, // duplicate id
@@ -83,7 +83,8 @@ describe("stored rules", () => {
     ]);
     expect(n.hidden).toEqual(["Loot"]);
     expect(normalizeStore("garbage")).toEqual(defaultStore());
-    expect(normalizeStore({ edits: {}, hidden: [], mine: [] })).toEqual(defaultStore()); // the old format
+    expect(decode(ruleStore, JSON.stringify({ edits: {}, hidden: [], mine: [] }))).toMatchObject({ value: defaultStore(), status: "failed" }); // an old format
+    expect(decode(ruleStore, JSON.stringify({ version: 3, rules: [], hidden: ["Loot"] }))).toMatchObject({ value: { rules: [], hidden: ["Loot"] }, status: "migrated" });
     expect(defaultStore().rules).toHaveLength(DEFAULT_RULES.length);
   });
 });

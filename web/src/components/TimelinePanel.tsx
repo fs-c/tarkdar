@@ -5,8 +5,8 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronLeft } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
-import { DEFAULT_EVENT_GROUPS, EVENT_GROUPS, type EventGroup, describeEvent, eventConcerns, eventGroup } from "../events";
-import { usePersistentState } from "../hooks";
+import { EVENT_GROUPS, type EventGroup, describeEvent, eventConcerns, eventGroup } from "../events";
+import { useLogPrefs } from "../prefs";
 import type { ItemCatalog } from "../items";
 import { type Selection, selectionKey } from "../pick";
 import { type Playback, formatDuration } from "../playback";
@@ -36,17 +36,12 @@ interface Props {
   onPick: (e: TimelineEvent) => void;
 }
 
-interface Prefs {
-  groups: Record<EventGroup, boolean>;
-  selectedOnly: boolean;
-}
-
 type Row = { kind: "event"; e: TimelineEvent } | { kind: "now" };
 
 export function TimelinePanel(props: Props) {
   const { timeline, range, live, title, subtitle, onBack, loading, playback, catalog, selection, onPick } = props;
-  const [prefs, setPrefs] = usePersistentState<Prefs>("radar.log", { groups: DEFAULT_EVENT_GROUPS, selectedOnly: false });
-  const groups = { ...DEFAULT_EVENT_GROUPS, ...prefs.groups };
+  const [prefs, setPrefs] = useLogPrefs();
+  const groups = prefs.groups;
   const at = playback.cursor ?? range?.[1] ?? null;
   const count = timeline?.events.length ?? 0;
 

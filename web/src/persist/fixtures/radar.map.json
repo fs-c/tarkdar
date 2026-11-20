@@ -1,0 +1,4 @@
+{
+  "0": { "style": "plan", "palette": { "ground": "#e8e4d8", "road": "#ffffff" }, "colored": false, "trees": true, "contours": false, "wireframe": false, "orthographic": true, "controls": "wasd", "exposure": 1.15, "lift": 0.5, "contrast": 0.45, "saturation": 0.8, "groundSaturation": 0.5, "customPalette": null, "coordinatePick": false },
+  "1": { "$v": 1, "data": { "style": "realistic", "colored": true, "controls": "map", "bodies": false, "customPalette": { "ground": "#101010" } } }
+}

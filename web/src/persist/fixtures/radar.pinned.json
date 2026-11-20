@@ -1,0 +1,4 @@
+{
+  "0": { "raid": "3:bigmap", "rules": [{ "id": "r:p1", "category": "Loot", "label": "ledx", "query": "ledx", "style": { "ring": "#ff5a52" }, "on": true }] },
+  "1": { "$v": 1, "data": { "raid": null, "rules": [] } }
+}

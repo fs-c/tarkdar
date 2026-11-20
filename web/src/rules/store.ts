@@ -3,15 +3,15 @@
 // the current raid. And how that turns into the rules to apply, bottom to top: the rules by category
 // (defaults.ts CATEGORIES), then the pinned ones. Highlights go on top of all of them (useRules.ts).
 //
-// Stored rules from another version are dropped for the defaults: there's no migration (yet).
+// Stored rules of format version 3 (the first with every rule stored) become settings version 1;
+// older ones are dropped for the defaults.
 
-import { useEffect, useMemo } from "react";
-import { usePersistentState } from "../hooks";
+import { useEffect } from "react";
+import { defineStore } from "../persist";
+import { usePersisted } from "../persist/react";
 import type { SubjectKind } from "../list/rows";
 import { CATEGORIES, type Category, DEFAULT_HIDDEN, DEFAULT_RULES, HIDEABLE } from "./defaults";
 import { EMPHASES, type Rule, type StyleProps } from "./rules";
-
-export const RULES_VERSION = 3;
 
 export interface StoredRule {
   id: string;
@@ -25,7 +25,6 @@ export interface StoredRule {
 }
 
 export interface RuleStore {
-  version: number;
   /** In order within each category, bottom to top. */
   rules: StoredRule[];
   /** Categories switched off: what's in them is hidden, except what's ringed (highlights). */
@@ -36,7 +35,7 @@ const fromDefault = (d: (typeof DEFAULT_RULES)[number], id = d.id): StoredRule =
   id, origin: d.id, category: d.category, label: d.label, query: d.query, style: { ...d.style }, on: true,
 });
 
-export const defaultStore = (): RuleStore => ({ version: RULES_VERSION, rules: DEFAULT_RULES.map((d) => fromDefault(d)), hidden: [...DEFAULT_HIDDEN] });
+export const defaultStore = (): RuleStore => ({ rules: DEFAULT_RULES.map((d) => fromDefault(d)), hidden: [...DEFAULT_HIDDEN] });
 
 const byCategory = (a: StoredRule, b: StoredRule) => CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category);
 
@@ -166,23 +165,32 @@ export function cleanRules(v: unknown): StoredRule[] {
   });
 }
 
-/** Stored rules as they are, minus anything malformed; another version (or garbage): the defaults. */
+/** Stored rules as they are, minus anything malformed; garbage: the defaults. */
 export function normalizeStore(stored: unknown): RuleStore {
-  if (!isObject(stored) || stored.version !== RULES_VERSION) return defaultStore();
+  if (!isObject(stored)) return defaultStore();
   const hidden = Array.isArray(stored.hidden) ? stored.hidden.filter((g): g is Category => typeof g === "string" && g in HIDEABLE) : [...DEFAULT_HIDDEN];
-  return { version: RULES_VERSION, rules: cleanRules(stored.rules), hidden };
+  return { rules: cleanRules(stored.rules), hidden };
 }
 
-const STORAGE_KEY = "radar.rules";
+export const ruleStore = defineStore<RuleStore>({
+  key: "radar.rules",
+  version: 1,
+  scope: "user",
+  defaults: defaultStore,
+  migrations: {
+    // Unversioned: the rules' own format version inside.
+    0: (d) => {
+      if (!isObject(d) || d.version !== 3) throw new Error("rules of an older format");
+      const { version: _, ...rest } = d;
+      return rest;
+    },
+  },
+  normalize: normalizeStore,
+});
 
 export type SetRuleStore = (update: (prev: RuleStore) => RuleStore) => void;
 
-export function useRuleStore(): [RuleStore, SetRuleStore] {
-  const initial = useMemo(defaultStore, []);
-  const [stored, setStored] = usePersistentState<RuleStore>(STORAGE_KEY, initial);
-  const store = useMemo(() => normalizeStore(stored), [stored]);
-  return [store, (update) => setStored((s) => update(normalizeStore(s)))];
-}
+export const useRuleStore = (): [RuleStore, SetRuleStore] => usePersisted(ruleStore);
 
 // ---- Pinned rules: kept for one raid (across reloads), then dropped ----
 
@@ -195,12 +203,20 @@ export interface PinnedStore {
 export type SetPinned = (update: (prev: StoredRule[]) => StoredRule[]) => void;
 
 /** `raid`: the live raid's key, null outside one (the pinned rules then stay as they are). */
+export const pinnedStore = defineStore<PinnedStore>({
+  key: "radar.pinned",
+  version: 1,
+  scope: "user",
+  defaults: () => ({ raid: null, rules: [] }),
+  migrations: { 0: (d) => d },
+  normalize: (d) => ({ raid: isObject(d) && typeof d.raid === "string" ? d.raid : null, rules: isObject(d) ? cleanRules(d.rules) : [] }),
+});
+
 export function usePinned(raid: string | null): [StoredRule[], SetPinned] {
-  const [stored, setStored] = usePersistentState<PinnedStore>("radar.pinned", { raid: null, rules: [] });
+  const [stored, setStored] = usePersisted(pinnedStore);
   // A new raid: the last one's pinned rules go.
   useEffect(() => {
-    if (raid !== null && stored.raid !== raid) setStored((p) => ({ raid, rules: p.raid === null ? cleanRules(p.rules) : [] }));
+    if (raid !== null && stored.raid !== raid) setStored((p) => ({ raid, rules: p.raid === null ? p.rules : [] }));
   }, [raid, stored.raid]);
-  const rules = useMemo(() => cleanRules(stored.rules), [stored.rules]);
-  return [rules, (update) => setStored((p) => ({ raid: p.raid ?? raid, rules: update(cleanRules(p.rules)) }))];
+  return [stored.rules, (update) => setStored((p) => ({ raid: p.raid ?? raid, rules: update(p.rules) }))];
 }

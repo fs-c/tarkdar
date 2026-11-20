@@ -1,0 +1,4 @@
+{
+  "0": { "groups": { "spawns": false, "deaths": true, "appeared": true }, "selectedOnly": true },
+  "1": { "$v": 1, "data": { "groups": { "spawns": true, "deaths": true, "left": true, "taken": false, "changed": true, "appeared": false, "exfils": true }, "selectedOnly": false } }
+}

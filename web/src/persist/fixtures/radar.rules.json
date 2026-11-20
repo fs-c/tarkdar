@@ -1,0 +1,4 @@
+{
+  "0": { "version": 3, "rules": [{ "id": "player.usec", "origin": "player.usec", "category": "Players", "label": "USEC", "query": "is:usec", "style": { "color": "#4c8dff" }, "on": true }, { "id": "r:abc1", "category": "Loot", "label": "GPUs", "query": "gpu", "style": { "ring": "#ffd84d", "emphasis": "strong" }, "on": false }], "hidden": ["Loot"] },
+  "1": { "$v": 1, "data": { "rules": [{ "id": "r:abc1", "category": "Loot", "label": "GPUs", "query": "gpu", "style": { "show": null, "label": "always", "labelFrom": 2 }, "on": true }], "hidden": [] } }
+}

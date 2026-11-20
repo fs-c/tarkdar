@@ -1,6 +1,6 @@
 // Debug view of the side panel: what's behind the quest item filter, and map debugging tools.
 
-import type { MapPrefs } from "../hooks";
+import type { MapPrefs } from "../prefs";
 import type { MapView } from "../map3d/Map3D";
 import { type QuestDebug, type QuestDebugQuest, questStatusName } from "../quests";
 import { Actions, Button, PanelBody, Section, ToggleRow, cx } from "../ui";

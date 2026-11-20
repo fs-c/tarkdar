@@ -1,0 +1,4 @@
+{
+  "0": { "on": true, "delayMs": 20, "grid": false, "lootRange": 120, "scopeRadius": 0.36 },
+  "1": { "$v": 1, "data": { "on": false, "delayMs": 0, "grid": true, "lootRange": 150, "scopeRadius": 0.4, "otherPlayers": false } }
+}

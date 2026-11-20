@@ -1,4 +1,4 @@
-// React glue for the non-React modules: connection, item catalogue, maps, persisted settings.
+// React glue for the non-React modules: connection, item catalogue, maps. (Stored settings: prefs.ts.)
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { type CatalogStatus, loadCatalog } from "./catalog";
@@ -7,7 +7,6 @@ import { Connection, type RadarState } from "./connection";
 import { type Backfill, LiveTimeline } from "./liveTimeline";
 import { fetchRecordings, parseLine, readRecording } from "./recordings";
 import { type ItemCatalog, emptyCatalog } from "./items";
-import { DEFAULT_MAP_SETTINGS, type MapSettings, type PlanPalette } from "./map3d/settings";
 import { type MapEntry, fetchMapIndex } from "./maps";
 
 export interface LiveState {
@@ -95,64 +94,6 @@ export function useMapIndex(): MapEntry[] {
     return () => void (live = false);
   }, []);
   return index;
-}
-
-/** How the 3D map is shown, and the map debugging tools. */
-export interface MapPrefs extends MapSettings {
-  /** The palette the user made (the last one they edited), kept while a pre-made one is in use. */
-  customPalette: PlanPalette | null;
-  /** Clicking the 3D map (not a marker) records the world position under the cursor. */
-  coordinatePick: boolean;
-  /** Up close, players are drawn as figures from their skeleton (3D map). */
-  bodies: boolean;
-}
-
-export function useMapPrefs() {
-  return usePersistentState<MapPrefs>("radar.map", { ...DEFAULT_MAP_SETTINGS, customPalette: null, coordinatePick: false, bodies: true });
-}
-
-/** useState persisted to localStorage (merged over the default, so new fields get their defaults). */
-export function usePersistentState<T extends object>(key: string, initial: T): [T, (update: T | ((prev: T) => T)) => void] {
-  const [value, setValue] = useState<T>(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem(key) ?? "null") as Partial<T> | null;
-      return stored && typeof stored === "object" ? { ...initial, ...stored } : initial;
-    } catch {
-      return initial;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      // storage unavailable: settings just don't persist
-    }
-  }, [key, value]);
-  return [value, setValue];
-}
-
-export interface TrailPrefs {
-  /** The selected player's trail (whole raid). */
-  selected: boolean;
-  /** Everyone's trails. */
-  all: boolean;
-  /** Length of everyone's trails (minutes); null: the whole raid. */
-  minutes: number | null;
-}
-
-export function useTrailPrefs() {
-  return usePersistentState<TrailPrefs>("radar.trails", { selected: true, all: false, minutes: 5 });
-}
-
-export interface LootPrefs {
-  /** Quest items: only those a quest in progress still needs, or all of them. */
-  questItems: "needed" | "all";
-}
-
-/** (radar.loot also held the loot density and label threshold of older versions: rules/store.ts
- *  turns them into rules once.) */
-export function useLootPrefs() {
-  return usePersistentState<LootPrefs>("radar.loot", { questItems: "needed" });
 }
 
 /** Keyboard shortcuts must not fire while the user types into a field. */

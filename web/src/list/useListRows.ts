@@ -3,8 +3,9 @@
 
 import type { SortingState } from "@tanstack/react-table";
 import { useMemo } from "react";
+import { defineStore } from "../persist";
+import { usePersisted } from "../persist/react";
 import type { RadarState } from "../connection";
-import { usePersistentState } from "../hooks";
 import type { ItemCatalog } from "../items";
 import type { QuestNeed } from "../quests";
 import { TABS, columnIds } from "./columns";
@@ -39,24 +40,31 @@ export const DEFAULT_PREFS: ListPrefs = {
   filters: DEFAULT_FILTERS,
 };
 
-/** Prefs stored by older versions: filters were one set for all tabs, columns have come and gone. */
-export function normalizeListPrefs(p: ListPrefs): ListPrefs {
-  const tab = TAB_IDS.includes(p.tab) ? p.tab : DEFAULT_PREFS.tab;
+/** Stored prefs, checked: columns have come and gone; filters of older builds (one set for all tabs)
+ *  or garbage give the defaults. */
+export function normalizeListPrefs(stored: unknown): ListPrefs {
+  const p = (stored && typeof stored === "object" ? stored : {}) as Partial<ListPrefs>;
+  const tab = p.tab && TAB_IDS.includes(p.tab) ? p.tab : DEFAULT_PREFS.tab;
   const sorting = { ...DEFAULT_PREFS.sorting };
   for (const t of TAB_IDS) {
     const ids = columnIds(TABS[t]);
     const s = (p.sorting as Partial<Record<TabId, SortingState>> | undefined)?.[t];
-    const valid = Array.isArray(s) ? s.filter((x) => ids.has(x.id)) : [];
+    const valid = Array.isArray(s) ? s.filter((x) => !!x && typeof x === "object" && ids.has(x.id)) : [];
     if (valid.length) sorting[t] = valid;
   }
   return { tab, sorting, filters: normalizeFilters(p.filters) };
 }
 
-export function useListPrefs(): [ListPrefs, (update: (prev: ListPrefs) => ListPrefs) => void] {
-  const [stored, setStored] = usePersistentState<ListPrefs>("radar.list", DEFAULT_PREFS);
-  const prefs = useMemo(() => normalizeListPrefs(stored), [stored]);
-  return [prefs, (update) => setStored((p) => update(normalizeListPrefs(p)))];
-}
+export const listStore = defineStore<ListPrefs>({
+  key: "radar.list",
+  version: 1,
+  scope: "user",
+  defaults: () => DEFAULT_PREFS,
+  migrations: { 0: (d) => d },
+  normalize: normalizeListPrefs,
+});
+
+export const useListPrefs = () => usePersisted(listStore);
 
 export interface ListRows {
   /** Filtered rows, without distances. */

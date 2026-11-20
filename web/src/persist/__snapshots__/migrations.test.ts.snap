@@ -1,0 +1,364 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`radar.list > from version 0 1`] = `
+{
+  "filters": {
+    "containers": {
+      "text": "",
+    },
+    "exfils": {
+      "text": "",
+    },
+    "items": {
+      "minValue": 0,
+      "text": "",
+    },
+    "players": {
+      "alive": false,
+      "humans": false,
+      "special": false,
+      "text": "",
+    },
+  },
+  "sorting": {
+    "containers": [
+      {
+        "desc": false,
+        "id": "dist",
+      },
+    ],
+    "exfils": [
+      {
+        "desc": false,
+        "id": "dist",
+      },
+    ],
+    "items": [
+      {
+        "desc": true,
+        "id": "price",
+      },
+    ],
+    "players": [
+      {
+        "desc": false,
+        "id": "dist",
+      },
+    ],
+  },
+  "tab": "items",
+}
+`;
+
+exports[`radar.list > from version 1 1`] = `
+{
+  "filters": {
+    "containers": {
+      "text": "",
+    },
+    "exfils": {
+      "text": "",
+    },
+    "items": {
+      "minValue": 30000,
+      "text": "gpu",
+    },
+    "players": {
+      "alive": true,
+      "humans": false,
+      "special": false,
+      "text": "",
+    },
+  },
+  "sorting": {
+    "containers": [
+      {
+        "desc": false,
+        "id": "dist",
+      },
+    ],
+    "exfils": [
+      {
+        "desc": false,
+        "id": "dist",
+      },
+    ],
+    "items": [
+      {
+        "desc": true,
+        "id": "price",
+      },
+    ],
+    "players": [
+      {
+        "desc": true,
+        "id": "dist",
+      },
+    ],
+  },
+  "tab": "players",
+}
+`;
+
+exports[`radar.log > from version 0 1`] = `
+{
+  "groups": {
+    "appeared": true,
+    "changed": true,
+    "deaths": true,
+    "exfils": true,
+    "left": true,
+    "spawns": false,
+    "taken": true,
+  },
+  "selectedOnly": true,
+}
+`;
+
+exports[`radar.log > from version 1 1`] = `
+{
+  "groups": {
+    "appeared": false,
+    "changed": true,
+    "deaths": true,
+    "exfils": true,
+    "left": true,
+    "spawns": true,
+    "taken": false,
+  },
+  "selectedOnly": false,
+}
+`;
+
+exports[`radar.loot > from version 0 1`] = `
+{
+  "questItems": "all",
+}
+`;
+
+exports[`radar.loot > from version 1 1`] = `
+{
+  "questItems": "needed",
+}
+`;
+
+exports[`radar.map > from version 0 1`] = `
+{
+  "bodies": true,
+  "colored": false,
+  "contours": false,
+  "contrast": 0.45,
+  "controls": "wasd",
+  "coordinatePick": false,
+  "customPalette": null,
+  "exposure": 1.15,
+  "groundSaturation": 0.5,
+  "lift": 0.5,
+  "orthographic": true,
+  "palette": {
+    "building": "#ead2a6",
+    "buildingTall": "#c59d72",
+    "cover": "#7a828f",
+    "floor": "#c4c4c4",
+    "grass": "#a9c78f",
+    "ground": "#e8e4d8",
+    "obstacle": "#4d5260",
+    "outline": "#16181c",
+    "road": "#ffffff",
+    "tree": "#5c8f57",
+    "water": "#74aede",
+  },
+  "saturation": 0.8,
+  "style": "plan",
+  "trees": true,
+  "wireframe": false,
+}
+`;
+
+exports[`radar.map > from version 1 1`] = `
+{
+  "bodies": false,
+  "colored": true,
+  "contours": true,
+  "contrast": 0.58,
+  "controls": "map",
+  "coordinatePick": false,
+  "customPalette": {
+    "building": "#ead2a6",
+    "buildingTall": "#c59d72",
+    "cover": "#7a828f",
+    "floor": "#c4c4c4",
+    "grass": "#a9c78f",
+    "ground": "#101010",
+    "obstacle": "#4d5260",
+    "outline": "#16181c",
+    "road": "#a3a6ab",
+    "tree": "#5c8f57",
+    "water": "#74aede",
+  },
+  "exposure": 1.05,
+  "groundSaturation": 0.6,
+  "lift": 0.36,
+  "orthographic": false,
+  "palette": {
+    "building": "#ead2a6",
+    "buildingTall": "#c59d72",
+    "cover": "#7a828f",
+    "floor": "#c4c4c4",
+    "grass": "#a9c78f",
+    "ground": "#d6d3cc",
+    "obstacle": "#4d5260",
+    "outline": "#16181c",
+    "road": "#a3a6ab",
+    "tree": "#5c8f57",
+    "water": "#74aede",
+  },
+  "saturation": 1,
+  "style": "realistic",
+  "trees": true,
+  "wireframe": false,
+}
+`;
+
+exports[`radar.overlay > from version 0 1`] = `
+{
+  "delayMs": 20,
+  "grid": false,
+  "lootRange": 120,
+  "on": true,
+  "otherPlayers": true,
+  "scopeRadius": 0.36,
+}
+`;
+
+exports[`radar.overlay > from version 1 1`] = `
+{
+  "delayMs": 0,
+  "grid": true,
+  "lootRange": 150,
+  "on": false,
+  "otherPlayers": false,
+  "scopeRadius": 0.4,
+}
+`;
+
+exports[`radar.pinned > from version 0 1`] = `
+{
+  "raid": "3:bigmap",
+  "rules": [
+    {
+      "category": "Loot",
+      "id": "r:p1",
+      "label": "ledx",
+      "on": true,
+      "query": "ledx",
+      "style": {
+        "ring": "#ff5a52",
+      },
+    },
+  ],
+}
+`;
+
+exports[`radar.pinned > from version 1 1`] = `
+{
+  "raid": null,
+  "rules": [],
+}
+`;
+
+exports[`radar.rules > from version 0 1`] = `
+{
+  "hidden": [
+    "Loot",
+  ],
+  "rules": [
+    {
+      "category": "Players",
+      "id": "player.usec",
+      "label": "USEC",
+      "on": true,
+      "origin": "player.usec",
+      "query": "is:usec",
+      "style": {
+        "color": "#4c8dff",
+      },
+    },
+    {
+      "category": "Loot",
+      "id": "r:abc1",
+      "label": "GPUs",
+      "on": false,
+      "query": "gpu",
+      "style": {
+        "emphasis": "strong",
+        "ring": "#ffd84d",
+      },
+    },
+  ],
+}
+`;
+
+exports[`radar.rules > from version 1 1`] = `
+{
+  "hidden": [],
+  "rules": [
+    {
+      "category": "Loot",
+      "id": "r:abc1",
+      "label": "GPUs",
+      "on": true,
+      "query": "gpu",
+      "style": {
+        "label": "always",
+        "labelFrom": 2,
+        "show": null,
+      },
+    },
+  ],
+}
+`;
+
+exports[`radar.sidebar > from version 0 1`] = `
+{
+  "open": true,
+  "raidsLevel": "timeline",
+  "section": "raids",
+}
+`;
+
+exports[`radar.sidebar > from version 1 1`] = `
+{
+  "open": false,
+  "raidsLevel": "list",
+  "section": "map",
+}
+`;
+
+exports[`radar.sidebarSize > from version 0 1`] = `
+{
+  "width": 512,
+}
+`;
+
+exports[`radar.sidebarSize > from version 1 1`] = `
+{
+  "width": 380,
+}
+`;
+
+exports[`radar.trails > from version 0 1`] = `
+{
+  "all": true,
+  "minutes": null,
+  "selected": true,
+}
+`;
+
+exports[`radar.trails > from version 1 1`] = `
+{
+  "all": false,
+  "minutes": 10,
+  "selected": false,
+}
+`;

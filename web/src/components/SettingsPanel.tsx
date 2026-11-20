@@ -1,6 +1,6 @@
 // Settings view of the side panel: how the map looks, and the overlay. (Debugging tools: DebugPanel.)
 
-import type { MapPrefs } from "../hooks";
+import type { MapPrefs } from "../prefs";
 import type { OverlayPrefs } from "../overlay/marks";
 import { COLOR_SCHEMES, type ColorGrade, type ColorSchemeName, PLAN_PALETTES, type PlanPalette, type PlanPaletteName, paletteOf, schemeOf } from "../map3d/settings";
 import { Actions, Button, PanelBody, Section, Segmented, SliderRow, ToggleRow } from "../ui";

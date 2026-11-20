@@ -6,7 +6,7 @@
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { compileQuery, QUERY_HELP } from "../highlight/query";
-import type { LootPrefs, TrailPrefs } from "../hooks";
+import type { LootPrefs, TrailPrefs } from "../prefs";
 import type { ItemCatalog } from "../items";
 import type { AnyRow } from "../list/rows";
 import { CATEGORIES, type Category, HIDEABLE } from "../rules/defaults";

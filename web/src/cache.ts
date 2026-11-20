@@ -1,4 +1,4 @@
-// Cached downloads (the item and quest feeds), kept apart from the settings (persist/): disposable,
+// Cached downloads (the item feed), kept apart from the settings (persist/): disposable,
 // so no migrations: an entry of another version is just not there. In IndexedDB, which holds far more
 // than localStorage and doesn't share its quota with the settings.
 
@@ -17,6 +17,7 @@ export interface Cached<T> {
 export interface Cache {
   get(key: string): Promise<unknown>;
   put(key: string, entry: unknown): Promise<void>;
+  delete(key: string): Promise<void>;
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -63,17 +64,28 @@ export function idbCache(dbName = "radar", storeName = "cache"): Cache {
   return {
     get: (key) => run("readonly", (s) => s.get(key)),
     put: async (key, entry) => void (await run("readwrite", (s) => s.put(entry, key))),
+    delete: async (key) => void (await run("readwrite", (s) => s.delete(key))),
   };
 }
 
 /** In memory (tests). */
 export function memoryCache(): Cache & { data: Map<string, unknown> } {
   const data = new Map<string, unknown>();
-  return { data, get: async (k) => data.get(k), put: async (k, e) => void data.set(k, e) };
+  return { data, get: async (k) => data.get(k), put: async (k, e) => void data.set(k, e), delete: async (k) => void data.delete(k) };
 }
 
 /** The app's cache. */
 export const feedCache: Cache = idbCache();
+
+/** Feeds no longer downloaded: their entries are removed. ("quests": tarkov.dev's tasks feed, replaced
+ *  by quest templates read from game memory.) */
+export async function dropRetiredCaches(cache: Cache = feedCache): Promise<void> {
+  try {
+    await cache.delete("quests");
+  } catch {
+    // unavailable: nothing to remove
+  }
+}
 
 /** Older builds cached the feeds in localStorage (radar.items.v4, radar.quests.v5, …): removed. */
 export function dropLocalStorageCaches(storage: Storage = localStorage): void {

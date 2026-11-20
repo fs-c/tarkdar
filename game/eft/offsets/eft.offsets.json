@@ -866,6 +866,132 @@
       "value": "0x28"
     },
     {
+      "group": "QuestsData",
+      "name": "StartTime",
+      "class": "EFT.Quests.QuestStatusData",
+      "field": "StartTime",
+      "static": false,
+      "required": false,
+      "value": "0x18"
+    },
+    {
+      "group": "QuestsData",
+      "name": "Template",
+      "class": "EFT.Quests.QuestStatusData",
+      "field": "Template",
+      "static": false,
+      "required": false,
+      "value": "0x38"
+    },
+    {
+      "group": "QuestTemplate",
+      "name": "TraderId",
+      "class": "EFT.Quests.QuestTemplate",
+      "field": "<TraderId>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x28"
+    },
+    {
+      "group": "QuestTemplate",
+      "name": "Conditions",
+      "class": "EFT.Quests.QuestTemplate",
+      "field": "<Conditions>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x68"
+    },
+    {
+      "group": "QuestTemplate",
+      "name": "IsInvisible",
+      "class": "EFT.Quests.QuestTemplate",
+      "field": "<IsInvisible>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0xA9"
+    },
+    {
+      "group": "QuestTemplate",
+      "name": "Localization",
+      "class": "EFT.Quests.QuestTemplate",
+      "field": "<Localization>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0xB0"
+    },
+    {
+      "group": "QuestTemplate",
+      "name": "IsMainQuest",
+      "class": "EFT.Quests.QuestTemplate",
+      "field": "<IsMainQuest>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x128"
+    },
+    {
+      "group": "RepeatableQuestTemplate",
+      "name": "ExpirationTime",
+      "class": "EFT.Quests.RepeatableQuestTemplate",
+      "field": "<ExpirationTime>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x138"
+    },
+    {
+      "group": "QuestCondition",
+      "name": "Id",
+      "class": "EFT.Quests.Condition",
+      "field": "<id>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x10"
+    },
+    {
+      "group": "QuestCondition",
+      "name": "Value",
+      "class": "EFT.Quests.Condition",
+      "field": "<value>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x28"
+    },
+    {
+      "group": "ConditionMultipleTargets",
+      "name": "Target",
+      "class": "EFT.Quests.ConditionMultipleTargets",
+      "field": "target",
+      "static": false,
+      "required": false,
+      "value": "0xE0"
+    },
+    {
+      "group": "ConditionItem",
+      "name": "OnlyFoundInRaid",
+      "class": "EFT.Quests.ConditionItem",
+      "field": "onlyFoundInRaid",
+      "static": false,
+      "required": false,
+      "value": "0xF4"
+    },
+    {
+      "group": "Profile",
+      "name": "TaskConditionCounters",
+      "class": "EFT.Profile",
+      "field": "TaskConditionCounters",
+      "static": false,
+      "required": false,
+      "value": "0x90"
+    },
+    {
+      "group": "TaskConditionCounter",
+      "name": "Value",
+      "class": "EFT.Quests.TaskConditionCounter",
+      "field": "_value",
+      "static": false,
+      "required": false,
+      "value": "0x40"
+    },
+    {
       "group": "PlayerInfo",
       "name": "EntryPoint",
       "class": "EFT.ProfileInfo",
@@ -1193,6 +1319,12 @@
       "name": "List",
       "value": "0x18",
       "note": "GameWorld.Grenades collection object \u2192 List<Throwable> (field name unverified)"
+    },
+    {
+      "group": "BindableList",
+      "name": "List",
+      "value": "0x58",
+      "note": "Diz.Binding.BindableList`1 \u2192 List<T> (generic class: the dump has no offset; from the field order, confirmed on SPT 2026-11-20)"
     }
   ]
 }

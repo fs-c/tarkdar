@@ -1,6 +1,7 @@
 #include "game/eft/world/Quests.hpp"
 
 #include "core/mem/ReadBatch.hpp"
+#include "game/eft/Names.hpp"
 #include "game/eft/Read.hpp"
 
 #include <eft_offsets.hpp>
@@ -46,6 +47,8 @@ void Quests::update() {
     world_.quests.publish(QuestsSnapshot{.raidId = session_->id, .revision = ++revision_, .known = true, .quests = *last_});
 }
 
+bool Quests::isA(Address object, std::string_view className) { return game_.managed.isInstanceOf(object, className); }
+
 std::optional<std::vector<QuestState>> Quests::read() {
     const Address profile = readPointer(game_, session_->start.localPlayer + off::Player::Profile);
     const Address list = profile ? readPointer(game_, profile + off::Profile::QuestsData, Freshness::Fresh) : 0;
@@ -58,22 +61,158 @@ std::optional<std::vector<QuestState>> Quests::read() {
     for (std::size_t i = 0; i < entries->size(); ++i) batch.add((*entries)[i] + off::QuestsData::Status, statuses[i]);
     batch.execute(Freshness::Fresh);
 
+    std::optional<std::unordered_map<std::string, std::int32_t>> counters;  // read when first needed
     std::vector<QuestState> out;
     for (std::size_t i = 0; i < entries->size(); ++i) {
-        const Address entry = (*entries)[i];
-        if (!mem::MemoryView::isUserPointer(entry) || !batch.complete(i)) continue;
+        const Address address = (*entries)[i];
+        if (!mem::MemoryView::isUserPointer(address) || !batch.complete(i)) continue;
         if (statuses[i] != kQuestStarted && statuses[i] != kQuestAvailableForFinish) continue;
-        auto cached = ids_.find(entry);
-        if (cached == ids_.end()) {
-            auto id = game_.managed.readStringField(entry + off::QuestsData::Id, 64);
+        auto cached = entries_.find(address);
+        if (cached == entries_.end()) {
+            auto id = game_.managed.readStringField(address + off::QuestsData::Id, 64);
             if (!id || !looksLikeId(*id)) continue;
-            cached = ids_.emplace(entry, std::move(*id)).first;
+            cached = entries_.emplace(address, Entry{.id = std::move(*id)}).first;
         }
-        const Address set = readPointer(game_, entry + off::QuestsData::CompletedConditions, Freshness::Fresh);
-        out.push_back({.id = cached->second, .status = statuses[i],
-                       .completedConditions = set ? readConditions(set) : std::nullopt});
+        Entry& entry = cached->second;
+        if (!entry.tmpl && entry.attempts < kTemplateAttempts) {
+            ++entry.attempts;
+            entry.tmpl = readTemplate(address);
+        }
+        const Address set = readPointer(game_, address + off::QuestsData::CompletedConditions, Freshness::Fresh);
+        QuestState q{.id = entry.id, .status = statuses[i], .completedConditions = set ? readConditions(set) : std::nullopt};
+        if (entry.tmpl) {
+            q.name = entry.tmpl->name;
+            q.traderId = entry.tmpl->traderId;
+            q.kind = entry.tmpl->kind;
+            q.hidden = entry.tmpl->hidden;
+            q.objectives = entry.tmpl->objectives;
+            for (auto& o : *q.objectives) {
+                if (o.type != QuestObjective::Type::Handover) continue;
+                if (!counters) counters = readCounters(profile);
+                if (auto c = counters->find(o.id); c != counters->end()) o.progress = c->second;
+            }
+        }
+        out.push_back(std::move(q));
     }
     std::sort(out.begin(), out.end(), [](const auto& a, const auto& b) { return a.id < b.id; });
+    return out;
+}
+
+std::optional<Quests::Template> Quests::readTemplate(Address statusData) {
+    const Address t = readPointer(game_, statusData + off::QuestsData::Template);
+    if (!t) return std::nullopt;
+    const Address conditions = readPointer(game_, t + off::QuestTemplate::Conditions);
+    auto objectives = conditions ? readObjectives(conditions) : std::nullopt;
+    if (!objectives) return std::nullopt;
+
+    Template out{.objectives = std::move(*objectives)};
+    out.traderId = game_.managed.readStringField(t + off::QuestTemplate::TraderId, 64).value_or("");
+    bool main = false, invisible = false;
+    game_.mem.tryRead(t + off::QuestTemplate::IsMainQuest, main);
+    game_.mem.tryRead(t + off::QuestTemplate::IsInvisible, invisible);
+    out.hidden = invisible;
+    if (main || out.traderId == kStoryTraderId) {
+        out.kind = QuestKind::Story;
+    } else if (isA(t, kRepeatableQuestTemplateClass)) {
+        std::int32_t start = 0, expiration = 0;
+        game_.mem.tryRead(statusData + off::QuestsData::StartTime, start);
+        game_.mem.tryRead(t + off::RepeatableQuestTemplate::ExpirationTime, expiration);
+        out.kind = expiration - start > kWeeklyAfterSeconds ? QuestKind::Weekly : QuestKind::Daily;
+    }
+
+    if (const Address localization = readPointer(game_, t + off::QuestTemplate::Localization)) {
+        const auto texts = readTexts(localization);
+        const auto quest = game_.managed.readStringField(statusData + off::QuestsData::Id, 64).value_or("");
+        if (auto n = texts.find(quest + " name"); n != texts.end()) out.name = n->second;
+        for (auto& o : out.objectives)
+            if (auto x = texts.find(o.id); x != texts.end()) o.text = x->second;
+    }
+    return out;
+}
+
+std::optional<std::vector<QuestObjective>> Quests::readObjectives(Address conditionsDict) {
+    // ConditionsDict: Dictionary<EQuestStatus, ConditionCollection>; the objectives are the conditions to
+    // hand the quest in. ConditionCollection is a BindableList: its items are in a List<Condition>.
+    // (Item conditions nested in others only refer back to top-level ones.)
+    const auto statuses = game_.managed.readDictionary<std::int32_t, Address>(conditionsDict, 32);
+    if (!statuses) return std::nullopt;
+    std::vector<QuestObjective> out;
+    for (const auto& [status, collection] : *statuses) {
+        if (status != kQuestAvailableForFinish) continue;
+        const Address list = readPointer(game_, collection + off::BindableList::List);
+        const auto conditions = list ? game_.managed.readList<Address>(list, kMaxConditions) : std::nullopt;
+        if (!conditions) return std::nullopt;
+        for (const Address c : *conditions) {
+            if (!mem::MemoryView::isUserPointer(c)) continue;
+            QuestObjective o;
+            if (isA(c, kConditionFindItemClass)) o.type = QuestObjective::Type::Find;
+            else if (isA(c, kConditionHandoverItemClass)) o.type = QuestObjective::Type::Handover;
+            else if (isA(c, kConditionLeaveItemClass)) o.type = QuestObjective::Type::Plant;
+            else continue;
+            auto id = readMongoId(game_, c + off::QuestCondition::Id);
+            const Address targets = readPointer(game_, c + off::ConditionMultipleTargets::Target);
+            const auto strings = targets ? game_.managed.readArray<Address>(targets, kMaxTargets) : std::nullopt;
+            if (!id || !strings) continue;
+            o.id = std::move(*id);
+            for (const Address s : *strings)
+                if (auto tpl = game_.managed.readString(s, 64); tpl && !tpl->empty()) o.items.push_back(std::move(*tpl));
+            float value = 1;
+            game_.mem.tryRead(c + off::QuestCondition::Value, value);
+            o.count = value >= 1 && value < 2e9f ? static_cast<std::int32_t>(value + 0.5f) : 1;
+            if (isA(c, kConditionItemClass)) game_.mem.tryRead(c + off::ConditionItem::OnlyFoundInRaid, o.foundInRaid);
+            out.push_back(std::move(o));
+        }
+    }
+    return out;
+}
+
+std::map<std::string, std::string> Quests::readTexts(Address localization) {
+    // Dictionary<language, Dictionary<key, text>>; keys are "<quest id> name", condition ids, ….
+    std::map<std::string, std::string> out;
+    const auto languages = game_.managed.readDictionary<Address, Address>(localization, 64);
+    if (!languages) return out;
+    for (const auto& [language, texts] : *languages) {
+        if (game_.managed.readString(language, 16) != kQuestLanguage) continue;
+        const auto entries = game_.managed.readDictionary<Address, Address>(texts, 1024);
+        if (!entries) break;
+        for (const auto& [key, text] : *entries) {
+            auto k = game_.managed.readString(key, 128);
+            auto v = game_.managed.readString(text, 512, il2cpp::Managed::Overflow::Truncate);
+            if (k && v && !v->empty()) out.emplace(std::move(*k), std::move(*v));
+        }
+        break;
+    }
+    return out;
+}
+
+std::unordered_map<std::string, std::int32_t> Quests::readCounters(Address profile) {
+    // Dictionary<MongoID, TaskConditionCounter>: the key is the condition's id.
+    struct MongoKey {
+        std::uint32_t timestamp;
+        std::uint64_t counter;
+        Address stringId;
+    };
+    static_assert(offsetof(MongoKey, stringId) == off::MongoID::StringId);
+    std::unordered_map<std::string, std::int32_t> out;
+    const Address dict = readPointer(game_, profile + off::Profile::TaskConditionCounters, Freshness::Fresh);
+    const auto entries = dict ? game_.managed.readDictionary<MongoKey, Address>(dict, kMaxCounters, Freshness::Fresh)
+                              : std::nullopt;
+    if (!entries) return out;
+    std::vector<std::int32_t> values(entries->size(), 0);
+    mem::ReadBatch batch(game_.mem);
+    for (std::size_t i = 0; i < entries->size(); ++i) batch.add((*entries)[i].second + off::TaskConditionCounter::Value, values[i]);
+    batch.execute(Freshness::Fresh);
+    for (std::size_t i = 0; i < entries->size(); ++i) {
+        const Address str = (*entries)[i].first.stringId;
+        if (!batch.complete(i) || !mem::MemoryView::isUserPointer(str)) continue;
+        auto cached = counterIds_.find(str);
+        if (cached == counterIds_.end()) {
+            auto id = game_.managed.readString(str, 64);
+            if (!id) continue;
+            cached = counterIds_.emplace(str, std::move(*id)).first;
+        }
+        out[cached->second] = values[i];
+    }
     return out;
 }
 

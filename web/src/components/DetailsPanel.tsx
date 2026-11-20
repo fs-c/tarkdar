@@ -18,7 +18,7 @@ interface Props {
   selection: Selection;
   state: RadarState;
   catalog: ItemCatalog;
-  /** Ordinary item template id → started quests that still need it (quests.ts). */
+  /** Template id → the started quests' objectives that still need it (quests.ts). */
   questNeeds: ReadonlyMap<string, readonly QuestNeed[]>;
 }
 
@@ -111,7 +111,7 @@ function Details({ selection: sel, state, catalog, questNeeds }: Props) {
         {!!info?.price && (
           <Line label="price" value={`${formatPrice(info.price)} ₽${info.priceSource === "base" ? " (base price)" : ""}`} />
         )}
-        {l.kind === "item" && !!questNeeds.get(l.tpl)?.length && <Line label="needed for" value={questNeeds.get(l.tpl)!.map(formatQuestNeed).join("; ")} />}
+        {(l.kind === "item" || l.kind === "quest") && !!questNeeds.get(l.tpl)?.length && <Line label="needed for" value={questNeeds.get(l.tpl)!.map(formatQuestNeed).join("; ")} />}
         {l.tpl && <Line label="template" value={l.tpl} />}
         <Line label="object" value={l.obj} />
         <Line label="position" value={formatPos(l.pos)} />

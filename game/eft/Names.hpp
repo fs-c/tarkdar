@@ -30,4 +30,16 @@ inline constexpr std::string_view kCompoundItemClass = "CompoundItem";
 inline constexpr std::array kClientPlayerClasses = {std::string_view("ClientPlayer"), std::string_view("LocalPlayer")};
 inline constexpr std::string_view kPlayerBaseClass = "EFT.Player";
 
+// Quest templates and the conditions that are item objectives (full names: matched against the class
+// and its base classes). Repeatable (daily/weekly) quests have their own template class.
+inline constexpr std::string_view kRepeatableQuestTemplateClass = "EFT.Quests.RepeatableQuestTemplate";
+inline constexpr std::string_view kConditionFindItemClass = "EFT.Quests.ConditionFindItem";
+inline constexpr std::string_view kConditionHandoverItemClass = "EFT.Quests.ConditionHandoverItem";
+inline constexpr std::string_view kConditionLeaveItemClass = "EFT.Quests.ConditionLeaveItemAtLocation";
+inline constexpr std::string_view kConditionItemClass = "EFT.Quests.ConditionItem";
+// The storyline's pseudo-trader: story chapters and their hidden steps are "its" quests.
+inline constexpr std::string_view kStoryTraderId = "67f7af56c117b6140af2a607";
+// Quest text is read in this language (QuestTemplate.Localization).
+inline constexpr std::string_view kQuestLanguage = "en";
+
 }  // namespace radar::eft

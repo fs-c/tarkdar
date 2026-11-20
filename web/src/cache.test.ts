@@ -1,4 +1,4 @@
-import { dropLocalStorageCaches, isFresh, memoryCache, readCache, writeCache } from "./cache";
+import { dropLocalStorageCaches, dropRetiredCaches, isFresh, memoryCache, readCache, writeCache } from "./cache";
 
 const isList = (d: unknown): d is number[] => Array.isArray(d);
 
@@ -27,5 +27,15 @@ describe("cache", () => {
     } as unknown as Storage;
     dropLocalStorageCaches(storage);
     expect([...data.keys()]).toEqual(["radar.list"]);
+  });
+});
+
+describe("dropRetiredCaches", () => {
+  it("removes the retired quest feed and keeps the rest", async () => {
+    const cache = memoryCache();
+    await cache.put("quests", { version: 5, fetchedAt: 1, data: {} });
+    await cache.put("items", { version: 4, fetchedAt: 1, data: {} });
+    await dropRetiredCaches(cache);
+    expect([...cache.data.keys()]).toEqual(["items"]);
   });
 });

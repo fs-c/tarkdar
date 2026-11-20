@@ -1,8 +1,10 @@
-- work out quest item kinks
-    - it doesn't seem to be properly filtered to active quests
-- the highlight style system is inconsistent; if I search for something and then pin it, it get's de-emphasized? that shouldn't happen
-- at least as an experiment: make every rule a custom one which can be removed/customized etc. (= including built-in ones)
-    - in general allow for more flexibility, e.g. highlighting high-penetration ammo
-    - allow for all kinds of styles to be applied (in particular also the ring + forced label)
 - improve assets system
     - frequently accidentally lose changes on pull, maybe do git style conflict resolution
+- minor improvements
+    - move the reset to default functionality from row-level to group-level
+    - think about how to visualize above/below better & more consistently (what gets it right now? players + anything with ring should get it IMO)
+    - better exfil names (maybe we can read them from the in-game translations? we have those now)
+- shuffle some menu contents around
+    - "Map" -> "Filters" (work in progress name)
+    - move trails group into a new "Map" menu, move the map-related settings (at the moment everything but overlay) into there as well
+- backend/memory read optimization; there's noticeably more lag while the backend is running

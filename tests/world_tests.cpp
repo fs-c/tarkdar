@@ -6,6 +6,7 @@
 #include "game/eft/world/Quests.hpp"
 #include "game/eft/world/Vehicles.hpp"
 #include "game/eft/players/Players.hpp"
+#include "app/QuestProbe.hpp"
 
 #include <doctest/doctest.h>
 
@@ -470,4 +471,265 @@ TEST_CASE("Loot: battle-pass info documents are ordinary items despite the quest
     REQUIRE(snap->loot.size() == 2);
     for (const auto& l : snap->loot)
         CHECK(l.kind == (l.templateId == "questtpl" ? eft::LootEntry::Kind::QuestItem : eft::LootEntry::Kind::Item));
+}
+
+TEST_CASE("Quest probe: templates, item conditions and condition counters") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 1);
+    auto& h = w.heap;
+    mem::MemoryView view(w.fake, FakeWorld::kPid);
+    const Address profile = view.read<Address>(w.localPlayer + off::Player::Profile);
+
+    const Address listClass = h.klass("List`1", "System.Collections.Generic");
+    const auto managedList = [&](const std::vector<Address>& items) {
+        const Address l = h.list(items);
+        h.put<Address>(l + kIl2Cpp.objectKlass, listClass);
+        return l;
+    };
+    const auto strings = [&](std::initializer_list<std::u16string_view> ss) {
+        std::vector<Address> v;
+        for (auto s : ss) v.push_back(h.managedString(s));
+        return h.array(v);
+    };
+    struct MongoId {
+        std::uint32_t timestamp;
+        std::uint64_t counter;
+        Address stringId;
+    };
+    const auto putMongo = [&](Address at, std::u16string_view id) { h.put(at, MongoId{1, 2, h.managedString(id)}); };
+
+    const Address condition = h.klass("Condition", "EFT.Quests");
+    const Address multi = h.klass("ConditionMultipleTargets", "EFT.Quests", condition);
+    const Address item = h.klass("ConditionItem", "EFT.Quests", multi);
+    const Address findItem = h.klass("ConditionFindItem", "EFT.Quests", item);
+    const Address find = h.object(findItem, 0x100);
+    putMongo(find + 0x10, u"cond_find");
+    h.put<float>(find + 0x28, 3.0f);
+    h.put<Address>(find + 0xE0, strings({u"tpl_a", u"tpl_b"}));
+    h.put<bool>(find + 0xF4, true);
+
+    // ConditionCollection (a BindableList) holding a List`1 at 0x58.
+    const Address collection = h.object(h.klass("ConditionCollection", "EFT.Quests"), 0x80);
+    h.put<Address>(collection + 0x58, managedList({find}));
+    struct DictEntry {
+        std::int32_t hashCode, next, key;
+        Address value;
+    };
+    const Address conds = h.alloc(0x50);
+    h.put<Address>(conds + kIl2Cpp.dictEntries, h.array(std::vector<DictEntry>{{3, -1, 3, collection}}));
+    h.put<std::int32_t>(conds + kIl2Cpp.dictCount, 1);
+
+    const Address tmpl = h.object(h.klass("QuestTemplate", "EFT.Quests"), 0x140);
+    h.put<Address>(tmpl + 0x10, h.managedString(u"quest_story"));
+    h.put<Address>(tmpl + 0x28, h.managedString(u"trader_x"));
+    h.put<std::int32_t>(tmpl + 0x40, 3);  // Completion
+    h.put<Address>(tmpl + 0x68, conds);
+    h.put<bool>(tmpl + 0x128, true);  // IsMainQuest
+
+    const Address q = h.alloc(0x48);
+    h.put<Address>(q + off::QuestsData::Id, h.managedString(u"quest_story"));
+    h.put<std::int32_t>(q + off::QuestsData::Status, eft::kQuestStarted);
+    h.put<Address>(q + 0x38, tmpl);
+    const Address noTemplate = h.alloc(0x48);
+    h.put<Address>(noTemplate + off::QuestsData::Id, h.managedString(u"quest_bare"));
+    h.put<std::int32_t>(noTemplate + off::QuestsData::Status, eft::kQuestStarted);
+    h.put<Address>(profile + off::Profile::QuestsData, h.list(std::vector<Address>{q, noTemplate}));
+
+    // Profile.TaskConditionCounters: Dictionary<MongoID, TaskConditionCounter>.
+    const Address counter = h.object(h.klass("TaskConditionCounter", "EFT.Quests"), 0x50);
+    putMongo(counter + 0x18, u"counter_1");
+    h.put<Address>(counter + 0x38, h.managedString(u"quest_story"));
+    h.put<std::int32_t>(counter + 0x40, 2);
+    h.put<Address>(counter + 0x48, find);
+    struct CounterEntry {
+        std::int32_t hashCode, next;
+        MongoId key;
+        Address value;
+    };
+    const Address counters = h.alloc(0x50);
+    h.put<Address>(counters + kIl2Cpp.dictEntries, h.array(std::vector<CounterEntry>{{1, -1, {1, 2, 0}, counter}}));
+    h.put<std::int32_t>(counters + kIl2Cpp.dictCount, 1);
+    h.put<Address>(profile + 0x90, counters);
+
+    const auto session = makeSession(w);
+    const auto r = app::probeQuests(session->game, w.localPlayer);
+    INFO(r.json);
+    INFO(r.summary);
+    CHECK(r.ok);
+    const auto has = [&](std::string_view part) { return r.json.find(part) != std::string::npos; };
+    CHECK(has(R"("isMainQuest":true)"));
+    CHECK(has(R"("traderId":"trader_x")"));
+    CHECK(has(R"x("questType":"Completion (3)")x"));
+    CHECK(has(R"x("AvailableForFinish (3)")x"));
+    CHECK(has(R"("class":"EFT.Quests.ConditionFindItem")"));
+    CHECK(has(R"("id":"cond_find")"));
+    CHECK(has(R"("target":["tpl_a","tpl_b"])"));
+    CHECK(has(R"("onlyFoundInRaid":true)"));
+    CHECK(has(R"("conditionId":"cond_find")"));
+    CHECK(has(R"("value":2)"));
+    CHECK(has(R"("template":null)"));  // quest_bare
+    CHECK(r.summary.find("2 quests in progress") != std::string::npos);
+    CHECK(r.summary.find("1 with a template: 1 main/story") != std::string::npos);
+    CHECK(r.summary.find("1 condition counters") != std::string::npos);
+}
+
+TEST_CASE("Quests: templates give objectives, names, kinds and hand-over progress") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 1);
+    auto& h = w.heap;
+    mem::MemoryView view(w.fake, FakeWorld::kPid);
+    const Address profile = view.read<Address>(w.localPlayer + off::Player::Profile);
+
+    const Address listClass = h.klass("List`1", "System.Collections.Generic");
+    const auto managedList = [&](const std::vector<Address>& items) {
+        const Address l = h.list(items);
+        h.put<Address>(l + kIl2Cpp.objectKlass, listClass);
+        return l;
+    };
+    const auto strings = [&](std::initializer_list<std::u16string_view> ss) {
+        std::vector<Address> v;
+        for (auto s : ss) v.push_back(h.managedString(s));
+        return h.array(v);
+    };
+    struct MongoId {
+        std::uint32_t timestamp;
+        std::uint64_t counter;
+        Address stringId;
+    };
+    struct RefEntry {
+        std::int32_t hashCode, next;
+        Address key, value;
+    };
+    const auto stringDict = [&](std::vector<std::pair<std::u16string_view, Address>> kv) {
+        std::vector<RefEntry> entries;
+        for (auto& [k, v] : kv) entries.push_back({1, -1, h.managedString(k), v});
+        const Address d = h.alloc(0x50);
+        h.put<Address>(d + kIl2Cpp.dictEntries, h.array(entries));
+        h.put<std::int32_t>(d + kIl2Cpp.dictCount, static_cast<std::int32_t>(entries.size()));
+        return d;
+    };
+
+    const Address condition = h.klass("Condition", "EFT.Quests");
+    const Address multi = h.klass("ConditionMultipleTargets", "EFT.Quests", condition);
+    const Address item = h.klass("ConditionItem", "EFT.Quests", multi);
+    const Address findClass = h.klass("ConditionFindItem", "EFT.Quests", item);
+    const Address handoverClass = h.klass("ConditionHandoverItem", "EFT.Quests", item);
+    const Address zone = h.klass("ConditionZone", "EFT.Quests", multi);
+    const Address plantClass = h.klass("ConditionLeaveItemAtLocation", "EFT.Quests", zone);
+    const Address killClass = h.klass("ConditionCounterCreator", "EFT.Quests", condition);
+    const auto cond = [&](Address klass, std::u16string_view id, float count, std::initializer_list<std::u16string_view> targets,
+                          bool fir = false) {
+        const Address c = h.object(klass, 0x100);
+        h.put(c + off::QuestCondition::Id, MongoId{1, 2, h.managedString(id)});
+        h.put<float>(c + off::QuestCondition::Value, count);
+        h.put<Address>(c + off::ConditionMultipleTargets::Target, strings(targets));
+        h.put<bool>(c + off::ConditionItem::OnlyFoundInRaid, fir);
+        return c;
+    };
+    struct StatusEntry {
+        std::int32_t hashCode, next, key;
+        Address value;
+    };
+    const auto conditionsDict = [&](std::vector<Address> finish, std::vector<Address> fail = {}) {
+        const auto collection = [&](const std::vector<Address>& cs) {
+            const Address c = h.object(h.klass("ConditionCollection", "EFT.Quests"), 0x80);
+            h.put<Address>(c + off::BindableList::List, managedList(cs));
+            return c;
+        };
+        const Address d = h.alloc(0x50);
+        h.put<Address>(d + kIl2Cpp.dictEntries, h.array(std::vector<StatusEntry>{
+                                                    {5, -1, 5, collection(fail)}, {3, -1, eft::kQuestAvailableForFinish, collection(finish)}}));
+        h.put<std::int32_t>(d + kIl2Cpp.dictCount, 2);
+        return d;
+    };
+    const Address templateClass = h.klass("QuestTemplate", "EFT.Quests");
+    const Address repeatableClass = h.klass("RepeatableQuestTemplate", "EFT.Quests", templateClass);
+    const auto quest = [&](std::u16string_view id, Address klass, Address conditions, std::u16string_view trader) {
+        const Address t = h.object(klass, 0x140);
+        h.put<Address>(t + off::QuestTemplate::TraderId, h.managedString(trader));
+        h.put<Address>(t + off::QuestTemplate::Conditions, conditions);
+        const Address q = h.alloc(0x48);
+        h.put<Address>(q + off::QuestsData::Id, h.managedString(id));
+        h.put<std::int32_t>(q + off::QuestsData::Status, eft::kQuestStarted);
+        h.put<Address>(q + off::QuestsData::Template, t);
+        return std::pair{q, t};
+    };
+
+    // A side quest with English text: find 3 FIR (any of two items), hand them over (1 done), a kill
+    // objective (not an item objective), a plant objective, and a fail condition that's left out.
+    const Address find = cond(findClass, u"c_find", 3, {u"tpl_a", u"tpl_b"}, true);
+    const Address handover = cond(handoverClass, u"c_hand", 3, {u"tpl_a", u"tpl_b"}, true);
+    const Address plant = cond(plantClass, u"c_plant", 1, {u"tpl_c"});
+    const Address kill = h.object(killClass, 0x100);
+    auto [side, sideTemplate] = quest(u"q_side", templateClass,
+                                      conditionsDict({find, handover, kill, plant}, {cond(findClass, u"c_fail", 1, {u"tpl_x"})}),
+                                      u"trader_1");
+    h.put<Address>(sideTemplate + off::QuestTemplate::Localization,
+                   stringDict({{u"ru", stringDict({{u"q_side name", h.managedString(u"Russian")}})},
+                               {u"en", stringDict({{u"q_side name", h.managedString(u"Shaking Up the Teller")},
+                                                   {u"c_find", h.managedString(u"Find the item in raid")},
+                                                   {u"q_side description", h.managedString(u"")}})}}));
+    // Story: by the story trader, hidden. Daily and weekly: repeatables by how long they run.
+    auto [story, storyTemplate] = quest(u"q_story", templateClass, conditionsDict({}), u"67f7af56c117b6140af2a607");
+    h.put<bool>(storyTemplate + off::QuestTemplate::IsInvisible, true);
+    auto [daily, dailyTemplate] = quest(u"q_daily", repeatableClass, conditionsDict({}), u"trader_2");
+    h.put<std::int32_t>(daily + off::QuestsData::StartTime, 1000);
+    h.put<std::int32_t>(dailyTemplate + off::RepeatableQuestTemplate::ExpirationTime, 1000 + 24 * 3600);
+    auto [weekly, weeklyTemplate] = quest(u"q_weekly", repeatableClass, conditionsDict({}), u"trader_2");
+    h.put<std::int32_t>(weekly + off::QuestsData::StartTime, 1000);
+    h.put<std::int32_t>(weeklyTemplate + off::RepeatableQuestTemplate::ExpirationTime, 1000 + 7 * 24 * 3600);
+    auto [broken, brokenTemplate] = quest(u"q_broken", templateClass, 0, u"trader_1");  // no conditions: unreadable
+    (void)brokenTemplate;
+    h.put<Address>(profile + off::Profile::QuestsData, h.list(std::vector<Address>{side, story, daily, weekly, broken}));
+
+    // Condition counters: Dictionary<MongoID, TaskConditionCounter>, keyed by condition id.
+    const Address counter = h.object(h.klass("TaskConditionCounter", "EFT.Quests"), 0x50);
+    h.put<std::int32_t>(counter + off::TaskConditionCounter::Value, 1);
+    struct CounterEntry {
+        std::int32_t hashCode, next;
+        MongoId key;
+        Address value;
+    };
+    const Address counters = h.alloc(0x50);
+    h.put<Address>(counters + kIl2Cpp.dictEntries,
+                   h.array(std::vector<CounterEntry>{{1, -1, {1, 2, h.managedString(u"c_hand")}, counter}}));
+    h.put<std::int32_t>(counters + kIl2Cpp.dictCount, 1);
+    h.put<Address>(profile + off::Profile::TaskConditionCounters, counters);
+
+    eft::WorldState world;
+    eft::Quests quests(makeSession(w), world);
+    quests.update();
+    const auto snap = world.quests.get();
+    REQUIRE(snap->quests.size() == 5);
+    const auto byId = [&](std::string_view id) -> const eft::QuestState& {
+        return *std::find_if(snap->quests.begin(), snap->quests.end(), [&](const auto& q) { return q.id == id; });
+    };
+    using T = eft::QuestObjective::Type;
+    const auto& s = byId("q_side");
+    CHECK(s.name == "Shaking Up the Teller");
+    CHECK(s.traderId == "trader_1");
+    CHECK(s.kind == eft::QuestKind::Side);
+    CHECK_FALSE(s.hidden);
+    REQUIRE(s.objectives);
+    REQUIRE(s.objectives->size() == 3);
+    CHECK((*s.objectives)[0] == eft::QuestObjective{.id = "c_find", .type = T::Find, .items = {"tpl_a", "tpl_b"}, .count = 3,
+                                                    .foundInRaid = true, .progress = std::nullopt, .text = "Find the item in raid"});
+    CHECK((*s.objectives)[1] == eft::QuestObjective{.id = "c_hand", .type = T::Handover, .items = {"tpl_a", "tpl_b"}, .count = 3,
+                                                    .foundInRaid = true, .progress = 1});
+    CHECK((*s.objectives)[2] == eft::QuestObjective{.id = "c_plant", .type = T::Plant, .items = {"tpl_c"}, .count = 1});
+    CHECK(byId("q_story").kind == eft::QuestKind::Story);
+    CHECK(byId("q_story").hidden);
+    CHECK(byId("q_story").name.empty());
+    CHECK(byId("q_daily").kind == eft::QuestKind::Daily);
+    CHECK(byId("q_weekly").kind == eft::QuestKind::Weekly);
+    CHECK_FALSE(byId("q_broken").objectives);
+
+    // Progress is re-read; templates aren't.
+    h.put<std::int32_t>(counter + off::TaskConditionCounter::Value, 2);
+    h.put<Address>(sideTemplate + off::QuestTemplate::TraderId, h.managedString(u"changed"));
+    quests.update();
+    const auto& again = *std::find_if(world.quests.get()->quests.begin(), world.quests.get()->quests.end(),
+                                      [](const auto& q) { return q.id == "q_side"; });
+    CHECK((*again.objectives)[1].progress == 2);
+    CHECK(again.traderId == "trader_1");
 }

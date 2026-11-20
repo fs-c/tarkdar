@@ -18,6 +18,7 @@ void printUsage(const char* argv0) {
                  "  --vmm-printf          show VMM's own output\n"
                  "  --once                attach, print module info and exit (connectivity check)\n"
                  "  --diagnose            check the whole read chain once (best in a raid), print a report, exit\n"
+                 "  --quest-probe <file>  with --diagnose: also dump the quests' templates and progress as JSON\n"
                  "  --timeout <sec>       give up if not attached within <sec> seconds\n"
                  "\n"
                  "Server:\n"
@@ -76,6 +77,10 @@ std::optional<Options> parseOptions(int argc, char** argv, std::string& error) {
         } else if (arg == "--once") {
             opt.once = true;
         } else if (arg == "--diagnose") {
+            opt.diagnose = true;
+        } else if (arg == "--quest-probe") {
+            VALUE_OR_FAIL(v);
+            opt.questProbe = *v;
             opt.diagnose = true;
         } else if (arg == "--timeout") {
             VALUE_OR_FAIL(v);

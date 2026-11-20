@@ -140,13 +140,30 @@ Vehicles on the map; so far only the BTR, from when it spawns until it's gone. E
 
 ### `quests`
 ```json
-{ "quests": [ { "id": "5967530a86f77462ba22226b", "status": 2, "done": [ "5967725e86f774601a446662" ] } ] }
+{ "quests": [ {
+  "id": "5969f90786f77420d2328015", "status": 2, "done": [ "5969f98286f774576d4c9542" ],
+  "name": "Charity", "trader": "54cb57776803fa99248b456e", "kind": "side",
+  "objectives": [
+    { "id": "5969f98286f774576d4c9542", "type": "find", "items": [ "5c10c8fd86f7743d7d706df3" ], "count": 5, "fir": true,
+      "text": "Find the item in raid: Adrenaline injector" },
+    { "id": "5969f99286f77456630ea442", "type": "handover", "items": [ "5c10c8fd86f7743d7d706df3" ], "count": 5, "fir": true,
+      "progress": 3, "text": "Hand over the items" }
+  ] } ] }
 ```
 The local player's quests in progress (`Profile.QuestsData`); `null` until they've been read.
 - **`status`:** the game's `EQuestStatus`: 2 started, 3 ready to hand in (other quests aren't sent).
 - **`done`:** ids of the quest's conditions (objectives) already completed; `null` if unreadable.
-- Sent when something changes (read every 2 s). Quest names, objectives and which items they need
-  come from quest data in the frontend.
+- From the quest's template in game memory (`QuestStatusData.Template`); `objectives` is `null` when
+  it couldn't be read (and missing in older recordings), and then the other fields are missing too:
+  - **`name`:** English name, if the template has one (repeatables and most story steps don't).
+  - **`trader`:** trader id; story quests belong to the story's pseudo-trader `67f7af56c117b6140af2a607`.
+  - **`kind`:** `story` (1.0 storyline: main quests and the story trader's), `side`, `daily` or `weekly`
+    (repeatables, by how long they run).
+  - **`hidden`:** `true` for quests not in the quest list (hidden story steps).
+  - **`objectives`:** the item objectives (conditions to hand the quest in): `find`, `handover` or
+    `plant` any of `items` (template ids), `count` of them, `fir` if found in raid only. `progress`:
+    handed over so far (hand-over objectives the profile has a counter for). `text`: English text.
+- Sent when something changes (read every 2 s; templates once per quest).
 
 ### `camera`
 ```json

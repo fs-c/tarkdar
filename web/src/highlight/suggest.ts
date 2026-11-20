@@ -45,6 +45,8 @@ const PRESETS: Preset[] = [
   players("AI scavs", "is:scav", "bots"),
   things("Quest items", "is:quest", "task"),
   things("Needed for quests", "is:item is:needed", "quest task"),
+  things("Needed for the story", "quest:story", "quest task story main"),
+  things("Needed for dailies and weeklies", "quest:repeatable", "quest task daily weekly repeatable"),
   things("Airdrops", "is:airdrop", "drop"),
   things("Corpses", "is:corpse", "bodies dead"),
   things("Containers", "is:container", "crates"),

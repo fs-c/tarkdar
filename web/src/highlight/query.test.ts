@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SlimCatalog } from "../catalog";
 import { buildRows, lootRows } from "../list/rows";
 import type { LootEntry, Player } from "../protocol";
+import type { QuestNeed } from "../quests";
 import { type Highlight, HIGHLIGHT_COLORS, allRows, matchingRows, nextColor } from "./match";
 import { compileQuery, isStructured, parseNumber, parseQuery } from "./query";
 
@@ -110,15 +111,35 @@ describe("matching", () => {
     expect(keys("cat:\"barter items\" value>=500k")).toEqual(["loot:10"]);
   });
   it("matches loose items a started quest still needs, and finds them by the quest's name", () => {
-    const needs = new Map([
-      ["bolts", [{ quest: "Gunsmith", count: 2, fir: true, of: 1 }]],
-      ["ledx", [{ quest: "Any meds", count: 3, fir: false, of: 60 }]], // too broad to highlight
+    const needs = new Map<string, QuestNeed[]>([
+      ["bolts", [{ quest: "Gunsmith", kind: "side", count: 2, fir: true, of: 1 }]],
+      ["ledx", [{ quest: "Any meds", kind: "story", count: 3, fir: false, of: 60 }]], // too broad to highlight
+      ["drive", [{ quest: "Retrieve the drive", kind: "story", count: 1, fir: false, of: 1 }]],
     ]);
-    const quested = lootRows([loot(12, "item", "bolts"), loot(13, "quest", "bolts"), loot(10, "item", "ledx")], catalog, new Map(), needs).items;
+    const rows = [loot(12, "item", "bolts"), loot(13, "quest", "drive"), loot(10, "item", "ledx"), loot(14, "quest", "other")];
+    const quested = lootRows(rows, catalog, new Map(), needs).items;
     expect(quested[0]!.questNeeds).toEqual(["Gunsmith (×2, FIR)"]);
-    expect(matchingRows(quested, "is:item is:needed", catalog).map((r) => r.key)).toEqual(["loot:12"]);
-    expect(matchingRows(quested, "gunsmith", catalog).map((r) => r.key)).toEqual(["loot:12"]);
+    const match = (q: string) => matchingRows(quested, q, catalog).map((r) => r.key);
+    expect(match("is:item is:needed")).toEqual(["loot:12"]);
+    expect(match("is:needed")).toEqual(["loot:12", "loot:13"]); // quest items a quest needs, too
+    expect(match("gunsmith")).toEqual(["loot:12"]);
     expect(keys("is:needed")).toEqual([]); // nothing needed without quest data
+  });
+  it("matches what a kind of quest needs", () => {
+    const needs = new Map<string, QuestNeed[]>([
+      ["bolts", [{ quest: "Gunsmith", kind: "side", count: 2, fir: true, of: 1 }, { quest: "Prapor daily", kind: "daily", count: 1, fir: true, of: 1 }]],
+      ["ledx", [{ quest: "Any meds", kind: "story", count: 3, fir: false, of: 60 }]], // too broad: doesn't count
+      ["drive", [{ quest: "Retrieve the drive", kind: "story", count: 1, fir: false, of: 1 }]],
+      ["salewa", [{ quest: "Skier weekly", kind: "weekly", count: 2, fir: true, of: 1 }]],
+    ]);
+    const rows = [loot(12, "item", "bolts"), loot(13, "quest", "drive"), loot(10, "item", "ledx"), loot(15, "item", "salewa")];
+    const quested = lootRows(rows, catalog, new Map(), needs).items;
+    const match = (q: string) => matchingRows(quested, q, catalog).map((r) => r.key);
+    expect(match("quest:story")).toEqual(["loot:13"]);
+    expect(match("quest:side,story")).toEqual(["loot:12", "loot:13"]);
+    expect(match("quest:repeatable")).toEqual(["loot:12", "loot:15"]);
+    expect(match("is:item quest:daily")).toEqual(["loot:12"]);
+    expect(compileQuery("quest:kappa", catalog).errors).toEqual(["quest:kappa: unknown (story, side, daily, weekly, repeatable)"]);
   });
   it("matches nothing with an empty query, or one with errors", () => {
     expect(keys("")).toEqual([]);

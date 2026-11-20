@@ -237,6 +237,26 @@ std::string encodeVehicles(const eft::VehiclesSnapshot& snap) {
     return envelope("vehicles", snap.raidId, snap.revision, std::move(data));
 }
 
+namespace {
+const char* questKindName(eft::QuestKind k) {
+    switch (k) {
+    case eft::QuestKind::Side: return "side";
+    case eft::QuestKind::Story: return "story";
+    case eft::QuestKind::Daily: return "daily";
+    case eft::QuestKind::Weekly: return "weekly";
+    }
+    return "side";
+}
+const char* objectiveTypeName(eft::QuestObjective::Type t) {
+    switch (t) {
+    case eft::QuestObjective::Type::Find: return "find";
+    case eft::QuestObjective::Type::Handover: return "handover";
+    case eft::QuestObjective::Type::Plant: return "plant";
+    }
+    return "find";
+}
+}  // namespace
+
 std::string encodeQuests(const eft::QuestsSnapshot& snap) {
     crow::json::wvalue data;
     if (!snap.known) {
@@ -254,6 +274,29 @@ std::string encodeQuests(const eft::QuestsSnapshot& snap) {
             o["done"] = std::move(done);
         } else {
             o["done"] = nullptr;
+        }
+        if (q.objectives) {
+            if (!q.name.empty()) o["name"] = q.name;
+            o["trader"] = q.traderId;
+            o["kind"] = questKindName(q.kind);
+            if (q.hidden) o["hidden"] = true;
+            std::vector<crow::json::wvalue> objectives;
+            for (const auto& obj : *q.objectives) {
+                crow::json::wvalue x;
+                x["id"] = obj.id;
+                x["type"] = objectiveTypeName(obj.type);
+                std::vector<crow::json::wvalue> items;
+                for (const auto& i : obj.items) items.emplace_back(i);
+                x["items"] = std::move(items);
+                x["count"] = obj.count;
+                if (obj.foundInRaid) x["fir"] = true;
+                if (obj.progress) x["progress"] = *obj.progress;
+                if (!obj.text.empty()) x["text"] = obj.text;
+                objectives.push_back(std::move(x));
+            }
+            o["objectives"] = std::move(objectives);
+        } else {
+            o["objectives"] = nullptr;
         }
         list.push_back(std::move(o));
     }

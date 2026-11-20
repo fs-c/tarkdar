@@ -62,26 +62,16 @@ export function DebugPanel(p: Props) {
   );
 }
 
-const ago = (t: number) => {
-  const min = Math.round((Date.now() - t) / 60_000);
-  return min < 1 ? "just now" : min < 90 ? `${min} min ago` : `${Math.round(min / 60)} h ago`;
-};
-
 function QuestSection({ report: r, duplicates }: { report: QuestDebug; duplicates: number }) {
-  const d = r.data;
+  const k = r.byKind;
   const rows: [string, string, string?][] = [
-    [
-      "Quest data",
-      `${d.state}${d.fetchedAt ? `, fetched ${ago(d.fetchedAt)}` : ""}${d.error ? ` (${d.error})` : ""}`,
-      "tarkov.dev's tasks feed, cached a day",
-    ],
-    ["Data has", `${d.quests} quests: ${d.withQuestItems} with quest items, ${d.withItemObjectives} with other items`],
     [
       "Backend",
       r.backend === "unread" ? "quests not read (no raid, or an older recording)" : `${r.started} started, ${r.readyToHandIn} ready to hand in`,
-      "The local player's quests in progress (Profile.QuestsData)",
+      "The local player's quests in progress (Profile.QuestsData), with their templates from game memory",
     ],
-    ["Not in data", r.backend === "unread" ? "–" : `${r.missing.length} of the started quests`],
+    ["Started", r.backend === "unread" ? "–" : `${k.story} story, ${k.side} side, ${k.daily} daily, ${k.weekly} weekly`],
+    ["Objectives unknown", r.backend === "unread" ? "–" : `${r.unknown.length} of the started quests`, "Their template couldn't be read"],
     ["Filter", r.filter.effect, "Map panel → Loose items → Quest items"],
     [
       "On the map",
@@ -105,9 +95,9 @@ function QuestSection({ report: r, duplicates }: { report: QuestDebug; duplicate
         <Button onClick={() => void navigator.clipboard?.writeText(JSON.stringify(r, null, 2))} title="Everything below, as JSON">
           Copy report
         </Button>
-        {r.missing.length > 0 && (
-          <Button onClick={() => void navigator.clipboard?.writeText(r.missing.join("\n"))} title="Ids of the started quests the quest data doesn't have">
-            Copy missing ids
+        {r.unknown.length > 0 && (
+          <Button onClick={() => void navigator.clipboard?.writeText(r.unknown.join("\n"))} title="Ids of the started quests whose objectives are unknown">
+            Copy unknown ids
           </Button>
         )}
       </Actions>
@@ -145,18 +135,18 @@ function QuestSection({ report: r, duplicates }: { report: QuestDebug; duplicate
 function QuestRow({ q }: { q: QuestDebugQuest }) {
   const done = q.objectives.filter((o) => o.done).length;
   const flags = [
-    !q.inData && "not in quest data",
+    !q.known && "objectives unknown",
+    q.hidden && "hidden",
     q.done === null && "completed conditions unreadable",
-    q.unknownDone.length > 0 && `${q.unknownDone.length} completed ids unknown to the data`,
   ].filter(Boolean);
   return (
     <li className={s.quest}>
       <details>
         <summary>
-          <span className={cx(!q.inData && s.warn)}>{q.name ?? q.id}</span>
+          <span className={cx(!q.known && s.warn)}>{q.label}</span>
           <span className={s.why}>
-            {questStatusName(q.status)}
-            {q.inData && `, ${done}/${q.objectives.length} done`}
+            {[q.kind, q.trader, questStatusName(q.status)].filter(Boolean).join(", ")}
+            {q.known && q.objectives.length > 0 && `, ${done}/${q.objectives.length} item objectives done`}
             {flags.length > 0 && ` · ${flags.join(", ")}`}
           </span>
         </summary>
@@ -165,20 +155,19 @@ function QuestRow({ q }: { q: QuestDebugQuest }) {
           {q.objectives.length > 0 && (
             <ul className={s.list}>
               {q.objectives.map((o) => (
-                <li key={o.id} className={cx(o.done && s.off)} title={o.id}>
-                  <span className={s.mark}>{o.done ? "✓" : "○"}</span>
+                <li key={o.id} className={cx(!o.open && s.off)} title={o.id}>
+                  <span className={s.mark}>{o.done ? "✓" : o.open ? "○" : "–"}</span>
                   <span>
-                    {o.type}
-                    {o.items && `: ${o.items.length > 5 ? `any of ${o.items.length} items` : o.items.join(", ")}`}
-                    {(o.count ?? 1) > 1 && ` ×${o.count}`}
+                    {o.text ?? o.type}
+                    {o.items.length > 0 && `: ${o.items.length > 5 ? `any of ${o.items.length} items` : o.items.join(", ")}`}
+                    {o.progress !== undefined ? ` ${o.progress}/${o.count}` : o.count > 1 && ` ×${o.count}`}
                     {o.fir && " (FIR)"}
                   </span>
                 </li>
               ))}
             </ul>
           )}
-          {q.unknownDone.length > 0 && <p className={s.why}>Completed, unknown to the data: {q.unknownDone.join(", ")}</p>}
-          {!q.inData && q.done && q.done.length > 0 && <p className={s.why}>Completed conditions: {q.done.join(", ")}</p>}
+          {q.done && q.done.length > 0 && <p className={s.why}>Completed conditions: {q.done.join(", ")}</p>}
         </div>
       </details>
     </li>

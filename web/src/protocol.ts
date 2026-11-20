@@ -118,6 +118,24 @@ export interface PlayerEquipment {
   slots: ItemNode[];
 }
 
+/** A quest's objective for items, from its template. */
+export interface QuestObjective {
+  /** The condition id (what `done` lists). */
+  id: string;
+  type: "find" | "handover" | "plant";
+  /** Template ids; any of them counts. */
+  items: string[];
+  count: number;
+  /** Found in raid only (find, hand over). */
+  fir?: boolean;
+  /** Handed over so far (hand-over objectives with a counter). */
+  progress?: number;
+  /** English objective text, e.g. "Find the item in raid: Adrenaline injector". */
+  text?: string;
+}
+
+export type QuestKind = "story" | "side" | "daily" | "weekly";
+
 /** One of the local player's quests in progress (`quests` message). */
 export interface QuestState {
   id: string;
@@ -125,6 +143,15 @@ export interface QuestState {
   status: number;
   /** Ids of the conditions (objectives) already completed; null if unreadable. */
   done: string[] | null;
+  /** English name; missing for repeatables and most story steps. */
+  name?: string;
+  /** Trader id (the story's pseudo-trader for story quests). */
+  trader?: string;
+  kind?: QuestKind;
+  /** Not in the quest list (hidden story steps). */
+  hidden?: boolean;
+  /** Item objectives; null (or missing, in older recordings) when the template couldn't be read. */
+  objectives?: QuestObjective[] | null;
 }
 
 export type LootKind = "item" | "quest" | "container" | "airdrop" | "corpse";

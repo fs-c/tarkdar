@@ -1,5 +1,7 @@
 #include "app/Diagnose.hpp"
 
+#include "app/QuestProbe.hpp"
+
 #include "game/eft/BuildCheck.hpp"
 #include "game/eft/Game.hpp"
 #include "game/eft/Read.hpp"
@@ -21,6 +23,7 @@
 #include <algorithm>
 #include <chrono>
 #include <format>
+#include <fstream>
 #include <map>
 #include <string>
 #include <thread>
@@ -534,6 +537,23 @@ void checkQuests(Report& r, const std::shared_ptr<const eft::RaidSession>& sessi
     if (unreadable)
         r.fail(std::format("completed conditions unreadable for {} of them", unreadable),
                "QuestsData.CompletedConditions; managed HashSet.Slots / HashSet.LastIndex (unverified on SPT)");
+    std::size_t withTemplate = 0, named = 0, objectives = 0, withProgress = 0;
+    std::map<eft::QuestKind, int> kinds;
+    for (const auto& q : snap->quests) {
+        if (!q.objectives) continue;
+        ++withTemplate;
+        named += !q.name.empty();
+        ++kinds[q.kind];
+        objectives += q.objectives->size();
+        for (const auto& o : *q.objectives) withProgress += o.progress.has_value();
+    }
+    if (!snap->quests.empty() && withTemplate == 0)
+        r.fail("no quest template readable", "QuestsData.Template, QuestTemplate.Conditions, BindableList.List (literal)");
+    else if (!snap->quests.empty())
+        r.ok(std::format("{} with a template ({} named): {} story, {} side, {} daily, {} weekly; {} item objectives, {} with "
+                         "hand-over progress",
+                         withTemplate, named, kinds[eft::QuestKind::Story], kinds[eft::QuestKind::Side],
+                         kinds[eft::QuestKind::Daily], kinds[eft::QuestKind::Weekly], objectives, withProgress));
     for (std::size_t i = 0; i < std::min<std::size_t>(5, snap->quests.size()); ++i) {
         const auto& q = snap->quests[i];
         std::string done = q.completedConditions ? std::to_string(q.completedConditions->size()) : "?";
@@ -542,9 +562,24 @@ void checkQuests(Report& r, const std::shared_ptr<const eft::RaidSession>& sessi
     }
 }
 
+void probeQuestTemplates(Report& r, const std::shared_ptr<const eft::RaidSession>& session, const std::filesystem::path& path) {
+    r.section("Quest probe");
+    const auto probe = probeQuests(session->game, session->start.localPlayer);
+    std::size_t from = 0;
+    for (std::size_t to; (to = probe.summary.find('\n', from)) != std::string::npos; from = to + 1)
+        r.info(probe.summary.substr(from, to - from));
+    r.info(probe.summary.substr(from));
+    std::ofstream f(path, std::ios::binary | std::ios::trunc);
+    f << probe.json;
+    if (!f) r.fail("can't write " + path.string());
+    else r.info(std::format("written to {} ({} bytes)", path.string(), probe.json.size()));
+    if (probe.ok) r.ok("quest templates read");
+    else r.fail("no quest template read", "QuestStatusData.Template / Quest._template offsets in app/QuestProbe.cpp");
+}
+
 }  // namespace
 
-int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out) {
+int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out, const std::filesystem::path& questProbe) {
     Report r(out);
     r.section("Attach");
     const auto start = Clock::now();
@@ -583,6 +618,7 @@ int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out) {
         checkVehicles(r, session);
         checkLoot(r, session);
         checkQuests(r, session);
+        if (!questProbe.empty()) probeQuestTemplates(r, session, questProbe);
         checkCamera(r, session);
     } else {
         r.info("skipping players, exfils, explosives, vehicles, loot, quests and camera: they need a raid");

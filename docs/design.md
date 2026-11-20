@@ -132,6 +132,8 @@ for a raid → in raid → cooldown → waiting for a raid.
 - **Item data comes from tarkov.dev**, fetched and cached by the browser (the feeds allow
   cross-origin requests), behind an interface so another source (the SPT server database) can
   replace it.
+- **Quest data comes from game memory**: each quest in progress's template (objectives, names, kind),
+  so SPT's own quests, the storyline and generated dailies are covered (tarkov.dev's feed lacked them).
 
 ## Server
 

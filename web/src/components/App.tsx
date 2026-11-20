@@ -1,9 +1,9 @@
 import { Locate, LocateFixed, Navigation } from "lucide-react";
 import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type RadarState, wsUrl } from "../connection";
-import { isTyping, useCatalog, useConnection, useMapIndex, useQuestData } from "../hooks";
+import { isTyping, useCatalog, useConnection, useMapIndex } from "../hooks";
 import { useLootPrefs, useMapPrefs, useOverlayPrefs, useSidebarPrefs, useTrailPrefs } from "../prefs";
-import { knownQuestItems, neededItems, neededQuestItems, questDebugReport, questItemLabels, withoutUnneededQuestItems } from "../quests";
+import { type QuestNeed, questDebugReport, questItemLabels, questNeeds as readQuestNeeds, withoutUnneededQuestItems } from "../quests";
 import { withoutDuplicateLoot } from "../dedupe";
 import { describeEvent } from "../events";
 import { overlayData, overlayMarks } from "../overlay/marks";
@@ -39,6 +39,9 @@ import s from "./App.module.css";
 import { StatusBar, StatusButton } from "./StatusBar";
 import { TimelinePanel } from "./TimelinePanel";
 
+// No quest needs (quests not read): a stable empty map.
+const NO_NEEDS: ReadonlyMap<string, readonly QuestNeed[]> = new Map();
+
 // The radar brings the renderer (three.js) with it: loaded after the rest of the page.
 const Radar = lazy(() => import("./Radar").then((m) => ({ default: m.Radar })));
 
@@ -70,26 +73,23 @@ export function App() {
 
   // Copies of the same loot at the same spot are merged, and quest items nobody needs are left out
   // everywhere (map, list, search), unless all are wanted.
-  const questData = useQuestData();
-  const { tasks: questTasks, items: questItemObjectives, names: questNames, status: questDataStatus } = questData;
   const deduped = useMemo(() => withoutDuplicateLoot(unfiltered.loot), [unfiltered.loot]);
-  const knownQuest = useMemo(() => knownQuestItems(questTasks), [questTasks]);
-  const neededQuest = useMemo(() => neededQuestItems(unfiltered.quests, questTasks), [unfiltered.quests, questTasks]);
-  const questLabels = useMemo(() => questItemLabels(unfiltered.quests, questTasks, questNames), [unfiltered.quests, questTasks, questNames]);
-  // Ordinary items started quests still need: the "Needed for quests" rule, labels in the list and details.
-  const questNeeds = useMemo(() => neededItems(unfiltered.quests, questItemObjectives, questNames), [unfiltered.quests, questItemObjectives, questNames]);
+  // What started quests still need (quest items and ordinary ones): the filter, the "Needed for quests"
+  // rule, labels on the map, in the list and details.
+  const needs = useMemo(() => readQuestNeeds(unfiltered.quests), [unfiltered.quests]);
+  const questLabels = useMemo(() => questItemLabels(needs), [needs]);
+  const questNeeds = needs?.items ?? NO_NEEDS;
   const filterQuest = lootPrefs.questItems !== "all";
   const state: RadarState = useMemo(() => {
-    const loot = withoutUnneededQuestItems(deduped, filterQuest ? neededQuest : null, knownQuest);
+    const loot = withoutUnneededQuestItems(deduped, filterQuest ? needs : null);
     return loot === unfiltered.loot ? unfiltered : { ...unfiltered, loot };
-  }, [unfiltered, deduped, filterQuest, neededQuest, knownQuest]);
+  }, [unfiltered, deduped, filterQuest, needs]);
   const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
-  const questInfo = !questTasks
-    ? `no quest data (${questDataStatus.state}): all shown`
-    : !neededQuest
-      ? "quests unknown: all shown"
-      : `${plural(neededQuest.started, "quest")} started, ${plural(neededQuest.items.size, "item")} needed` +
-        (neededQuest.complete ? "" : " (some quests unknown)");
+  const questInfo = !needs
+    ? "quests unknown: all shown"
+    : !needs.complete
+      ? `${plural(needs.started, "quest")} started, objectives unknown: all shown`
+      : `${plural(needs.started, "quest")} started, ${plural(needs.items.size, "item")} needed`;
 
   const openRecording = (info: RecordingInfo) => {
     if (review?.info.name === info.name) return setUi((u) => ({ ...u, raidsLevel: "timeline" }));
@@ -433,7 +433,6 @@ export function App() {
             pickOutput={pickOutput()}
             onClearPicks={() => setDebugPicks([])}
             quests={questDebugReport({
-              data: questData,
               quests: unfiltered.quests,
               loot: deduped,
               filterOn: filterQuest,

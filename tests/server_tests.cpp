@@ -210,6 +210,27 @@ TEST_CASE("protocol encoding: quests") {
     CHECK(contains(q, R"("done":["c1","c2"])"));
     CHECK(contains(q, R"("id":"q2")"));
     CHECK(contains(q, R"("done":null)"));
+    CHECK(contains(q, R"("objectives":null)"));  // no template
+    CHECK_FALSE(contains(q, R"("kind")"));
+
+    snap.quests.push_back({.id = "q3", .status = eft::kQuestStarted, .completedConditions = std::vector<std::string>{},
+                           .name = "Tour", .traderId = "t1", .kind = eft::QuestKind::Story, .hidden = true,
+                           .objectives = std::vector<eft::QuestObjective>{
+                               {.id = "o1", .type = eft::QuestObjective::Type::Handover, .items = {"a", "b"}, .count = 3,
+                                .foundInRaid = true, .progress = 1, .text = "Hand over the items"},
+                               {.id = "o2", .type = eft::QuestObjective::Type::Plant, .items = {"c"}}}});
+    const auto t = server::encodeQuests(snap);
+    CHECK(contains(t, R"("name":"Tour")"));
+    CHECK(contains(t, R"("trader":"t1")"));
+    CHECK(contains(t, R"("kind":"story")"));
+    CHECK(contains(t, R"("hidden":true)"));
+    CHECK(contains(t, R"("type":"handover")"));
+    CHECK(contains(t, R"("items":["a","b"])"));
+    CHECK(contains(t, R"("count":3)"));
+    CHECK(contains(t, R"("fir":true)"));
+    CHECK(contains(t, R"("progress":1)"));
+    CHECK(contains(t, R"("text":"Hand over the items")"));
+    CHECK(contains(t, R"("type":"plant")"));
 }
 
 TEST_CASE("LiveFeed broadcasts only changes") {

@@ -3,14 +3,19 @@
 // Live mode: connects to the memory source, runs the game lifecycle (attach, find raids, track
 // players) and streams the state to the web frontend.
 // Offline mode: serves the frontend and past raid recordings, without any memory source.
+//
+//   mode        --device  server  recording
+//   live        yes       yes     yes (--no-record: off)
+//   live        yes       no (--no-server)  yes
+//   offline     no        yes     no
+//
+// Checking the read chain and attaching is radar-diagnose's job (tools/diagnose).
 
-#include "app/Diagnose.hpp"
 #include "app/Options.hpp"
-#include "app/PlayerText.hpp"
+#include "game/eft/model/PlayerText.hpp"
 #include "core/log/Log.hpp"
 #include "core/mem/Target.hpp"
 #include "core/mem/VmmBackend.hpp"
-#include "game/eft/BuildCheck.hpp"
 #include "game/eft/Lifecycle.hpp"
 #include "game/eft/Names.hpp"
 #include "game/eft/model/WorldState.hpp"
@@ -44,27 +49,6 @@ namespace {
 std::atomic<bool> gStop{false};
 void onSignal(int) { gStop.store(true); }
 
-// Connectivity check: wait for the attach, print module info and the build check.
-int runOnce(radar::mem::Target& target, std::optional<int> timeoutSeconds) {
-    using namespace radar;
-    const auto start = std::chrono::steady_clock::now();
-    while (!gStop.load()) {
-        if (target.poll() == mem::Target::State::Attached) {
-            log::info("attached to {} (pid {})", target.processName(), target.pid().value_or(0));
-            for (const auto& [name, info] : target.modules())
-                log::info("  {:<20} base {:#014x} size {:#x}", name, info.base, info.size);
-            eft::logBuildCheck(eft::checkBuild(target));
-            return 0;
-        }
-        if (timeoutSeconds && std::chrono::steady_clock::now() - start > std::chrono::seconds(*timeoutSeconds)) {
-            log::error("not attached within {} s (state: {})", *timeoutSeconds, mem::stateName(target.state()));
-            return 1;
-        }
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-    return 0;
-}
-
 // Logs a player summary (the local player at info level, others at debug level).
 void logPlayerSummary(const radar::eft::PlayersSnapshot& snap) {
     using namespace radar;
@@ -78,7 +62,7 @@ void logPlayerSummary(const radar::eft::PlayersSnapshot& snap) {
     for (const auto& p : snap.players) {
         if (!p.position) continue;
         const auto line = std::format("  {}{}: ({:.1f}, {:.1f}, {:.1f}) yaw {:.0f} pitch {:.0f}",
-                                      app::describePlayer(p), p.absent ? " absent" : "", p.position->x, p.position->y,
+                                      eft::describePlayer(p), p.absent ? " absent" : "", p.position->x, p.position->y,
                                       p.position->z, p.yaw, p.pitch);
         if (p.local) log::info("{}", line);
         else log::debug("{}", line);
@@ -104,7 +88,7 @@ int main(int argc, char** argv) {
 
     server::MessageHub hub;
     std::unique_ptr<server::RaidRecorder> recorder;
-    if (!options->offline && !options->noRecord && !options->once && !options->diagnose) {
+    if (!options->offline && !options->noRecord) {
         recorder = std::make_unique<server::RaidRecorder>(
             server::RaidRecorder::Config{.dir = options->server.recordingsRoot, .keep = options->keepRecordings});
         log::info("recording raids to {}", options->server.recordingsRoot.string());
@@ -113,7 +97,7 @@ int main(int argc, char** argv) {
     // The overlay's configuration, as the frontend last sent it; only the overlay reads it.
     sched::Published<overlay::Config> overlayConfig;
     std::unique_ptr<server::Server> httpServer;
-    if (!options->noServer && !options->once && !options->diagnose) {
+    if (!options->noServer) {
         server::Server::OverlaySink overlaySink;
         if (options->overlay) overlaySink = [&overlayConfig](overlay::Config c) { overlayConfig.publish(std::move(c)); };
         httpServer = std::make_unique<server::Server>(options->server, hub, recorder.get(), std::move(overlaySink));
@@ -138,11 +122,6 @@ int main(int argc, char** argv) {
 
     std::vector<std::string> modules(eft::kRequiredModules.begin(), eft::kRequiredModules.end());
     mem::Target target(backend, std::string(eft::kProcessName), modules);
-
-    if (options->once) return runOnce(target, options->timeoutSeconds);
-    if (options->diagnose)
-        return app::runDiagnose(target, options->timeoutSeconds.value_or(30), stdout, options->questProbe,
-                                options->localeProbe, &gStop);
 
     eft::WorldState world;
     eft::Lifecycle lifecycle(target, [&world](std::shared_ptr<const eft::RaidSession> session) {

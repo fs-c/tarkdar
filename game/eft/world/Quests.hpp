@@ -23,7 +23,7 @@ namespace radar::eft {
 //    hand the quest in),
 //  - hand-over progress from the profile's condition counters (Profile.TaskConditionCounters, keyed
 //    by condition id).
-// Verified on SPT (2026-11-20 quest probe, app/QuestProbe.cpp).
+// Verified on SPT (2026-11-20, with a throwaway probe of the quest templates).
 class Quests final : public RaidSubsystem {
 public:
     static constexpr auto kInterval = std::chrono::seconds(2);

@@ -1,7 +1,6 @@
 add_library(radar_core STATIC
     log/Log.cpp
     mem/MemoryView.cpp
-    mem/PatternScan.cpp
     mem/Pe.cpp
     mem/ReadBatch.cpp
     mem/Target.cpp

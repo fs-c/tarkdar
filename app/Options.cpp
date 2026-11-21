@@ -27,11 +27,7 @@ void printUsage(const char* argv0) {
                  "                        or a raw memory dump file path\n"
                  "  --vmm-arg <arg>       extra argument passed to VMM (repeatable)\n"
                  "  --vmm-printf          show VMM's own output\n"
-                 "  --once                attach, print module info and exit (connectivity check)\n"
-                 "  --diagnose            check the whole read chain once (best in a raid), print a report, exit\n"
-                 "  --quest-probe <file>  with --diagnose: also dump the quests' templates and progress as JSON\n"
-                 "  --locale-probe <file> with --diagnose: also look the exfils up in the game's text table, as JSON\n"
-                 "  --timeout <sec>       with --once or --diagnose: give up if not attached within <sec> seconds\n"
+                 "                        (to check the read chain: radar-diagnose)\n"
                  "\n"
                  "Server:\n"
                  "  --listen <addr:port>  HTTP/WebSocket listen address (default 127.0.0.1:8080)\n"
@@ -46,7 +42,7 @@ void printUsage(const char* argv0) {
                  "  --no-record           don't record raids\n"
                  "  --keep-recordings <n> keep only the newest <n> recordings\n"
                  "\n"
-                 "Overlay (Wayland; configured in the frontend: Settings, Overlay):\n"
+                 "Overlay (shelved experiment; Wayland; configured in the frontend: Settings, Overlay):\n"
                  "  --overlay             draw the player's view in a transparent window over the game's picture\n"
                  "  --overlay-output <n>  the monitor to cover (Wayland output name, e.g. DP-1)\n"
                  "  --overlay-font <file> TrueType font for its labels\n"
@@ -84,28 +80,6 @@ std::optional<Options> parseOptions(int argc, char** argv, std::string& error) {
             opt.vmm.extraArgs.push_back(*v);
         } else if (arg == "--vmm-printf") {
             opt.vmm.vmmPrintf = true;
-        } else if (arg == "--once") {
-            opt.once = true;
-        } else if (arg == "--diagnose") {
-            opt.diagnose = true;
-        } else if (arg == "--quest-probe") {
-            const auto v = value();
-            if (!v) return std::nullopt;
-            opt.questProbe = *v;
-            opt.diagnose = true;
-        } else if (arg == "--locale-probe") {
-            const auto v = value();
-            if (!v) return std::nullopt;
-            opt.localeProbe = *v;
-            opt.diagnose = true;
-        } else if (arg == "--timeout") {
-            const auto v = value();
-            if (!v) return std::nullopt;
-            opt.timeoutSeconds = parsePositiveInt(*v);
-            if (!opt.timeoutSeconds) {
-                error = "--timeout: expected a positive number of seconds";
-                return std::nullopt;
-            }
         } else if (arg == "--verbose") {
             opt.verbose = true;
         } else if (arg == "--listen") {
@@ -198,10 +172,6 @@ std::optional<Options> parseOptions(int argc, char** argv, std::string& error) {
     }
     if (!opt.offline && opt.vmm.device.empty()) {
         error = "--device (or --offline) is required";
-        return std::nullopt;
-    }
-    if (opt.offline && (opt.diagnose || opt.once)) {
-        error = "--diagnose and --once need --device, not --offline";
         return std::nullopt;
     }
     if (opt.offline && opt.noServer) {

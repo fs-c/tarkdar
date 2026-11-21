@@ -76,7 +76,7 @@ public:
     void positionsTick(sched::Clock::time_point now);
     void equipmentTick(sched::Clock::time_point now);
 
-    // Registered entries that haven't built (yet), with the last failure reason. For --diagnose.
+    // Registered entries that haven't built (yet), with the last failure reason. For radar-diagnose.
     struct BuildFailureInfo {
         Address instance = 0;
         std::string className;

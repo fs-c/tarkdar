@@ -1,9 +1,6 @@
-#include "app/Diagnose.hpp"
+#include "tools/diagnose/Diagnose.hpp"
 
-#include "app/LocaleProbe.hpp"
-#include "app/PlayerText.hpp"
-#include "app/QuestProbe.hpp"
-
+#include "game/eft/model/PlayerText.hpp"
 #include "game/eft/BuildCheck.hpp"
 #include "game/eft/Game.hpp"
 #include "game/eft/Read.hpp"
@@ -26,12 +23,11 @@
 #include <atomic>
 #include <chrono>
 #include <format>
-#include <fstream>
 #include <map>
 #include <string>
 #include <thread>
 
-namespace radar::app {
+namespace radar::diagnose {
 
 namespace {
 
@@ -437,7 +433,7 @@ void checkCamera(Report& r, const std::shared_ptr<const eft::RaidSession>& sessi
         r.fail("aiming state unreadable", "Player.ProceduralWeaponAnimation, ProceduralWeaponAnimation.IsAiming");
         return;
     }
-    r.ok(std::format("aiming down sights: {} (aim through a scope while running --diagnose to check sights)",
+    r.ok(std::format("aiming down sights: {} (aim through a scope while running radar-diagnose to check sights)",
                      *aiming ? "yes" : "no"));
     const auto sights = tracker.readSights(pwa, found.opticManager);
     if (sights.empty())
@@ -563,45 +559,9 @@ void checkQuests(Report& r, const std::shared_ptr<const eft::RaidSession>& sessi
     }
 }
 
-void probeQuestTemplates(Report& r, const std::shared_ptr<const eft::RaidSession>& session, const std::filesystem::path& path) {
-    r.section("Quest probe");
-    const auto probe = probeQuests(session->game, session->start.localPlayer);
-    std::size_t from = 0;
-    for (std::size_t to; (to = probe.summary.find('\n', from)) != std::string::npos; from = to + 1)
-        r.info(probe.summary.substr(from, to - from));
-    r.info(probe.summary.substr(from));
-    std::ofstream f(path, std::ios::binary | std::ios::trunc);
-    f << probe.json;
-    if (!f) r.fail("can't write " + path.string());
-    else r.info(std::format("written to {} ({} bytes)", path.string(), probe.json.size()));
-    if (probe.ok) r.ok("quest templates read");
-    else r.fail("no quest template read", "QuestStatusData.Template / Quest._template offsets in app/QuestProbe.cpp");
-}
-
-void probeLocaleTable(Report& r, const std::shared_ptr<const eft::RaidSession>& session, const std::filesystem::path& path) {
-    r.section("Locale probe");
-    eft::WorldState world;
-    eft::Exfils exfils(session, world);
-    exfils.discover();
-    std::vector<std::string> names;
-    for (const auto& e : world.exfils.get()->exfils) names.push_back(e.name);
-    const auto probe = probeLocale(session->game, names);
-    std::size_t from = 0;
-    for (std::size_t to; (to = probe.summary.find('\n', from)) != std::string::npos; from = to + 1)
-        r.info(probe.summary.substr(from, to - from));
-    r.info(probe.summary.substr(from));
-    std::ofstream f(path, std::ios::binary | std::ios::trunc);
-    f << probe.json;
-    if (!f) r.fail("can't write " + path.string());
-    else r.info(std::format("written to {} ({} bytes)", path.string(), probe.json.size()));
-    if (probe.ok) r.ok("exfil names found in the game's text table");
-    else r.fail("no exfil name found in the game's text table", "LocalizationManager offsets in app/LocaleProbe.cpp; or the keys differ (see the dump's exitLike)");
-}
-
 }  // namespace
 
-int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out, const std::filesystem::path& questProbe,
-                const std::filesystem::path& localeProbe, const std::atomic<bool>* stop) {
+int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out, const std::atomic<bool>* stop) {
     Report r(out);
     r.section("Attach");
     const auto start = Clock::now();
@@ -644,8 +604,6 @@ int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out, const s
         checkVehicles(r, session);
         checkLoot(r, session);
         checkQuests(r, session);
-        if (!questProbe.empty()) probeQuestTemplates(r, session, questProbe);
-        if (!localeProbe.empty()) probeLocaleTable(r, session, localeProbe);
         checkCamera(r, session);
     } else {
         r.info("skipping players, exfils, explosives, vehicles, loot, quests and camera: they need a raid");
@@ -657,4 +615,4 @@ int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out, const s
     return r.failures() == 0 && raid ? 0 : 1;
 }
 
-}  // namespace radar::app
+}  // namespace radar::diagnose

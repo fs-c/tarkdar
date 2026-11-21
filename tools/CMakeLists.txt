@@ -1,11 +1,19 @@
 # Developer tools for keeping game/eft/offsets/eft.offsets.json up to date (docs/offset-tools.md).
 
-add_library(il2cpp_dump_lib STATIC il2cpp-dump/Dumper.cpp)
+add_library(il2cpp_dump_lib STATIC il2cpp-dump/Dumper.cpp il2cpp-dump/PatternScan.cpp)
 target_include_directories(il2cpp_dump_lib PUBLIC ${PROJECT_SOURCE_DIR})
 target_link_libraries(il2cpp_dump_lib PUBLIC radar_core radar_offsets PRIVATE radar_warnings)
 
 add_executable(il2cpp-dump il2cpp-dump/main.cpp)
 target_link_libraries(il2cpp-dump PRIVATE il2cpp_dump_lib radar_vmm_backend radar_eft radar_warnings)
+
+# One-shot check of the whole read chain (best run in a raid); the library is linked by the tests too.
+add_library(radar_diagnose STATIC diagnose/Diagnose.cpp)
+target_include_directories(radar_diagnose PUBLIC ${PROJECT_SOURCE_DIR})
+target_link_libraries(radar_diagnose PUBLIC radar_core radar_eft PRIVATE radar_warnings)
+
+add_executable(radar-diagnose diagnose/main.cpp)
+target_link_libraries(radar-diagnose PRIVATE radar_diagnose radar_vmm_backend radar_warnings)
 
 # Raw physical memory dumps for offline development.
 add_executable(mem-dump mem-dump/main.cpp)

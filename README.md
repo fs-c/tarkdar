@@ -23,9 +23,9 @@ cd web && npm install && npm test && npm run build
 
 Everything ends up in `build/bin/`: `radar-backend`, `vmm.so`, `leechcore.so` and
 `leechcore_device_qemu.so`.  They depend on being next to each other.  The developer tools
-(`docs/offset-tools.md`) are there too: `il2cpp-dump`, `mem-dump` and `vmm-check`.
+(`docs/offset-tools.md`) are there too: `il2cpp-dump`, `mem-dump`, `vmm-check` and `radar-diagnose` (checks the whole read chain; run it in a raid).
 
-**Overlay window** (`--overlay`, `docs/design.md`): built when the Wayland, EGL and OpenGL ES
+**Overlay window** (`--overlay`, `docs/design.md`; a shelved experiment, not being developed): built when the Wayland, EGL and OpenGL ES
 development files are found (Debian: `libwayland-dev wayland-protocols libegl-dev libgles-dev`;
 Arch: `wayland wayland-protocols mesa`). Force it with `-DRADAR_OVERLAY_WINDOW=ON` or turn it off
 with `OFF`. `build/bin/radar-overlay-demo` shows the window with a made-up scene, for checking it

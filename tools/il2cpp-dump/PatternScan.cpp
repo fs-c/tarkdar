@@ -1,4 +1,4 @@
-#include "core/mem/PatternScan.hpp"
+#include "tools/il2cpp-dump/PatternScan.hpp"
 
 #include "core/mem/Pe.hpp"
 

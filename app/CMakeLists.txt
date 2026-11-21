@@ -1,4 +1,4 @@
-add_library(radar_app STATIC Diagnose.cpp LocaleProbe.cpp Options.cpp QuestProbe.cpp)
+add_library(radar_app STATIC Options.cpp)
 target_link_libraries(radar_app PUBLIC radar_core radar_vmm_backend radar_eft radar_server radar_overlay PRIVATE crow radar_warnings)
 if(TARGET radar_overlay_window)
     target_link_libraries(radar_app PUBLIC radar_overlay_window)

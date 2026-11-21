@@ -16,8 +16,8 @@
 namespace radar::eft {
 
 // Where a joint comes from: its index in the skeleton's bone list, and the end of the bone's
-// GameObject name (e.g. "Base HumanLCalf" ends in "LCalf"). Only --diagnose checks the names; the
-// tracking reads by index alone. Verified with --diagnose (2026-11-12, local and observed players):
+// GameObject name (e.g. "Base HumanLCalf" ends in "LCalf"). Only radar-diagnose checks the names; the
+// tracking reads by index alone. Verified with radar-diagnose (2026-11-12, local and observed players):
 // bone 0 is the "Player" root object, at floor level.
 struct JointSource {
     std::size_t bone;
@@ -79,10 +79,10 @@ inline constexpr float kMaxJointReach = 3.0f;
                                                    math::Vec3 position);
 
 // Why relativeJoints rejects these poses (Joint order), e.g. "joint 6 (Head) is 3.4 m from Base"; empty if
-// it doesn't. For --diagnose.
+// it doesn't. For radar-diagnose.
 [[nodiscard]] std::string jointProblem(std::span<const std::optional<unity::Pose>> poses);
 
-// One entry of a skeleton's bone list, for --diagnose.
+// One entry of a skeleton's bone list, for radar-diagnose.
 struct BoneInfo {
     std::size_t index = 0;
     std::string name;                   // the bone's GameObject name; empty if unreadable

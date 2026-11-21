@@ -107,7 +107,7 @@ the count of each object type (`typeCounts`). Scenes do not reference NavMesh da
   camera, same geometry: switching costs one frame.
 - **Map → Map colours**: colour schemes and sliders for the colour grade (below), live.
 - Markers (players, loot, exfils, explosives, trails, labels) are drawn on a canvas over the map
-  through the map's camera (`web/src/projector.ts`, `web/src/render.ts`). They show through
+  through the map's camera (`web/src/draw/projector.ts`, `web/src/draw/render.ts`). They show through
   buildings.
 - **The map is rendered only when its camera or a setting changes.** Marker updates redraw the
   overlay only; while following, the map is re-rendered at most 30 times a second. A still camera

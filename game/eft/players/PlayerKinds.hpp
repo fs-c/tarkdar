@@ -34,7 +34,7 @@ struct PlayerLayout {
 };
 
 // Classifies the entry and resolves its layout. On failure, the error names the step that failed
-// (for logs and --diagnose).
+// (for logs and radar-diagnose).
 //  - isLocal (the world's main player) → Local, read with the full Player layout;
 //  - class in kClientPlayerClasses, or derived from kPlayerBaseClass → Client;
 //  - anything else → Observed.

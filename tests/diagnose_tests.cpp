@@ -1,6 +1,6 @@
 #include "FakeWorld.hpp"
 
-#include "app/Diagnose.hpp"
+#include "tools/diagnose/Diagnose.hpp"
 
 #include <doctest/doctest.h>
 
@@ -14,7 +14,7 @@ namespace {
 std::string runToString(mem::Target& target) {
     std::FILE* f = std::tmpfile();
     REQUIRE(f);
-    app::runDiagnose(target, 1, f);
+    diagnose::runDiagnose(target, 1, f);
     std::rewind(f);
     std::string out;
     char buf[4096];

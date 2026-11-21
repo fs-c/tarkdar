@@ -20,7 +20,7 @@ which file does what) lives in the code and its comments.
 web frontend (TS)         maps, markers, filters, item/quest names and prices, raid history, settings
       │  WebSocket (JSON), HTTP (static files, maps, recordings)
 server/                   state stream, raid recordings
-overlay/                  the player's view in a window over the game's picture (opt-in: --overlay)
+overlay/                  shelved experiment: the player's view in a window over the game's picture
 game/eft/                 everything EFT-specific: names, offsets, raid lifecycle, subsystems
 core/unity, core/il2cpp   Unity engine structures; IL2CPP managed objects (game-agnostic)
 core/mem                  memory backend interface, Target (attaching)
@@ -34,6 +34,11 @@ code change in `game/eft/` (or in the frontend for item/quest data), behind stab
 template/quest/condition ids. The frontend owns names, prices, categories, loot filters, quest →
 zone mapping, and everything derived from history (trails, event log, replay). Nothing in the
 backend's reading depends on item data.
+
+**The overlay is a shelved experiment.** It didn't work out well enough in practice and is not
+being developed; the code stays (opt-in with `--overlay`, still built and tested), but don't build
+on it, and expect rough edges: the window's scheduling logic has no tests, and `Scene`/`Frames`
+have known coverage gaps. What follows describes it as it stands.
 
 **The overlay is a display client that runs inside the backend process.** `overlay/` draws the
 player's view in a transparent, click-through window over the game's picture: a Wayland
@@ -113,7 +118,7 @@ for a raid → in raid → cooldown → waiting for a raid.
 - **Body joints come from the same read.** 17 joints (`kJointSources` in
   `game/eft/players/Skeleton.hpp`) share one transform hierarchy per player, so they cost little
   more than the 3 position bones. A player gets either every joint or none. The bone indices are
-  checked by name with `--diagnose` (its Skeleton section lists every bone).
+  checked by name with `radar-diagnose --device …` (its Skeleton section lists every bone).
 - **Skeletons are their own message** (`skeletons`, whole cm relative to the position), sent just
   before the `players` of the same snapshot, so the recorder can keep fewer of them (5/s) than of
   positions. The frontend's timeline stores them per player (thinned to one per 150 ms) and draws
@@ -177,11 +182,11 @@ for a raid → in raid → cooldown → waiting for a raid.
 - **Pinned rules** are highlights kept for the current raid (stored with its key, dropped when the next
   raid starts), editable like any rule; "keep" moves one into its category for good. Pinning changes
   nothing about the look.
-- **Not rules, on purpose:** each kind's shape and what an emphasis means for it (`web/src/style.ts`),
+- **Not rules, on purpose:** each kind's shape and what an emphasis means for it (`web/src/draw/style.ts`),
   a thing's state (the dead are grey, those who left faded, an exfil's colour is its status), the local
   player, and where labels go.
 - **List filters** (per tab) hide; the map follows each tab's filter for its own kind of thing.
-- **What shows when** (`web/src/declutter.ts`): the levels of detail behind loot density and labels,
+- **What shows when** (`web/src/draw/declutter.ts`): the levels of detail behind loot density and labels,
   and in which order labels claim screen space (one placement pass for all labels, `render.ts`).
 
 ## Offsets

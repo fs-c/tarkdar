@@ -6,7 +6,6 @@
 #include "game/eft/world/Quests.hpp"
 #include "game/eft/world/Vehicles.hpp"
 #include "game/eft/players/Players.hpp"
-#include "app/QuestProbe.hpp"
 
 #include <doctest/doctest.h>
 
@@ -555,76 +554,6 @@ TEST_CASE("Loot: battle-pass info documents are ordinary items despite the quest
     REQUIRE(snap->loot.size() == 2);
     for (const auto& l : snap->loot)
         CHECK(l.kind == (l.templateId == "questtpl" ? eft::LootEntry::Kind::QuestItem : eft::LootEntry::Kind::Item));
-}
-
-TEST_CASE("Quest probe: templates, item conditions and condition counters") {
-    QuestWorld q;
-    auto& w = q.w;
-    auto& h = q.h;
-    const Address profile = q.profile;
-    const auto putMongo = [&](Address at, std::u16string_view id) { h.put(at, MongoId{1, 2, h.managedString(id)}); };
-
-    const Address find = h.object(q.findClass, 0x100);
-    putMongo(find + 0x10, u"cond_find");
-    h.put<float>(find + 0x28, 3.0f);
-    h.put<Address>(find + 0xE0, q.strings({u"tpl_a", u"tpl_b"}));
-    h.put<bool>(find + 0xF4, true);
-
-    // ConditionCollection (a BindableList) holding a List`1 at 0x58.
-    const Address collection = h.object(h.klass("ConditionCollection", "EFT.Quests"), 0x80);
-    h.put<Address>(collection + 0x58, q.managedList({find}));
-    struct DictEntry {
-        std::int32_t hashCode, next, key;
-        Address value;
-    };
-    const Address conds = h.alloc(0x50);
-    h.put<Address>(conds + kIl2Cpp.dictEntries, h.array(std::vector<DictEntry>{{3, -1, 3, collection}}));
-    h.put<std::int32_t>(conds + kIl2Cpp.dictCount, 1);
-
-    const Address tmpl = h.object(h.klass("QuestTemplate", "EFT.Quests"), 0x140);
-    h.put<Address>(tmpl + 0x10, h.managedString(u"quest_story"));
-    h.put<Address>(tmpl + 0x28, h.managedString(u"trader_x"));
-    h.put<std::int32_t>(tmpl + 0x40, 3);  // Completion
-    h.put<Address>(tmpl + 0x68, conds);
-    h.put<bool>(tmpl + 0x128, true);  // IsMainQuest
-
-    const Address data = h.alloc(0x48);
-    h.put<Address>(data + off::QuestsData::Id, h.managedString(u"quest_story"));
-    h.put<std::int32_t>(data + off::QuestsData::Status, eft::kQuestStarted);
-    h.put<Address>(data + 0x38, tmpl);
-    const Address noTemplate = h.alloc(0x48);
-    h.put<Address>(noTemplate + off::QuestsData::Id, h.managedString(u"quest_bare"));
-    h.put<std::int32_t>(noTemplate + off::QuestsData::Status, eft::kQuestStarted);
-    h.put<Address>(profile + off::Profile::QuestsData, h.list(std::vector<Address>{data, noTemplate}));
-
-    // Profile.TaskConditionCounters: Dictionary<MongoID, TaskConditionCounter>.
-    const Address counter = h.object(h.klass("TaskConditionCounter", "EFT.Quests"), 0x50);
-    putMongo(counter + 0x18, u"counter_1");
-    h.put<Address>(counter + 0x38, h.managedString(u"quest_story"));
-    h.put<std::int32_t>(counter + 0x40, 2);
-    h.put<Address>(counter + 0x48, find);
-    q.putCounters(counter, 0);
-
-    const auto session = w.makeSession(5);
-    const auto r = app::probeQuests(session->game, w.localPlayer);
-    INFO(r.json);
-    INFO(r.summary);
-    CHECK(r.ok);
-    const auto has = [&](std::string_view part) { return r.json.find(part) != std::string::npos; };
-    CHECK(has(R"("isMainQuest":true)"));
-    CHECK(has(R"("traderId":"trader_x")"));
-    CHECK(has(R"x("questType":"Completion (3)")x"));
-    CHECK(has(R"x("AvailableForFinish (3)")x"));
-    CHECK(has(R"("class":"EFT.Quests.ConditionFindItem")"));
-    CHECK(has(R"("id":"cond_find")"));
-    CHECK(has(R"("target":["tpl_a","tpl_b"])"));
-    CHECK(has(R"("onlyFoundInRaid":true)"));
-    CHECK(has(R"("conditionId":"cond_find")"));
-    CHECK(has(R"("value":2)"));
-    CHECK(has(R"("template":null)"));  // quest_bare
-    CHECK(r.summary.find("2 quests in progress") != std::string::npos);
-    CHECK(r.summary.find("1 with a template: 1 main/story") != std::string::npos);
-    CHECK(r.summary.find("1 condition counters") != std::string::npos);
 }
 
 TEST_CASE("Quests: templates give objectives, names, kinds and hand-over progress") {

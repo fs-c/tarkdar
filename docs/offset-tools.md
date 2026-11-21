@@ -24,7 +24,7 @@ sudo ./build/bin/il2cpp-dump --device "qemu://hugepage-pid=$(pgrep -f 'guest=<vm
 python3 tools/update-offsets.py spt-dump.json --dry-run
 python3 tools/update-offsets.py spt-dump.json
 
-# 3. Rebuild (the offsets are compiled in) and check the result with radar-backend.
+# 3. Rebuild (the offsets are compiled in) and check the result with `radar-diagnose --device …` (in a raid).
 cmake --build build
 ```
 
@@ -55,8 +55,6 @@ them); unvalidated ones are reported but not applied unless `--accept-unvalidate
     "allCameras": { "rva": "0x19F3080", "validated": false, "note": "not validated (…)" }
   },
   "staticFieldsOffset": "0xB8",           // Il2CppClass::StaticFields, as the dumper assumes it
-  "metadata": { "base": "0x2B3…", "version": 29, "typeDefinitionSize": "0x58", "fieldStartOffset": "0x20",
-                "literalFields": 41234, "literalValues": 41230 },   // or null, see notes
   "typeCount": 5008,                      // entries in the type-info table
   "notes": [ "type-info table: signature initStore matched 1 time(s)", … ],
   "classes": [                            // sorted by typeIndex
@@ -68,7 +66,7 @@ them); unvalidated ones are reported but not applied unless `--accept-unvalidate
         { "name": "<Profile>k__BackingField", "type": "EFT.Profile", "offset": 2496, "offsetHex": "0x9C0",
           "isStatic": false, "isLiteral": false, "declaringClass": "EFT.Player" },
         { "name": "bossBoar", "type": "EFT.WildSpawnType", "offset": 0, "offsetHex": "0x0",
-          "isStatic": true, "isLiteral": true, "declaringClass": "EFT.WildSpawnType", "value": 32 } ] } ]
+          "isStatic": true, "isLiteral": true, "declaringClass": "EFT.WildSpawnType" } ] } ]
 }
 ```
 
@@ -79,18 +77,12 @@ them); unvalidated ones are reported but not applied unless `--accept-unvalidate
 | `fields` | The class's **own** fields only; inherited fields are found by following `parent`. |
 | `offset` | Instance fields: from the object start, including the 16-byte object header. Static fields: into the class's static field block. `-1`: thread-static. Literals (`isLiteral`) have no storage. |
 | `type` | Best effort; don't parse it strictly. |
-| `value` | Literals only, when found: the constant (enum member value, `const` number, bool or string). Enum members are written as their underlying integer. |
-| `metadata` | Where the global metadata (`global-metadata.dat` as loaded) was found, which literal values come from; `null` if it wasn't (the `notes` say why). |
 | `classPtr` | Address of the class's `Il2CppClass` in the dumped process (session-specific). |
 | `parentTypeIndex` | Set when the parent is in the table. Generic instances (e.g. ``List`1``) aren't; then only `parent` is set. |
 
-**Literal values** come from the runtime's copy of the global metadata, found without knowing its
-struct layouts: the classes' type-definition pointers form one array (its stride is the common
-spacing); the header sits page-aligned below it (sanity `0xFAB11BAF`, its `typeDefinitions` offset at
-`0xA0` pointing back at the array); `Il2CppTypeDefinition.fieldStart` is the int32 that grows by each
-class's `field_count` from one type to the next; the header's `fieldDefaultValues` (`0x40`) and
-default-value data (`0x48`) sections then give each literal's encoded value (32-bit integers and
-string lengths compressed from metadata v29 on). The header offsets assume metadata v24–v31.
+**Literals** (`isLiteral`: consts and enum members) have no storage, and the dump has no values for
+them; the entries in `eft.offsets.json`'s `literals[]` are maintained by hand. Older dumps that still
+carry `metadata` and per-field `value` are fine: `update-offsets.py` ignores both.
 
 Pointers are session-specific; everything else should be identical between two dumps of the same
 build.

@@ -1,6 +1,6 @@
 # Backend ↔ frontend protocol
 
-Version **1** (`server/Protocol.hpp` `kProtocolVersion`, `web/src/protocol.ts` `PROTOCOL_VERSION`).
+Version **1** (`server/Protocol.hpp` `kProtocolVersion`, `web/src/model/protocol.ts` `PROTOCOL_VERSION`).
 Bump both when a change isn't backwards compatible.
 
 ## Transport
@@ -76,9 +76,9 @@ changes, at most about 30 times per second.
 - **`voice`:** observed players only (omitted otherwise): the voice preset, which names bot roles and
   bosses.
 - **`role`:** the raw `EFT.WildSpawnType` value (e.g. 1 = assault, 6 = bossKilla); omitted if unread.
-  Mapping values to names is the frontend's job (`web/src/roles.ts`). Full players (`local`,
+  Mapping values to names is the frontend's job (`web/src/model/roles.ts`). Full players (`local`,
   `client`): `Profile.Info.Settings.Role`. Observed players: `ObservedPlayerView.AIData` →
-  `BotHostilityData._role`, which is **unverified** (check with `--diagnose` in a raid) and may only
+  `BotHostilityData._role`, which is **unverified** (check with `radar-diagnose` in a raid) and may only
   appear a few seconds after the player does. Only meaningful for AI: humans carry a default (our own
   PMC reads 1, assault).
 - **`nickname`:** the player's nickname (bosses carry their name); omitted if empty.
@@ -176,7 +176,7 @@ The local player's quests in progress (`Profile.QuestsData`); `null` until they'
   "optic": { "vp": [ 16 numbers ], "pos": [ 120.5, 3.1, -88.0 ], "fov": 6.2, "aspect": 1 } }
 ```
 The local player's view, for clients that render what the player sees. Experimental: the offsets
-behind it are unverified on SPT (`--diagnose`, section Camera).
+behind it are unverified on SPT (`radar-diagnose`, section Camera).
 - **`fps`:** the first-person camera, `null` while not found or unreadable. **`vp`** is its
   view-projection matrix (Unity `Matrix4x4`, column-major: element `row + 4 × column`): a world point
   `(x, y, z, 1)` times it gives clip coordinates `(cx, cy, cz, w)`; the point is in front of the camera

@@ -2,6 +2,9 @@
 
 #include "core/mem/MemoryBackend.hpp"
 
+#include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -71,7 +74,25 @@ public:
     // Guest Windows version as detected by VMM; nullopt if unknown.
     [[nodiscard]] std::optional<WindowsVersion> windowsVersion();
 
+    // Timing of read() and readMany() calls (one readMany is one call, however many requests).
+    struct ReadStats {
+        std::uint64_t calls = 0;
+        std::uint64_t requests = 0;  // read(): 1; readMany(): its requests
+        std::uint64_t bytes = 0;     // requested
+        std::uint64_t slowCalls = 0; // longer than kSlowRead
+        std::chrono::nanoseconds total{}, longest{};
+    };
+    static constexpr auto kSlowRead = std::chrono::milliseconds(20);
+    // Since the last call (or open()); resets the counters. Safe from any thread.
+    ReadStats takeReadStats();
+
 private:
+    void recordRead(std::chrono::steady_clock::time_point begin, std::uint64_t requests, std::uint64_t bytes);
+
+    struct AtomicStats {
+        std::atomic<std::uint64_t> calls{0}, requests{0}, bytes{0}, slowCalls{0}, totalNs{0}, longestNs{0};
+    };
+    AtomicStats stats_;
     VmmConfig config_;
     tdVMM_HANDLE* handle_ = nullptr;
 };

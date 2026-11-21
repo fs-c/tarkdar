@@ -166,6 +166,9 @@ bool Server::start() {
     auto& app = impl_->app;
     app.loglevel(crow::LogLevel::Warning);
     app.bindaddr(impl_->config.bindAddress).port(impl_->config.port).concurrency(2).signal_clear();
+    // Messages are small and sent in bursts (skeletons, players, camera back to back): without this,
+    // Nagle holds each burst's tail until the client's (delayed) ACK, up to ~40 ms.
+    app.websocket_tcp_nodelay();
     impl_->running = app.run_async();
     if (app.wait_for_server_start(std::chrono::milliseconds(3000)) != std::cv_status::no_timeout) {
         log::error("server: failed to start on {}:{}", impl_->config.bindAddress, impl_->config.port);

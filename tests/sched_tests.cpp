@@ -41,3 +41,26 @@ TEST_CASE("TaskRunner survives throwing tasks") {
     runner.step(Clock::now());
     CHECK(ran == 1);
 }
+
+TEST_CASE("TaskRunner times its tasks") {
+    using std::chrono::milliseconds;
+    sched::TaskRunner runner("test");
+    runner.add("a", {.interval = milliseconds(10), .runOnStart = true}, [] {});
+    runner.add("idle", {.interval = milliseconds(1000)}, [] {});
+    const auto t0 = Clock::now();
+    runner.step(t0);
+    runner.step(t0 + milliseconds(10));
+
+    auto stats = runner.takeStats();
+    REQUIRE(stats.size() == 2);
+    CHECK(stats[0].name == "a");
+    CHECK(stats[0].runs == 2);
+    CHECK(stats[0].stalls == 0);
+    CHECK(stats[0].longest <= stats[0].total);
+    CHECK(stats[1].runs == 0);
+    // Taking them resets the counters.
+    CHECK(runner.takeStats()[0].runs == 0);
+
+    CHECK(sched::TaskRunner::stallThreshold(milliseconds(10)) == milliseconds(100));
+    CHECK(sched::TaskRunner::stallThreshold(milliseconds(250)) == milliseconds(750));
+}

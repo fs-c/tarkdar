@@ -4,6 +4,7 @@
 // top (the timeline drops the ones the recording already had) and swaps it in.
 
 import type { Message, RecordedMessage, RecordingInfo } from "../model/protocol";
+import { notifyOnFrame } from "./frame";
 import { Timeline } from "./timeline";
 
 export interface Backfill {
@@ -64,10 +65,15 @@ export class LiveTimeline {
     if (this.timeline.ingest(msg) && msg.type !== "skeletons") this.changed();
   }
 
+  /** The version changes right away; listeners are told once per frame (frame.ts). */
   private changed(): void {
     this.version++;
-    for (const l of this.listeners) l();
+    notifyOnFrame(this.notify);
   }
+
+  private readonly notify = (): void => {
+    for (const l of this.listeners) l();
+  };
 
   private stop(): void {
     this.abort?.abort();

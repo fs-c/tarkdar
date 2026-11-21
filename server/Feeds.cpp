@@ -3,6 +3,10 @@
 #include "core/sched/TaskRunner.hpp"
 #include "server/Protocol.hpp"
 
+#include "core/log/Log.hpp"
+
+#include <algorithm>
+#include <format>
 #include <memory>
 #include <string>
 
@@ -25,24 +29,32 @@ std::shared_ptr<const Snapshot> takeChange(const sched::Published<Snapshot>& sou
     return current;
 }
 
-// A changed snapshot that the recorder keeps as it is: encode once, broadcast, record.
+}  // namespace
+
+void LiveFeed::send(const std::string& type, const std::string& message) {
+    hub_.broadcast(type, message);
+    auto& s = typeStats_[type];
+    ++s.messages;
+    s.bytes += message.size();
+    s.largest = std::max<std::uint64_t>(s.largest, message.size());
+}
+
 template <class Snapshot>
-int forwardPlain(MessageHub& hub, RaidRecorder* recorder, const std::string& type,
-                 const std::shared_ptr<const Snapshot>& snapshot, std::string (*encode)(const Snapshot&)) {
+int LiveFeed::forwardPlain(const std::string& type, const std::shared_ptr<const Snapshot>& snapshot,
+                           std::string (*encode)(const Snapshot&)) {
     if (!snapshot) return 0;
     const std::string message = encode(*snapshot);
-    hub.broadcast(type, message);
-    if (recorder) recorder->onMessage(type, snapshot->raidId, message);
+    send(type, message);
+    if (sources_.recorder) sources_.recorder->onMessage(type, snapshot->raidId, message);
     return 1;
 }
-}  // namespace
 
 int LiveFeed::pollStatus() {
     if (!sources_.status) return 0;
     auto status = sources_.status();
     if (!status || (lastStatus_ && sameStatus(*status, *lastStatus_))) return 0;
     const auto message = encodeStatus(*status);
-    hub_.broadcast("status", message);
+    send("status", message);
     if (sources_.recorder) sources_.recorder->onStatus(*status, message);
     lastStatus_ = std::move(status);
     return 1;
@@ -57,31 +69,31 @@ int LiveFeed::pollWorld() {
     // them than of the players), sent first: a client redraws on players, with the matching skeletons.
     if (const auto players = takeChange(w.players, lastSkeletonsFrom_)) {
         if (const auto message = encodeSkeletons(*players)) {
-            hub_.broadcast("skeletons", *message);
+            send("skeletons", *message);
             if (recorder) recorder->onSkeletons(players->raidId, *message);
             ++sent;
         }
     }
     if (auto players = takeChange(w.players, lastPlayers_)) {
         const auto message = encodePlayers(*players);
-        hub_.broadcast("players", message);
+        send("players", message);
         if (recorder) recorder->onPlayers(std::move(players), message);
         ++sent;
     }
-    sent += forwardPlain(hub_, recorder, "exfils", takeChange(w.exfils, lastExfils_), encodeExfils);
-    sent += forwardPlain(hub_, recorder, "explosives", takeChange(w.explosives, lastExplosives_), encodeExplosives);
-    sent += forwardPlain(hub_, recorder, "vehicles", takeChange(w.vehicles, lastVehicles_), encodeVehicles);
+    sent += forwardPlain("exfils", takeChange(w.exfils, lastExfils_), encodeExfils);
+    sent += forwardPlain("explosives", takeChange(w.explosives, lastExplosives_), encodeExplosives);
+    sent += forwardPlain("vehicles", takeChange(w.vehicles, lastVehicles_), encodeVehicles);
     if (auto loot = takeChange(w.loot, lastLoot_)) {
         const auto message = encodeLoot(*loot);
-        hub_.broadcast("loot", message);
+        send("loot", message);
         if (recorder) recorder->onLoot(std::move(loot), message);
         ++sent;
     }
-    sent += forwardPlain(hub_, recorder, "equipment", takeChange(w.equipment, lastEquipment_), encodeEquipment);
-    sent += forwardPlain(hub_, recorder, "quests", takeChange(w.quests, lastQuests_), encodeQuests);
+    sent += forwardPlain("equipment", takeChange(w.equipment, lastEquipment_), encodeEquipment);
+    sent += forwardPlain("quests", takeChange(w.quests, lastQuests_), encodeQuests);
     if (const auto camera = takeChange(w.camera, lastCamera_)) {
         const auto message = encodeCamera(*camera);
-        hub_.broadcast("camera", message);
+        send("camera", message);
         if (recorder) recorder->onCamera(camera->raidId, message);
         ++sent;
     }
@@ -90,9 +102,32 @@ int LiveFeed::pollWorld() {
 
 int LiveFeed::poll() { return pollStatus() + (sources_.world ? pollWorld() : 0); }
 
+void LiveFeed::report(std::chrono::steady_clock::duration window) {
+    using ms = std::chrono::duration<double, std::milli>;
+    const double seconds = std::chrono::duration<double>(window).count();
+    std::string lines;
+    for (const auto& [type, s] : typeStats_)
+        lines += std::format("\n  {}: {:.1f}/s, {:.1f} KiB/s, largest {:.1f} KiB", type,
+                             static_cast<double>(s.messages) / seconds, static_cast<double>(s.bytes) / 1024.0 / seconds,
+                             static_cast<double>(s.largest) / 1024.0);
+    if (!lines.empty())
+        log::debug("feed: slowest poll {:.1f} ms over {:.0f} s:{}", ms(longestPoll_).count(), seconds, lines);
+    typeStats_.clear();
+    longestPoll_ = {};
+}
+
 void LiveFeed::run(std::stop_token stop) {
+    using Clock = std::chrono::steady_clock;
+    auto lastReport = Clock::now();
     while (!stop.stop_requested()) {
+        const auto begin = Clock::now();
         poll();
+        const auto end = Clock::now();
+        longestPoll_ = std::max(longestPoll_, end - begin);
+        if (end - lastReport >= kReportInterval) {
+            report(end - lastReport);
+            lastReport = end;
+        }
         if (!sched::sleepFor(stop, period_)) break;
     }
 }

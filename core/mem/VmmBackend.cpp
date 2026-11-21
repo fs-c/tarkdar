@@ -106,14 +106,41 @@ bool VmmBackend::processAlive(Pid pid) {
     return info.dwState == 0;
 }
 
+void VmmBackend::recordRead(std::chrono::steady_clock::time_point begin, std::uint64_t requests,
+                            std::uint64_t bytes) {
+    const auto ns = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - begin).count());
+    constexpr auto relaxed = std::memory_order_relaxed;
+    stats_.calls.fetch_add(1, relaxed);
+    stats_.requests.fetch_add(requests, relaxed);
+    stats_.bytes.fetch_add(bytes, relaxed);
+    stats_.totalNs.fetch_add(ns, relaxed);
+    if (ns > static_cast<std::uint64_t>(std::chrono::nanoseconds(kSlowRead).count())) stats_.slowCalls.fetch_add(1, relaxed);
+    auto longest = stats_.longestNs.load(relaxed);
+    while (ns > longest && !stats_.longestNs.compare_exchange_weak(longest, ns, relaxed)) {
+    }
+}
+
+VmmBackend::ReadStats VmmBackend::takeReadStats() {
+    constexpr auto relaxed = std::memory_order_relaxed;
+    return ReadStats{.calls = stats_.calls.exchange(0, relaxed),
+                     .requests = stats_.requests.exchange(0, relaxed),
+                     .bytes = stats_.bytes.exchange(0, relaxed),
+                     .slowCalls = stats_.slowCalls.exchange(0, relaxed),
+                     .total = std::chrono::nanoseconds(stats_.totalNs.exchange(0, relaxed)),
+                     .longest = std::chrono::nanoseconds(stats_.longestNs.exchange(0, relaxed))};
+}
+
 bool VmmBackend::read(Pid pid, Address va, std::span<std::byte> dst, Freshness freshness) {
     if (dst.empty()) return false;
     std::memset(dst.data(), 0, dst.size());
     if (!handle_ || (va == 0 && pid != kPhysicalMemory) || dst.size() > kMaxReadSize) return false;
+    const auto begin = std::chrono::steady_clock::now();
     DWORD bytesRead = 0;
     const BOOL ok = VMMDLL_MemReadEx(handle_, pid, va, reinterpret_cast<PBYTE>(dst.data()),
                                      static_cast<DWORD>(dst.size()), &bytesRead,
                                      vmmFlags(freshness));
+    recordRead(begin, 1, dst.size());
     return ok && bytesRead == dst.size();
 }
 
@@ -124,6 +151,9 @@ void VmmBackend::readMany(Pid pid, std::span<ReadRequest> requests, Freshness fr
     }
     if (!handle_ || requests.empty()) return;
 
+    const auto begin = std::chrono::steady_clock::now();
+    std::uint64_t bytes = 0;
+    for (const auto& r : requests) bytes += r.size;
     VMMDLL_SCATTER_HANDLE scatter =
         VMMDLL_Scatter_Initialize(handle_, pid, static_cast<DWORD>(vmmFlags(freshness)));
     if (!scatter) return;
@@ -145,6 +175,7 @@ void VmmBackend::readMany(Pid pid, std::span<ReadRequest> requests, Freshness fr
         }
     }
     VMMDLL_Scatter_CloseHandle(scatter);
+    recordRead(begin, requests.size(), bytes);
 }
 
 std::vector<VmmBackend::PhysicalRange> VmmBackend::physicalMemoryMap() {

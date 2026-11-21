@@ -37,6 +37,7 @@
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <format>
 #include <cstdio>
 #include <memory>
 #include <optional>
@@ -67,6 +68,23 @@ void logPlayerSummary(const radar::eft::PlayersSnapshot& snap) {
         if (p.local) log::info("{}", line);
         else log::debug("{}", line);
     }
+}
+
+// Memory read timing (debug), with a warning when some reads took long enough to stall a tick.
+void logReadStats(const radar::mem::VmmBackend::ReadStats& s, std::chrono::steady_clock::duration window) {
+    using namespace radar;
+    if (s.calls == 0) return;
+    using ms = std::chrono::duration<double, std::milli>;
+    const double seconds = std::chrono::duration<double>(window).count();
+    const auto line = std::format("memory: {:.0f} calls/s ({:.0f} requests/s, {:.1f} MiB/s), avg {:.3f} ms, max {:.1f} ms, "
+                                  "{} over {} ms, {:.1f}% of one thread",
+                                  static_cast<double>(s.calls) / seconds, static_cast<double>(s.requests) / seconds,
+                                  static_cast<double>(s.bytes) / 1048576.0 / seconds,
+                                  ms(s.total).count() / static_cast<double>(s.calls), ms(s.longest).count(), s.slowCalls,
+                                  std::chrono::milliseconds(mem::VmmBackend::kSlowRead).count(),
+                                  100.0 * ms(s.total).count() / ms(window).count());
+    if (s.slowCalls > 0) log::warn("{}", line);
+    else log::debug("{}", line);
 }
 
 }  // namespace
@@ -156,8 +174,13 @@ int main(int argc, char** argv) {
 #endif
 
     auto lastSummary = std::chrono::steady_clock::now();
+    auto lastReadStats = lastSummary;
     while (!gStop.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if (const auto now = std::chrono::steady_clock::now(); now - lastReadStats >= std::chrono::seconds(10)) {
+            logReadStats(backend.takeReadStats(), now - lastReadStats);
+            lastReadStats = now;
+        }
         if (std::chrono::steady_clock::now() - lastSummary >= std::chrono::seconds(5)) {
             lastSummary = std::chrono::steady_clock::now();
             const auto players = world.players.get();

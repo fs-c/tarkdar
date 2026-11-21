@@ -1,5 +1,6 @@
 // WebSocket connection to the backend with automatic reconnect. Keeps the latest state as an
 // immutable snapshot (a new object on every change), so React can subscribe with useSyncExternalStore.
+// The state takes every message as it comes; listeners are told once per frame (frame.ts).
 
 import {
   type CameraData,
@@ -17,6 +18,8 @@ import {
   isSentinelPos,
   parseMessage,
 } from "../model/protocol";
+import { notifyOnFrame } from "./frame";
+import { StreamStats } from "./stats";
 
 /** The backend's WebSocket, on the host that served the page. */
 export const wsUrl = (): string => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
@@ -72,6 +75,7 @@ export class Connection {
   private running = false;
   private retryMs = 500;
   private openedAt = 0;
+  private readonly stats = new StreamStats();
 
   /** `onMessage` sees every message before the state changes (and listeners are told). */
   constructor(
@@ -102,11 +106,13 @@ export class Connection {
 
   start(): void {
     this.running = true;
+    this.stats.start();
     this.connect();
   }
 
   stop(): void {
     this.running = false;
+    this.stats.stop();
     clearTimeout(this.retryTimer);
     this.ws?.close();
     this.ws = null;
@@ -121,10 +127,13 @@ export class Connection {
       this.update({ connected: true });
     };
     ws.onmessage = (e) => {
-      const msg = parseMessage(String(e.data));
+      const start = performance.now();
+      const text = String(e.data);
+      const msg = parseMessage(text);
       if (!msg) return;
       this.onMessage?.(msg);
       this.handle(msg);
+      this.stats.message(msg.type, msg.t, text.length, performance.now() - start);
     };
     ws.onclose = () => {
       if (this.ws !== ws) return; // stopped, or replaced
@@ -142,8 +151,21 @@ export class Connection {
 
   private update(patch: Partial<RadarState>): void {
     this.state = { ...this.state, ...patch };
-    for (const l of this.listeners) l();
+    notifyOnFrame(this.notify);
   }
+
+  private readonly notify = (): void => {
+    for (const l of this.listeners) l();
+  };
+
+  private setCamera(camera: CameraData | null): void {
+    this.camera = camera;
+    notifyOnFrame(this.notifyCamera);
+  }
+
+  private readonly notifyCamera = (): void => {
+    for (const l of this.cameraListeners) l();
+  };
 
   private handle(msg: Message): void {
     switch (msg.type) {
@@ -151,10 +173,7 @@ export class Connection {
         return this.update({ protocolMismatch: msg.data.protocol !== PROTOCOL_VERSION, live: msg.data.live !== false, overlay: msg.data.overlay === true });
       case "status":
         if (msg.data.state !== "inRaid") {
-          if (this.camera) {
-            this.camera = null;
-            for (const l of this.cameraListeners) l();
-          }
+          if (this.camera) this.setCamera(null);
           const { connected, protocolMismatch, live, overlay } = this.state;
           return this.update({ ...initialRadarState(), connected, protocolMismatch, live, overlay, status: msg.data });
         }
@@ -176,8 +195,7 @@ export class Connection {
       case "camera":
         // The camera's last (empty) snapshot of a raid can come after the status that ended it.
         if (msg.raid === null || this.state.status?.state !== "inRaid") return;
-        this.camera = msg.data;
-        for (const l of this.cameraListeners) l();
+        this.setCamera(msg.data);
         return;
     }
   }

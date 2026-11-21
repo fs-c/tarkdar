@@ -1,6 +1,7 @@
 @layer base, ui;
 @layer ui {
-  .segmented { display: inline-flex; overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); }
+  /* As wide as its options: a flex column or grid cell (align/justify: stretch) doesn't widen it. */
+  .segmented { display: inline-flex; width: fit-content; max-width: 100%; overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); }
   .option {
     min-width: 38px; padding: 4px 12px; color: var(--muted); text-align: center;
     & + & { border-left: 1px solid var(--border-strong); }

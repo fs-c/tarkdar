@@ -1,3 +1,7 @@
+# EXPERIMENT, SHELVED: the overlay didn't pan out and is not being developed. It still builds and
+# its tests run so it doesn't rot unnoticed, but known issues in here are not being worked on
+# (docs/design.md, "Layers").
+#
 # The overlay (overlay/Config.hpp): frames to draw, independent of any window system.
 add_library(radar_overlay STATIC Frames.cpp Pacing.cpp Scene.cpp)
 target_link_libraries(radar_overlay PUBLIC radar_core radar_eft PRIVATE radar_warnings)

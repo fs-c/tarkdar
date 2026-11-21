@@ -39,7 +39,7 @@ inline constexpr std::string_view kConditionLeaveItemClass = "EFT.Quests.Conditi
 inline constexpr std::string_view kConditionItemClass = "EFT.Quests.ConditionItem";
 // The storyline's pseudo-trader: story chapters and their hidden steps are "its" quests.
 inline constexpr std::string_view kStoryTraderId = "67f7af56c117b6140af2a607";
-// Quest text is read in this language (QuestTemplate.Localization).
+// Quest text is read in this language (QuestTemplate.Localization). TODO(quest-locale): see Quests.cpp.
 inline constexpr std::string_view kQuestLanguage = "en";
 
 }  // namespace radar::eft

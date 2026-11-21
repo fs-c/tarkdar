@@ -99,7 +99,7 @@ void label(DrawList& out, Point at, float offset, const std::string& text, float
     out.items.emplace_back(DrawList::Text{{at.x + offset + 3, at.y - kTextSize / 2}, line, color, kTextSize});
 }
 
-// The figure's limbs, as the map draws them (web/src/render.ts).
+// The figure's limbs, as the map draws them (web/src/draw/render.ts).
 constexpr std::pair<eft::Joint, eft::Joint> kBones[] = {
     {eft::Joint::Pelvis, eft::Joint::Chest},           {eft::Joint::Chest, eft::Joint::Neck},
     {eft::Joint::Neck, eft::Joint::Head},              {eft::Joint::LeftHip, eft::Joint::RightHip},

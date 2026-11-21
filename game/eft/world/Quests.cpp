@@ -123,6 +123,11 @@ std::optional<Quests::Template> Quests::readTemplate(Address statusData, const s
         out.kind = expiration - start > kWeeklyAfterSeconds ? QuestKind::Weekly : QuestKind::Daily;
     }
 
+    // TODO(quest-locale): quest text has its own reader (readTexts: the template's per-language
+    // dictionaries, English only), while exfil names come from the game's global text table in the
+    // player's language (Locale.hpp, lookupTexts). If that table also holds "<quest id> name" and
+    // the condition ids, look them up there and drop readTexts, QuestTemplate::Localization and
+    // kQuestLanguage. Needs checking against the running game.
     if (const Address localization = readPointer(game_, t + off::QuestTemplate::Localization)) {
         const auto texts = readTexts(localization);
         if (auto n = texts.find(questId + " name"); n != texts.end()) out.name = n->second;

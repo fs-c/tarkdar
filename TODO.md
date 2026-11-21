@@ -11,3 +11,6 @@
         - both in terms of super dense code/syntax & in terms of wonky abstractions etc.
 - make frontend themeable
     - want to play around with some different colors/fonts
+- quest text from the global locale table (`TODO(quest-locale)` in `game/eft/world/Quests.cpp`)
+    - quests read their own English-only dictionaries; exfil names already use the game's text table in the player's language
+    - check in a raid whether that table has `"<quest id> name"` and the condition ids; if so, drop the separate reader

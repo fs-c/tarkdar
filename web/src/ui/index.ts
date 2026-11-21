@@ -13,6 +13,7 @@ export { Segmented, type SegmentedOption } from "./Segmented";
 export { SliderRow } from "./SliderRow";
 export { ToggleRow } from "./ToggleRow";
 export { useDismiss } from "./useDismiss";
+export { type Hotkey, useHotkeys } from "./useHotkeys";
 
 /** Class for a clickable list row; mark the selected one with data-selected. */
 export const selectableRow = selectable.selectable!;

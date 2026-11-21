@@ -13,7 +13,7 @@ import type { ItemCatalog } from "../model/items";
 import type { AnyRow } from "../list/rows";
 import type { Selection } from "../draw/pick";
 import type { WorldPos } from "../model/protocol";
-import { Button, isTyping } from "../ui";
+import { Button, useHotkeys } from "../ui";
 import s from "./Highlights.module.css";
 
 interface Props {
@@ -60,15 +60,17 @@ export function Highlights({ highlights, setHighlights, matched, rows, catalog, 
   }, [open]);
 
   // "/" opens the search from anywhere (but not while typing elsewhere).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "/" || isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
-      e.preventDefault();
-      setOpen(true);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  useHotkeys([
+    {
+      key: "/",
+      repeat: true,
+      description: "Search the map",
+      handler: (e) => {
+        e.preventDefault();
+        setOpen(true);
+      },
+    },
+  ]);
 
   // A click elsewhere closes it.
   useEffect(() => {

@@ -5,16 +5,18 @@
 // (Map3D.onFrame), where following also moves the camera: a frame on screen always shows the
 // newest scene through the camera that belongs to it, and the markers are drawn once.
 
-import { ChevronDown, ChevronUp } from "lucide-react";
 import { type Ref, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
-import { isTyping } from "../ui";
 import { Map3D, type MapStats, type MapView } from "../map3d/Map3D";
 import type { MapSettings } from "../map3d/settings";
 import type { Projector } from "../draw/projector";
 import type { WorldPos } from "../model/protocol";
 import { type Scene, renderMarkers } from "../draw/render";
 import { ui } from "../draw/theme";
+import { FloorPicker } from "./FloorPicker";
+import { NorthButton } from "./NorthButton";
 import s from "./Radar.module.css";
+import { useFloorFollow } from "./useFloorFollow";
+import { useMapKeys } from "./useMapKeys";
 
 /** Turned less than this (radians) from the map's usual orientation counts as not turned. */
 const NORTH_TOLERANCE = 0.01;
@@ -59,20 +61,6 @@ interface Props {
 /** Metres of ground across the view when a map opens while following the local player. */
 const FOLLOW_SPAN = 350;
 
-/** Indoor maps: the floor shown follows the local player once they are this far (metres) above or below it. */
-const FLOOR_FOLLOW = 0.4;
-/**
- * A floor shown this long (ms) is one the player stood on, not a step on the stairs: arriving
- * within FLOOR_FOLLOW of it later shows it again at exactly that height, which the map has kept.
- */
-const FLOOR_SETTLED = 1000;
-/** Floors remembered so, the latest last. */
-const FLOOR_MEMORY = 8;
-/** ... and the buttons move it by this much. */
-const FLOOR_STEP = 1;
-
-const MOVE_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD"]);
-
 /**
  * While following, a map whose frames are not cheap (the whole scene, not tiles) is moved at most
  * this often (ms). The markers wait with it: drawn through the camera of an older scene, the one
@@ -95,12 +83,7 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
   const stale = useRef(false);
   const lastFollow = useRef(0);
   const [status, setStatus] = useState<{ progress: number | null; error: string | null }>({ progress: url ? 0 : null, error: null });
-  // Indoor maps are cut open at one floor: the local player's, or one picked by hand (a height).
-  const [interior, setInterior] = useState(false);
-  const [pickedFloor, setPickedFloor] = useState<number | null>(null);
-  const playerFloor = useRef<number | null>(null);
-  const floorSince = useRef(0);
-  const settledFloors = useRef<number[]>([]);
+  const floors = useFloorFollow(mapRef);
   // Turned away from the map's usual orientation: a button turns it back (its needle points north on screen).
   const [rotated, setRotated] = useState(false);
   const needleRef = useRef<SVGSVGElement>(null);
@@ -171,16 +154,13 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
     map.onUserTurn = () => latest.current.onTurn();
     let live = true;
     setStatus({ progress: url ? 0 : null, error: null });
-    setInterior(false);
-    setPickedFloor(null);
-    playerFloor.current = null;
-    settledFloors.current = [];
+    floors.reset();
     map.load(url, (progress) => live && setStatus({ progress, error: null }), up).then(
       () => {
         if (!live) return;
         // Following someone: start close enough to read the surroundings, not on the whole map.
         if (latest.current.follow) map.setViewSpan(FOLLOW_SPAN);
-        setInterior(map.interior);
+        floors.setInterior(map.interior);
         setStatus({ progress: null, error: null });
       },
       (e: unknown) => live && setStatus({ progress: null, error: e instanceof Error ? e.message : String(e) }),
@@ -212,93 +192,12 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
       const player = () => (latest.current.follow ? (latest.current.scene.players.find((p) => p.local && p.pos)?.pos ?? null) : null);
       map.flyTo(player, map.viewSpan() > FLY_ZOOM_ABOVE ? FOLLOW_SPAN : null);
     }
-    if (map?.loaded && interior) {
-      // Not every step of a staircase: only once they have left the floor shown.
-      const y = scene.players.find((p) => p.local && p.pos)?.pos?.[1];
-      const now = performance.now();
-      const shown = playerFloor.current;
-      const settled = settledFloors.current;
-      if (shown !== null && now - floorSince.current >= FLOOR_SETTLED && !settled.includes(shown)) {
-        settled.push(shown);
-        if (settled.length > FLOOR_MEMORY) settled.shift();
-      }
-      if (y === undefined) playerFloor.current = null;
-      else if (shown === null || Math.abs(y - shown) > FLOOR_FOLLOW) {
-        const near = settled.filter((f) => Math.abs(y - f) <= FLOOR_FOLLOW).sort((a, b) => Math.abs(y - a) - Math.abs(y - b));
-        playerFloor.current = near[0] ?? y;
-        floorSince.current = now;
-      }
-      map.setFloor(pickedFloor ?? playerFloor.current);
-    }
+    floors.follow(map, scene);
     if (map?.loaded) map.requestFrame();
     else requestDraw();
   });
 
-  /** One step up or down from the floor shown; from the whole map, down from its top. */
-  const stepFloor = (direction: 1 | -1) => {
-    const range = mapRef.current?.heights();
-    if (!range) return;
-    setPickedFloor((picked) => {
-      const from = picked ?? playerFloor.current ?? range[1];
-      return Math.min(range[1], Math.max(range[0], Math.round(from) + direction * FLOOR_STEP));
-    });
-  };
-  useEffect(() => {
-    if (!interior) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey || (e.key !== "PageUp" && e.key !== "PageDown")) return;
-      e.preventDefault();
-      stepFloor(e.key === "PageUp" ? 1 : -1);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- stepFloor only reads refs
-  }, [interior]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === "+" || e.key === "=") mapRef.current?.zoomBy(1.25);
-      else if (e.key === "-") mapRef.current?.zoomBy(0.8);
-      else if (e.key === "0") mapRef.current?.resetView();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  // WASD scheme: held keys move the view. By key position (e.code), so it works on any layout.
-  useEffect(() => {
-    if (settings.controls !== "wasd") return;
-    const held = new Set<string>();
-    let fast = false;
-    const apply = () => {
-      const axis = (plus: string, minus: string) => (held.has(plus) ? 1 : 0) - (held.has(minus) ? 1 : 0);
-      mapRef.current?.setMotion(axis("KeyD", "KeyA"), axis("KeyW", "KeyS"), fast);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      const down = e.type === "keydown";
-      fast = e.shiftKey;
-      if (MOVE_KEYS.has(e.code)) {
-        if (down && (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey)) return;
-        if (down) held.add(e.code);
-        else held.delete(e.code);
-      }
-      apply();
-    };
-    const release = () => {
-      held.clear();
-      apply();
-    };
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("keyup", onKey);
-    window.addEventListener("blur", release);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("keyup", onKey);
-      window.removeEventListener("blur", release);
-      release();
-    };
-  }, [settings.controls]);
+  useMapKeys({ mapRef, controls: settings.controls, interior: floors.interior, stepFloor: floors.stepFloor });
 
   useImperativeHandle(ref, () => ({
     centerOn: (pos) => mapRef.current?.flyTo(() => pos),
@@ -325,43 +224,17 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
       onContextMenu={(e) => e.preventDefault()}
     >
       <canvas className={s.markers} ref={overlayRef} />
-      {interior && (
-        <div className={s.floor} onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
-          <button title="Show a higher floor (Page Up)" onClick={() => stepFloor(1)}>
-            <ChevronUp size={18} />
-          </button>
-          <button
-            className={s.floorLevel}
-            disabled={pickedFloor === null}
-            title={pickedFloor === null ? "The map is cut open at your floor" : "Showing the floor at this height: click to follow your floor again"}
-            onClick={() => setPickedFloor(null)}
-          >
-            {pickedFloor === null ? "Auto" : `${pickedFloor} m`}
-          </button>
-          <button title="Show a lower floor (Page Down)" onClick={() => stepFloor(-1)}>
-            <ChevronDown size={18} />
-          </button>
-        </div>
-      )}
+      {floors.interior && <FloorPicker picked={floors.pickedFloor} onStep={floors.stepFloor} onAuto={() => floors.setPickedFloor(null)} />}
       {rotated && (
-        <button
-          className={s.north}
-          title={`Turn the map ${up ? "back to its usual orientation" : "north up"} (stops following your view direction)`}
-          onPointerDown={(e) => e.stopPropagation()}
-          onPointerUp={(e) => e.stopPropagation()}
+        <NorthButton
+          up={up}
+          heading={mapRef.current?.heading() ?? 0}
+          needleRef={needleRef}
           onClick={() => {
             latest.current.onTurn();
             mapRef.current?.turnTo(up);
           }}
-        >
-          <svg
-            ref={needleRef}
-            style={{ transform: `rotate(${-(mapRef.current?.heading() ?? 0)}rad)` }}
-            viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-            <path d="M12 2 L16 12 H8 Z" fill="var(--danger)" />
-            <path d="M12 22 L8 12 H16 Z" fill="currentColor" />
-          </svg>
-        </button>
+        />
       )}
       {status.progress !== null && <p className={s.status}>Loading the map… {Math.round(status.progress * 100)} %</p>}
       {status.error && <p className={s.status} data-tone="error">Couldn't load the 3D map: {status.error}</p>}

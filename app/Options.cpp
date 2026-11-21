@@ -6,6 +6,17 @@
 
 namespace radar::app {
 
+namespace {
+
+std::optional<int> parsePositiveInt(std::string_view text) {
+    int n = 0;
+    const auto r = std::from_chars(text.data(), text.data() + text.size(), n);
+    if (r.ec != std::errc{} || r.ptr != text.data() + text.size() || n <= 0) return std::nullopt;
+    return n;
+}
+
+}  // namespace
+
 void printUsage(const char* argv0) {
     std::fprintf(stderr,
                  "usage: %s --device <leechcore-device> [options]\n"
@@ -20,7 +31,7 @@ void printUsage(const char* argv0) {
                  "  --diagnose            check the whole read chain once (best in a raid), print a report, exit\n"
                  "  --quest-probe <file>  with --diagnose: also dump the quests' templates and progress as JSON\n"
                  "  --locale-probe <file> with --diagnose: also look the exfils up in the game's text table, as JSON\n"
-                 "  --timeout <sec>       give up if not attached within <sec> seconds\n"
+                 "  --timeout <sec>       with --once or --diagnose: give up if not attached within <sec> seconds\n"
                  "\n"
                  "Server:\n"
                  "  --listen <addr:port>  HTTP/WebSocket listen address (default 127.0.0.1:8080)\n"
@@ -60,18 +71,16 @@ std::optional<Options> parseOptions(int argc, char** argv, std::string& error) {
             }
             return std::string(argv[++i]);
         };
-#define VALUE_OR_FAIL(name) \
-    auto name = value();    \
-    if (!name) return std::nullopt
-
         if (arg == "--help" || arg == "-h") {
             error.clear();
             return std::nullopt;
         } else if (arg == "--device") {
-            VALUE_OR_FAIL(v);
+            const auto v = value();
+            if (!v) return std::nullopt;
             opt.vmm.device = *v;
         } else if (arg == "--vmm-arg") {
-            VALUE_OR_FAIL(v);
+            const auto v = value();
+            if (!v) return std::nullopt;
             opt.vmm.extraArgs.push_back(*v);
         } else if (arg == "--vmm-printf") {
             opt.vmm.vmmPrintf = true;
@@ -80,26 +89,28 @@ std::optional<Options> parseOptions(int argc, char** argv, std::string& error) {
         } else if (arg == "--diagnose") {
             opt.diagnose = true;
         } else if (arg == "--quest-probe") {
-            VALUE_OR_FAIL(v);
+            const auto v = value();
+            if (!v) return std::nullopt;
             opt.questProbe = *v;
             opt.diagnose = true;
         } else if (arg == "--locale-probe") {
-            VALUE_OR_FAIL(v);
+            const auto v = value();
+            if (!v) return std::nullopt;
             opt.localeProbe = *v;
             opt.diagnose = true;
         } else if (arg == "--timeout") {
-            VALUE_OR_FAIL(v);
-            int seconds = 0;
-            const auto r = std::from_chars(v->data(), v->data() + v->size(), seconds);
-            if (r.ec != std::errc{} || r.ptr != v->data() + v->size() || seconds <= 0) {
+            const auto v = value();
+            if (!v) return std::nullopt;
+            opt.timeoutSeconds = parsePositiveInt(*v);
+            if (!opt.timeoutSeconds) {
                 error = "--timeout: expected a positive number of seconds";
                 return std::nullopt;
             }
-            opt.timeoutSeconds = seconds;
         } else if (arg == "--verbose") {
             opt.verbose = true;
         } else if (arg == "--listen") {
-            VALUE_OR_FAIL(v);
+            const auto v = value();
+            if (!v) return std::nullopt;
             // <host>:<port>, with IPv6 hosts in brackets: [::1]:8080
             const auto colon = v->rfind(':');
             unsigned port = 0;
@@ -115,32 +126,35 @@ std::optional<Options> parseOptions(int argc, char** argv, std::string& error) {
             opt.server.bindAddress = host;
             opt.server.port = static_cast<std::uint16_t>(port);
         } else if (arg == "--web-root") {
-            VALUE_OR_FAIL(v);
+            const auto v = value();
+            if (!v) return std::nullopt;
             opt.server.webRoot = *v;
         } else if (arg == "--maps-root") {
-            VALUE_OR_FAIL(v);
+            const auto v = value();
+            if (!v) return std::nullopt;
             opt.server.mapsRoot = *v;
         } else if (arg == "--data-root") {
-            VALUE_OR_FAIL(v);
+            const auto v = value();
+            if (!v) return std::nullopt;
             opt.server.dataRoot = *v;
         } else if (arg == "--no-server") {
             opt.noServer = true;
         } else if (arg == "--offline") {
             opt.offline = true;
         } else if (arg == "--recordings") {
-            VALUE_OR_FAIL(v);
+            const auto v = value();
+            if (!v) return std::nullopt;
             opt.server.recordingsRoot = *v;
         } else if (arg == "--no-record") {
             opt.noRecord = true;
         } else if (arg == "--keep-recordings") {
-            VALUE_OR_FAIL(v);
-            int n = 0;
-            const auto r = std::from_chars(v->data(), v->data() + v->size(), n);
-            if (r.ec != std::errc{} || r.ptr != v->data() + v->size() || n <= 0) {
+            const auto v = value();
+            if (!v) return std::nullopt;
+            opt.keepRecordings = parsePositiveInt(*v);
+            if (!opt.keepRecordings) {
                 error = "--keep-recordings: expected a positive number";
                 return std::nullopt;
             }
-            opt.keepRecordings = n;
         } else if (arg == "--overlay") {
             opt.overlay = true;
         } else if (arg == "--overlay-stretch") {
@@ -151,10 +165,12 @@ std::optional<Options> parseOptions(int argc, char** argv, std::string& error) {
             opt.overlay = true;
             opt.overlayTest = true;
         } else if (arg == "--overlay-output") {
-            VALUE_OR_FAIL(v);
+            const auto v = value();
+            if (!v) return std::nullopt;
             opt.overlayOutput = *v;
         } else if (arg == "--overlay-font") {
-            VALUE_OR_FAIL(v);
+            const auto v = value();
+            if (!v) return std::nullopt;
             opt.overlayFont = *v;
         } else if (arg == "--record" || arg == "--replay") {
             error = std::string(arg) + " is gone: raids are recorded automatically (--recordings, --no-record), "
@@ -164,7 +180,6 @@ std::optional<Options> parseOptions(int argc, char** argv, std::string& error) {
             error = "unknown option: " + std::string(arg);
             return std::nullopt;
         }
-#undef VALUE_OR_FAIL
     }
     if (opt.overlay && (opt.offline || opt.noServer)) {
         error = "--overlay needs the live mode with the server (it's configured from the frontend)";

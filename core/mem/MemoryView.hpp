@@ -2,8 +2,8 @@
 
 #include "core/mem/MemoryBackend.hpp"
 
-#include <array>
-#include <cstring>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <string>

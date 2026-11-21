@@ -105,7 +105,12 @@ int main(int argc, char** argv) {
     }
 
     const auto view = target.view();
-    const auto gameAssembly = *target.module(std::string(eft::kGameAssembly));
+    const auto gameAssemblyInfo = target.module(std::string(eft::kGameAssembly));
+    if (!gameAssemblyInfo) {
+        log::error("{} not found in {}", eft::kGameAssembly, target.processName());
+        return 1;
+    }
+    const auto gameAssembly = *gameAssemblyInfo;
     const auto unityPlayer = target.module(std::string(eft::kUnityPlayer));
     log::info("attached to {} (pid {}); dumping...", target.processName(), target.pid().value_or(0));
 

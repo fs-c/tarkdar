@@ -3,6 +3,7 @@
 #include "game/eft/model/WorldState.hpp"
 #include "game/eft/raid/RaidSession.hpp"
 
+#include <expected>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -73,9 +74,10 @@ private:
         Entry entry;
     };
 
-    // Classifies and reads one entry (everything but the position). nullopt = failed; sets permanent
-    // when retrying can't help.
-    std::optional<Resolved> resolveOne(Address instance, bool& permanent) const;
+    enum class Unresolved { Retry, Permanent };  // Permanent: retrying can't help
+
+    // Classifies and reads one entry (everything but the position).
+    std::expected<Resolved, Unresolved> resolveOne(Address instance) const;
     void refreshAirdrops();
     void refreshContents();
     std::vector<ItemNode> readContents(const Entry& e) const;
@@ -91,6 +93,7 @@ private:
     std::uint32_t nextId_ = 1;
     std::uint64_t revision_ = 0;
     bool dirty_ = false;
+    mutable bool loggedTruncation_ = false;  // background thread only
     std::size_t contentCursor_ = 0;
 };
 

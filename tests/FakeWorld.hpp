@@ -8,12 +8,12 @@
 #include "game/eft/Layouts.hpp"
 #include "game/eft/Names.hpp"
 #include "game/eft/players/Skeleton.hpp"
+#include "game/eft/raid/RaidSession.hpp"
 #include "core/unity/Transforms.hpp"
 
 #include <eft_offsets.hpp>
 
 #include <cmath>
-#include <cstring>
 #include <map>
 #include <memory>
 #include <string>
@@ -31,10 +31,8 @@ public:
     static constexpr Address kUnityPlayer = 0x7FF9'0000'0000;
 
     FakeWorld() : heap(fake, kPid) {
-        // The generic test heap lays out managed objects with test::kIl2Cpp; the game must agree.
-        static_assert(sizeof(il2cpp::Layout) == sizeof(kIl2Cpp));
-        REQUIRE(std::memcmp(&eft::kIl2CppLayout, &kIl2Cpp, sizeof(kIl2Cpp)) == 0);
-        REQUIRE(std::memcmp(&eft::kUnityLayout, &kUnity, sizeof(kUnity)) == 0);
+        // The generic test heap lays out managed objects with test::kIl2Cpp; the game must agree
+        // (checked in eft_tests.cpp).
         REQUIRE(fake.open());
         fake.addProcess(std::string(eft::kProcessName), kPid);
         fake.addModule(kPid, std::string(eft::kGameAssembly), {kGameAssembly, 0x1000'0000});
@@ -367,24 +365,92 @@ public:
         heap.put<Address>(world + off::GameWorld::Location, heap.managedString(location));
     }
 
+    // A target for the fake process, not polled yet.
+    mem::Target makeTarget() {
+        return mem::Target(fake, std::string(eft::kProcessName),
+                           {std::string(eft::kGameAssembly), std::string(eft::kUnityPlayer)});
+    }
+
+    // The Game for the fake process. Every call returns a Game of the same attachment.
     eft::Game attachGame() {
-        target = std::make_unique<mem::Target>(fake, std::string(eft::kProcessName),
-                                               std::vector<std::string>{std::string(eft::kGameAssembly),
-                                                                        std::string(eft::kUnityPlayer)});
-        REQUIRE(target->poll() == mem::Target::State::Attached);
+        if (!target) {
+            target = std::make_unique<mem::Target>(makeTarget());
+            REQUIRE(target->poll() == mem::Target::State::Attached);
+        }
         return eft::Game::fromTarget(*target);
+    }
+
+    // A raid session on the current world, as the lifecycle would start one.
+    std::shared_ptr<const eft::RaidSession> makeSession(std::uint64_t id = 1) {
+        return std::make_shared<eft::RaidSession>(eft::RaidSession{
+            .id = id,
+            .game = attachGame(),
+            .start = eft::RaidCandidate{.localGameWorld = world, .gameWorldObject = world,
+                                        .localPlayer = localPlayer, .locationId = "bigmap", .registeredCount = 1},
+            .startedAt = sched::Clock::now(),
+        });
     }
 
     mem::FakeBackend fake;
     Heap heap;
-    std::unique_ptr<mem::Target> target;
-    Address gameWorldClass = 0, clientWorldClass = 0, playerClass = 0, clientPlayerClass = 0, observedClass = 0;
+    Address observedClass = 0;
     std::map<Address, FakePlayer> fakePlayers;
+    Address typeInfoTable = 0;
+    Address gameWorldObject = 0;
+    Address world = 0, localPlayer = 0;
+
+private:
+    std::unique_ptr<mem::Target> target;
+    Address gameWorldClass = 0, clientWorldClass = 0, playerClass = 0, clientPlayerClass = 0;
     std::vector<Address> roster;   // as last set by setRoster / setRosterList
     std::vector<Address> cameras;  // Unity's camera list
-    Address typeInfoTable = 0, ownerClass = 0, ownerStatics = 0;
-    Address gom = 0, gameWorldObject = 0;
-    Address world = 0, localPlayer = 0;
+    Address ownerClass = 0, ownerStatics = 0;
+    Address gom = 0;
 };
+
+// Gives a managed component a native side, a named GameObject and a Transform at `pos`.
+inline void place(FakeWorld& w, Address managed, math::Vec3 pos, std::string_view name = "object",
+                  math::Quat rotation = {}) {
+    auto& h = w.heap;
+    const Address native = h.alloc(0x100), go = h.alloc(0x100), transform = h.alloc(0x100);
+    const Address hierarchy = h.alloc(0x100), trs = h.alloc(sizeof(unity::TrsX)), parents = h.alloc(4);
+    h.put<Address>(managed + kIl2Cpp.unityObjectCachedPtr, native);
+    h.put<Address>(native + kUnity.componentGameObject, go);
+    h.put<Address>(go + kUnity.gameObjectName, h.cString(name));
+    const Address entries = h.alloc(kUnity.componentEntryStride);
+    h.put<Address>(entries + kUnity.componentEntryComponent, transform);
+    h.put<Address>(go + kUnity.gameObjectComponents, entries);
+    h.put<std::uint64_t>(go + kUnity.gameObjectComponentCount, 1);
+    h.put<Address>(transform + kUnity.transformHierarchy, hierarchy);
+    h.put<std::int32_t>(transform + kUnity.transformIndex, 0);
+    h.put<Address>(hierarchy + kUnity.hierarchyLocalTransforms, trs);
+    h.put<Address>(hierarchy + kUnity.hierarchyParentIndices, parents);
+    h.put<std::int32_t>(parents, -1);
+    h.put(trs, unity::TrsX{pos, 0, rotation, {1, 1, 1}, 0});
+}
+
+// Moves a component placed with place(), keeping its rotation.
+inline void move(FakeWorld& w, Address managed, math::Vec3 pos) {
+    mem::MemoryView view(w.fake, FakeWorld::kPid);
+    const Address native = view.read<Address>(managed + kIl2Cpp.unityObjectCachedPtr);
+    const Address go = view.read<Address>(native + kUnity.componentGameObject);
+    const Address transform =
+        view.read<Address>(view.read<Address>(go + kUnity.gameObjectComponents) + kUnity.componentEntryComponent);
+    const Address trs =
+        view.read<Address>(view.read<Address>(transform + kUnity.transformHierarchy) + kUnity.hierarchyLocalTransforms);
+    auto local = view.read<unity::TrsX>(trs);
+    local.t = pos;
+    w.heap.put(trs, local);
+}
+
+// An item template with a MongoID string id.
+inline Address itemWithTemplate(FakeWorld& w, std::u16string_view templateId, bool quest = false) {
+    auto& h = w.heap;
+    const Address item = h.alloc(0x100), tmpl = h.alloc(0x200);
+    h.put<Address>(item + off::Item::Template, tmpl);
+    h.put<Address>(tmpl + off::ItemTemplate::_id + off::MongoID::StringId, h.managedString(templateId));
+    h.put<std::uint8_t>(tmpl + off::ItemTemplate::QuestItem, quest ? 1 : 0);
+    return item;
+}
 
 }  // namespace radar::test

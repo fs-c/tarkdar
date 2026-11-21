@@ -1,6 +1,7 @@
 #include "game/eft/world/Loot.hpp"
 
 #include "core/log/Log.hpp"
+#include "core/text/Ascii.hpp"
 #include "game/eft/Names.hpp"
 #include "game/eft/Read.hpp"
 #include "core/mem/ReadBatch.hpp"
@@ -9,7 +10,6 @@
 #include <eft_offsets.hpp>
 
 #include <algorithm>
-#include <cctype>
 #include <cmath>
 
 namespace radar::eft {
@@ -19,26 +19,15 @@ using mem::MemoryView;
 using sched::Clock;
 
 namespace {
-bool containsIgnoreCase(std::string_view haystack, std::string_view needle) {
-    return std::search(haystack.begin(), haystack.end(), needle.begin(), needle.end(), [](char a, char b) {
-               return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
-           }) != haystack.end();
-}
-
 // The battle-pass info documents ("item_barter_info_<topic>") carry the quest-item flag but are
 // ordinary loot.
 // TODO: this seems like the kind of thing that frontend should decide, backend should report facts
 bool isInfoDocument(std::string_view objectName) {
     constexpr std::string_view kPrefix = "item_barter_info_";
-    return objectName.size() > kPrefix.size() &&
-           std::equal(kPrefix.begin(), kPrefix.end(), objectName.begin(), [](char a, char b) {
-               return a == std::tolower(static_cast<unsigned char>(b));
-           });
+    return objectName.size() > kPrefix.size() && text::startsWithIgnoreCase(objectName, kPrefix);
 }
 
-bool plausible(const math::Vec3& p) {
-    return math::isSane(p) && !(p.x == 0.0f && p.y == 0.0f && p.z == 0.0f);
-}
+bool plausible(const math::Vec3& p) { return math::isPlausiblePosition(p); }
 }  // namespace
 
 Loot::Loot(std::shared_ptr<const RaidSession> session, WorldState& world)
@@ -103,20 +92,19 @@ void Loot::scan(Clock::time_point now) {
     if (dirty_) publish();
 }
 
-std::optional<Loot::Resolved> Loot::resolveOne(Address instance, bool& permanent) const {
-    permanent = false;
+std::expected<Loot::Resolved, Loot::Unresolved> Loot::resolveOne(Address instance) const {
+    using std::unexpected;
     const auto native = game_.managed.nativePointer(instance);
     const auto gameObject = native ? game_.scene.gameObjectOf(*native) : std::nullopt;
-    if (!gameObject) return std::nullopt;
+    if (!gameObject) return unexpected(Unresolved::Retry);
     Resolved r;
     r.instance = instance;
     r.entry.klass = game_.managed.klassOf(instance).value_or(0);
     LootEntry& loot = r.entry.loot;
     loot.objectName = game_.scene.objectName(*gameObject);
-    if (loot.objectName.empty()) return std::nullopt;
-    if (containsIgnoreCase(loot.objectName, "script")) {
-        permanent = true;  // scripted interactive objects, not loot
-        return std::nullopt;
+    if (loot.objectName.empty()) return unexpected(Unresolved::Retry);
+    if (text::containsIgnoreCase(loot.objectName, "script")) {
+        return unexpected(Unresolved::Permanent);  // scripted interactive objects, not loot
     }
 
     const auto templateIdOf = [&](Address item) -> std::optional<std::string> {
@@ -128,7 +116,7 @@ std::optional<Loot::Resolved> Loot::resolveOne(Address instance, bool& permanent
         loot.kind = LootEntry::Kind::Corpse;
         r.entry.contentsRoot = readPointer(game_, instance + off::InteractiveLootItem::Item);
     } else if (game_.managed.isInstanceOf(instance, kLootClassContainer)) {
-        if (containsIgnoreCase(loot.objectName, "loot_collider")) {
+        if (text::containsIgnoreCase(loot.objectName, "loot_collider")) {
             loot.kind = LootEntry::Kind::Airdrop;
         } else {
             loot.kind = LootEntry::Kind::Container;
@@ -138,7 +126,7 @@ std::optional<Loot::Resolved> Loot::resolveOne(Address instance, bool& permanent
             if (!id) {
                 log::debug("loot: container {:#x} '{}': no root item (owner {:#x}, root {:#x})", instance,
                            loot.objectName, owner, root);
-                return std::nullopt;
+                return unexpected(Unresolved::Retry);
             }
             loot.templateId = std::move(*id);
         }
@@ -146,15 +134,14 @@ std::optional<Loot::Resolved> Loot::resolveOne(Address instance, bool& permanent
         const Address item = readPointer(game_, instance + off::InteractiveLootItem::Item);
         const Address tmpl = item ? readPointer(game_, item + off::Item::Template) : 0;
         auto id = tmpl ? readMongoId(game_, tmpl + off::ItemTemplate::_id) : std::nullopt;
-        if (!id) return std::nullopt;
+        if (!id) return unexpected(Unresolved::Retry);
         loot.templateId = std::move(*id);
         const bool questItem =
             game_.mem.read<std::uint8_t>(tmpl + off::ItemTemplate::QuestItem) != 0 && !isInfoDocument(loot.objectName);
         loot.kind = questItem ? LootEntry::Kind::QuestItem : LootEntry::Kind::Item;
     } else {
-        permanent = true;
         log::debug("loot: ignoring {:#x} of class {}", instance, game_.managed.classNameOf(instance));
-        return std::nullopt;
+        return unexpected(Unresolved::Permanent);
     }
     r.entry.transform = game_.scene.transform(*gameObject).value_or(0);
     loot.contents = readContents(r.entry);
@@ -172,15 +159,14 @@ void Loot::resolve(Clock::time_point now) {
     if (todo.empty()) return;
 
     std::vector<Resolved> resolved;
-    auto fail = [&](Address a, bool permanent) {
+    auto fail = [&](Address a, Unresolved why) {
         Failure& f = failures_[a];
-        f.permanent = permanent || ++f.attempts >= kMaxAttempts;
+        f.permanent = why == Unresolved::Permanent || ++f.attempts >= kMaxAttempts;
         f.nextTry = now + retryDelay(f.attempts);
     };
     for (Address a : todo) {
-        bool permanent = false;
-        if (auto r = resolveOne(a, permanent)) resolved.push_back(std::move(*r));
-        else fail(a, permanent);
+        if (auto r = resolveOne(a)) resolved.push_back(std::move(*r));
+        else fail(a, r.error());
     }
 
     std::vector<Address> transforms;
@@ -189,7 +175,7 @@ void Loot::resolve(Clock::time_point now) {
     for (std::size_t i = 0; i < resolved.size(); ++i) {
         Resolved& r = resolved[i];
         if (!poses[i] || !plausible(poses[i]->position)) {
-            fail(r.instance, false);
+            fail(r.instance, Unresolved::Retry);
             continue;
         }
         r.entry.loot.position = poses[i]->position;
@@ -222,7 +208,13 @@ void Loot::refreshAirdrops() {
 std::vector<ItemNode> Loot::readContents(const Entry& e) const {
     if (!e.contentsRoot) return {};
     ItemTreeReader reader(game_);
-    return reader.readContents(e.contentsRoot);
+    auto contents = reader.readContents(e.contentsRoot);
+    if (reader.truncated() && !loggedTruncation_) {
+        loggedTruncation_ = true;
+        log::debug("loot: contents of {:#x} cut at the item tree's node cap (first occurrence; others not logged)",
+                   e.contentsRoot);
+    }
+    return contents;
 }
 
 void Loot::refreshContents() {

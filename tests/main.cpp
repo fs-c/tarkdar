@@ -3,6 +3,8 @@
 
 #include "core/log/Log.hpp"
 
+#include <string_view>
+
 int main(int argc, char** argv) {
     // Expected failures in tests log errors; keep the output readable. Pass --verbose-log to see them.
     bool verbose = false;

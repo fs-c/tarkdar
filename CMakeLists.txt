@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25)
 project(radar C CXX)
 
 option(RADAR_WITH_LIBUSB "Link LeechCore against libusb (its headers require it unless patched out)" ON)

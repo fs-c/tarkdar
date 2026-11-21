@@ -28,7 +28,7 @@ std::optional<fs::path> resolveUnder(const fs::path& root, std::string_view requ
     const fs::path candidate = fs::weakly_canonical(base / rel, ec);
     if (ec) return std::nullopt;
     // candidate must be base itself or below it, compared component by component.
-    auto [baseEnd, candidateIt] = std::mismatch(base.begin(), base.end(), candidate.begin(), candidate.end());
+    const auto baseEnd = std::mismatch(base.begin(), base.end(), candidate.begin(), candidate.end()).first;
     if (baseEnd != base.end()) return std::nullopt;
     if (!fs::is_regular_file(candidate, ec)) return std::nullopt;
     return candidate;
@@ -103,6 +103,7 @@ struct Server::Impl {
             })
             .max_payload(1024 * 1024)  // the overlay's configuration: up to a few thousand marks
             .onopen([this](crow::websocket::connection& conn) {
+                // send_text runs under the hub's mutex; that's safe because Crow only queues the text on the connection.
                 const auto id = hub.connect([&conn](const std::string& m) { conn.send_text(m); },
                                             encodeHello(config.live, static_cast<bool>(overlay)));
                 std::lock_guard lock(connMutex);

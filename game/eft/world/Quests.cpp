@@ -7,8 +7,6 @@
 #include <eft_offsets.hpp>
 
 #include <algorithm>
-#include <array>
-#include <cstring>
 #include <cstddef>
 
 namespace radar::eft {
@@ -24,10 +22,14 @@ bool looksLikeId(const std::string& s) {
     });
 }
 
-// EFT's MongoID struct as stored inline (in a HashSet slot): {u32 timestamp; u64 counter; String* stringId}.
-struct InlineMongoId {
-    std::array<std::byte, off::MongoID::StringId + sizeof(Address)> raw;
+// EFT's MongoID struct as stored inline (in a HashSet slot or Dictionary key).
+struct MongoId {
+    std::uint32_t timestamp;
+    std::uint64_t counter;
+    Address stringId;
 };
+static_assert(offsetof(MongoId, stringId) == off::MongoID::StringId);
+static_assert(sizeof(MongoId) == off::MongoID::StringId + sizeof(Address));
 
 }  // namespace
 
@@ -76,10 +78,11 @@ std::optional<std::vector<QuestState>> Quests::read() {
         Entry& entry = cached->second;
         if (!entry.tmpl && entry.attempts < kTemplateAttempts) {
             ++entry.attempts;
-            entry.tmpl = readTemplate(address);
+            entry.tmpl = readTemplate(address, entry.id);
         }
         const Address set = readPointer(game_, address + off::QuestsData::CompletedConditions, Freshness::Fresh);
-        QuestState q{.id = entry.id, .status = statuses[i], .completedConditions = set ? readConditions(set) : std::nullopt};
+        auto completed = set ? readConditions(set) : std::nullopt;
+        QuestState q{.id = entry.id, .status = statuses[i], .completedConditions = std::move(completed)};
         if (entry.tmpl) {
             q.name = entry.tmpl->name;
             q.traderId = entry.tmpl->traderId;
@@ -98,7 +101,7 @@ std::optional<std::vector<QuestState>> Quests::read() {
     return out;
 }
 
-std::optional<Quests::Template> Quests::readTemplate(Address statusData) {
+std::optional<Quests::Template> Quests::readTemplate(Address statusData, const std::string& questId) {
     const Address t = readPointer(game_, statusData + off::QuestsData::Template);
     if (!t) return std::nullopt;
     const Address conditions = readPointer(game_, t + off::QuestTemplate::Conditions);
@@ -122,8 +125,7 @@ std::optional<Quests::Template> Quests::readTemplate(Address statusData) {
 
     if (const Address localization = readPointer(game_, t + off::QuestTemplate::Localization)) {
         const auto texts = readTexts(localization);
-        const auto quest = game_.managed.readStringField(statusData + off::QuestsData::Id, 64).value_or("");
-        if (auto n = texts.find(quest + " name"); n != texts.end()) out.name = n->second;
+        if (auto n = texts.find(questId + " name"); n != texts.end()) out.name = n->second;
         for (auto& o : out.objectives)
             if (auto x = texts.find(o.id); x != texts.end()) o.text = x->second;
     }
@@ -166,9 +168,9 @@ std::optional<std::vector<QuestObjective>> Quests::readObjectives(Address condit
     return out;
 }
 
-std::map<std::string, std::string> Quests::readTexts(Address localization) {
+std::unordered_map<std::string, std::string> Quests::readTexts(Address localization) {
     // Dictionary<language, Dictionary<key, text>>; keys are "<quest id> name", condition ids, ….
-    std::map<std::string, std::string> out;
+    std::unordered_map<std::string, std::string> out;
     const auto languages = game_.managed.readDictionary<Address, Address>(localization, 64);
     if (!languages) return out;
     for (const auto& [language, texts] : *languages) {
@@ -187,15 +189,9 @@ std::map<std::string, std::string> Quests::readTexts(Address localization) {
 
 std::unordered_map<std::string, std::int32_t> Quests::readCounters(Address profile) {
     // Dictionary<MongoID, TaskConditionCounter>: the key is the condition's id.
-    struct MongoKey {
-        std::uint32_t timestamp;
-        std::uint64_t counter;
-        Address stringId;
-    };
-    static_assert(offsetof(MongoKey, stringId) == off::MongoID::StringId);
     std::unordered_map<std::string, std::int32_t> out;
     const Address dict = readPointer(game_, profile + off::Profile::TaskConditionCounters, Freshness::Fresh);
-    const auto entries = dict ? game_.managed.readDictionary<MongoKey, Address>(dict, kMaxCounters, Freshness::Fresh)
+    const auto entries = dict ? game_.managed.readDictionary<MongoId, Address>(dict, kMaxCounters, Freshness::Fresh)
                               : std::nullopt;
     if (!entries) return out;
     std::vector<std::int32_t> values(entries->size(), 0);
@@ -219,13 +215,11 @@ std::unordered_map<std::string, std::int32_t> Quests::readCounters(Address profi
 std::optional<std::vector<std::string>> Quests::readConditions(Address set) {
     const auto valid = [](const std::vector<std::string>& ids) { return std::all_of(ids.begin(), ids.end(), looksLikeId); };
     // As on live EFT: HashSet<MongoID>.
-    if (auto slots = game_.managed.readHashSet<InlineMongoId>(set, kMaxConditions, Freshness::Fresh)) {
+    if (auto slots = game_.managed.readHashSet<MongoId>(set, kMaxConditions, Freshness::Fresh)) {
         std::vector<std::string> ids;
         bool ok = true;
         for (const auto& m : *slots) {
-            Address str = 0;
-            std::memcpy(&str, m.raw.data() + off::MongoID::StringId, sizeof str);
-            auto id = game_.managed.readString(str, 64);
+            auto id = game_.managed.readString(m.stringId, 64);
             if (!id) { ok = false; break; }
             ids.push_back(std::move(*id));
         }

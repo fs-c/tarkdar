@@ -3,14 +3,17 @@
 // through, and how the marks look. The camera turns slowly on the spot; players stand in a ring
 // around it (every other one with a skeleton), with loot, an exfil and the ground grid.
 //
-//   radar-overlay-demo [--output <name>] [--font <file>] [--scoped] [--seconds <n>]
+//   radar-overlay-demo [--output <name>] [--font <file>] [--scoped] [--test] [--stretch] [--immediate]
+//                      [--seconds <n>]
 
 #include "core/log/Log.hpp"
 #include "overlay/Window.hpp"
 
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <memory>
 #include <numbers>
 #include <string_view>
 #include <thread>
@@ -145,6 +148,10 @@ void publishScene(eft::WorldState& world, sched::Published<overlay::Config>& con
 }  // namespace
 
 int main(int argc, char** argv) {
+    const auto usage = [&] {
+        std::fprintf(stderr, "usage: %s [--output <name>] [--font <file>] [--scoped] [--test] [--stretch] [--immediate] [--seconds <n>]\n", argv[0]);
+        return 2;
+    };
     overlay::WindowOptions options;
     bool scoped = false, stretch = false;
     int seconds = 0;
@@ -159,10 +166,10 @@ int main(int argc, char** argv) {
         else if (arg == "--immediate") options.pacing = false;
         else if (arg == "--seconds" && hasValue) {
             const std::string_view v = argv[++i];
-            std::from_chars(v.data(), v.data() + v.size(), seconds);
+            const auto r = std::from_chars(v.data(), v.data() + v.size(), seconds);
+            if (r.ec != std::errc{} || r.ptr != v.data() + v.size() || seconds < 0) return usage();
         } else {
-            std::fprintf(stderr, "usage: %s [--output <name>] [--font <file>] [--scoped] [--test] [--stretch] [--immediate] [--seconds <n>]\n", argv[0]);
-            return 2;
+            return usage();
         }
     }
     eft::WorldState world;

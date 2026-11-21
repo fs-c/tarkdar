@@ -12,6 +12,10 @@
 
 using namespace radar;
 using radar::test::FakeWorld;
+using radar::test::itemWithTemplate;
+using radar::test::move;
+using radar::test::near;
+using radar::test::place;
 using radar::test::kIl2Cpp;
 using radar::test::kUnity;
 using mem::Address;
@@ -20,58 +24,55 @@ using sched::Clock;
 
 namespace {
 
-std::shared_ptr<const eft::RaidSession> makeSession(FakeWorld& w) {
-    return std::make_shared<eft::RaidSession>(eft::RaidSession{
-        .id = 5,
-        .game = w.attachGame(),
-        .start = eft::RaidCandidate{.localGameWorld = w.world, .gameWorldObject = w.world,
-                                    .localPlayer = w.localPlayer, .locationId = "bigmap", .registeredCount = 1},
-        .startedAt = Clock::now(),
-    });
-}
+struct MongoId {  // EFT's MongoID struct, stored inline
+    std::uint32_t timestamp;
+    std::uint64_t counter;
+    Address stringId;
+};
 
-// Gives a managed component a native side, a named GameObject and a Transform at `pos`.
-void place(FakeWorld& w, Address managed, Vec3 pos, std::string_view name = "object", math::Quat rotation = {}) {
-    auto& h = w.heap;
-    const Address native = h.alloc(0x100), go = h.alloc(0x100), transform = h.alloc(0x100);
-    const Address hierarchy = h.alloc(0x100), trs = h.alloc(sizeof(unity::TrsX)), parents = h.alloc(4);
-    h.put<Address>(managed + kIl2Cpp.unityObjectCachedPtr, native);
-    h.put<Address>(native + kUnity.componentGameObject, go);
-    h.put<Address>(go + kUnity.gameObjectName, h.cString(name));
-    const Address entries = h.alloc(kUnity.componentEntryStride);
-    h.put<Address>(entries + kUnity.componentEntryComponent, transform);
-    h.put<Address>(go + kUnity.gameObjectComponents, entries);
-    h.put<std::uint64_t>(go + kUnity.gameObjectComponentCount, 1);
-    h.put<Address>(transform + kUnity.transformHierarchy, hierarchy);
-    h.put<std::int32_t>(transform + kUnity.transformIndex, 0);
-    h.put<Address>(hierarchy + kUnity.hierarchyLocalTransforms, trs);
-    h.put<Address>(hierarchy + kUnity.hierarchyParentIndices, parents);
-    h.put<std::int32_t>(parents, -1);
-    h.put(trs, unity::TrsX{pos, 0, rotation, {1, 1, 1}, 0});
-}
+// A fake raid for the quest tests, with the managed-collection helpers and the Condition class
+// hierarchy they share.
+struct QuestWorld {
+    FakeWorld w;
+    test::Heap& h = w.heap;
+    Address profile = 0;
+    Address listClass = 0, condition = 0, multi = 0, item = 0, findClass = 0;
 
-void move(FakeWorld& w, Address managed, Vec3 pos) {
-    mem::MemoryView view(w.fake, FakeWorld::kPid);
-    const Address native = view.read<Address>(managed + kIl2Cpp.unityObjectCachedPtr);
-    const Address go = view.read<Address>(native + kUnity.componentGameObject);
-    const Address transform = view.read<Address>(view.read<Address>(go + kUnity.gameObjectComponents) + kUnity.componentEntryComponent);
-    const Address trs = view.read<Address>(view.read<Address>(transform + kUnity.transformHierarchy) + kUnity.hierarchyLocalTransforms);
-    auto local = view.read<unity::TrsX>(trs);  // keeps the rotation
-    local.t = pos;
-    w.heap.put(trs, local);
-}
+    QuestWorld() {
+        w.newWorld(u"bigmap", 1);
+        mem::MemoryView view(w.fake, FakeWorld::kPid);
+        profile = view.read<Address>(w.localPlayer + off::Player::Profile);
+        listClass = h.klass("List`1", "System.Collections.Generic");
+        condition = h.klass("Condition", "EFT.Quests");
+        multi = h.klass("ConditionMultipleTargets", "EFT.Quests", condition);
+        item = h.klass("ConditionItem", "EFT.Quests", multi);
+        findClass = h.klass("ConditionFindItem", "EFT.Quests", item);
+    }
 
-// An item template with a MongoID string id.
-Address itemWithTemplate(FakeWorld& w, std::u16string_view templateId, bool quest = false) {
-    auto& h = w.heap;
-    const Address item = h.alloc(0x100), tmpl = h.alloc(0x200);
-    h.put<Address>(item + off::Item::Template, tmpl);
-    h.put<Address>(tmpl + off::ItemTemplate::_id + off::MongoID::StringId, h.managedString(templateId));
-    h.put<std::uint8_t>(tmpl + off::ItemTemplate::QuestItem, quest ? 1 : 0);
-    return item;
-}
-
-bool near(Vec3 a, Vec3 b) { return std::fabs(a.x - b.x) < 1e-3f && std::fabs(a.y - b.y) < 1e-3f && std::fabs(a.z - b.z) < 1e-3f; }
+    Address managedList(const std::vector<Address>& items) {
+        const Address l = h.list(items);
+        h.put<Address>(l + kIl2Cpp.objectKlass, listClass);
+        return l;
+    }
+    Address strings(std::initializer_list<std::u16string_view> ss) {
+        std::vector<Address> v;
+        for (auto s : ss) v.push_back(h.managedString(s));
+        return h.array(v);
+    }
+    // Profile.TaskConditionCounters with one TaskConditionCounter, keyed by the MongoID string `id`.
+    void putCounters(Address counter, Address idString) {
+        struct CounterEntry {
+            std::int32_t hashCode, next;
+            MongoId key;
+            Address value;
+        };
+        const Address counters = h.alloc(0x50);
+        h.put<Address>(counters + kIl2Cpp.dictEntries,
+                       h.array(std::vector<CounterEntry>{{1, -1, {1, 2, idString}, counter}}));
+        h.put<std::int32_t>(counters + kIl2Cpp.dictCount, 1);
+        h.put<Address>(profile + off::Profile::TaskConditionCounters, counters);
+    }
+};
 
 }  // namespace
 
@@ -131,7 +132,7 @@ TEST_CASE("Exfils: eligibility, secret exfils, names, status") {
 
     eft::WorldState world;
     {
-        eft::Exfils exfils(makeSession(w), world);
+        eft::Exfils exfils(w.makeSession(5), world);
         exfils.discover();
         auto snap = world.exfils.get();
         REQUIRE(snap->exfils.size() == 2);
@@ -152,6 +153,63 @@ TEST_CASE("Exfils: eligibility, secret exfils, names, status") {
         CHECK(world.exfils.get()->exfils.size() == 2);
     }
     CHECK(world.exfils.get()->exfils.empty());
+}
+
+TEST_CASE("Exfils: a name that couldn't be looked up yet resolves once the text table is readable") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 1);
+    auto& h = w.heap;
+    mem::MemoryView view(w.fake, FakeWorld::kPid);
+    const Address info = view.read<Address>(view.read<Address>(w.localPlayer + off::Player::Profile) + off::Profile::Info);
+    h.put<Address>(info + off::PlayerInfo::EntryPoint, h.managedString(u"House"));
+
+    const Address exfil = h.object(h.klass("ExfiltrationPoint", "EFT.Interactive"), 0x200);
+    const Address settings = h.alloc(0x40);
+    h.put<Address>(exfil + off::ExfiltrationPoint::Settings, settings);
+    h.put<Address>(settings + off::ExitSettings::Name, h.managedString(u"ZB-1011"));
+    h.put<Address>(exfil + off::ExfiltrationPoint::EligibleEntryPoints, h.array(std::vector<Address>{h.managedString(u"House")}));
+    place(w, exfil, {10, 1, 20});
+    const Address controller = h.alloc(0x40);
+    h.put<Address>(w.world + off::ClientLocalGameWorld::ExfiltrationController, controller);
+    h.put<Address>(controller + off::ExfiltrationController::ExfiltrationPoints, h.array(std::vector<Address>{exfil}));
+
+    // The text table isn't there yet: LocalizationManager has no instance.
+    struct TextEntry {
+        std::int32_t hashCode, next;
+        Address key, value;
+    };
+    const auto textTable = [&](std::vector<TextEntry> entries) {
+        const Address d = h.object(h.klass("Locale", "EFT"), 0x50);
+        h.put<Address>(d + kIl2Cpp.dictEntries, h.array(entries));
+        h.put<std::int32_t>(d + kIl2Cpp.dictCount, static_cast<std::int32_t>(entries.size()));
+        return d;
+    };
+    const Address managerClass = h.klass("LocalizationManager", "EFT");
+    const Address managerStatics = h.alloc(0x20);
+    h.put<Address>(managerClass + kIl2Cpp.classStaticFields, managerStatics);
+    h.put<Address>(w.typeInfoTable + static_cast<Address>(off::LocalizationManager::TypeIndex) * 8, managerClass);
+
+    eft::WorldState world;
+    eft::Exfils exfils(w.makeSession(5), world);
+    exfils.discover();
+    REQUIRE(world.exfils.get()->exfils.size() == 1);
+    CHECK(world.exfils.get()->exfils[0].name == "ZB-1011");  // meanwhile: the exit name
+
+    // Too soon: not looked up again yet.
+    const auto now = Clock::now();
+    const Address manager = h.object(managerClass, 0x80);
+    h.put<Address>(managerStatics + off::LocalizationManager::Instance, manager);
+    h.put<Address>(manager + off::LocalizationManager::Culture, h.managedString(u"en"));
+    const Address english =
+        textTable({{1, -1, h.managedString(u"zb-1011"), h.managedString(u"D-2 Exfil")}});
+    h.put<Address>(manager + off::LocalizationManager::Locales,
+                   textTable({{1, -1, h.managedString(u"en"), english}}));
+    exfils.refreshStatus(now);
+    CHECK(world.exfils.get()->exfils[0].name == "ZB-1011");
+
+    exfils.refreshStatus(now + eft::Exfils::kNameRetryInterval + std::chrono::seconds(1));
+    CHECK(world.exfils.get()->exfils[0].name == "D-2 Exfil");
+    CHECK(world.exfils.get()->exfils[0].key == "ZB-1011");
 }
 
 TEST_CASE("Explosives: grenades and tripwires") {
@@ -185,7 +243,7 @@ TEST_CASE("Explosives: grenades and tripwires") {
                    h.list(std::vector<Address>{notTripwire, armed}));
 
     eft::WorldState world;
-    eft::Explosives explosives(makeSession(w), world);
+    eft::Explosives explosives(w.makeSession(5), world);
     explosives.updateGrenades();
     explosives.updateTripwires();
     auto snap = world.explosives.get();
@@ -254,7 +312,7 @@ TEST_CASE("Loot: classification, positions, removal") {
     setList({item, quest, container, airdrop, corpse, door, scripted, noPosition});
 
     eft::WorldState world;
-    eft::Loot loot(makeSession(w), world);
+    eft::Loot loot(w.makeSession(5), world);
     auto t = Clock::now();
     loot.scan(t);
     auto snap = world.loot.get();
@@ -319,7 +377,7 @@ TEST_CASE("Loot: a sudden drop to under half the cache isn't treated as removals
     }
     h.put<Address>(w.world + off::ClientLocalGameWorld::LootList, h.list(items, 64));
     eft::WorldState world;
-    eft::Loot loot(makeSession(w), world);
+    eft::Loot loot(w.makeSession(5), world);
     const auto t = Clock::now();
     loot.scan(t);
     REQUIRE(world.loot.get()->loot.size() == 40);
@@ -338,7 +396,7 @@ TEST_CASE("Vehicles: BTR position, heading, gunner and passengers") {
     const Address approaching = w.newObservedPlayer(2, false, u"Bear_1", Vec3{14, 1, 20});
     w.setRosterList({w.localPlayer, gunner, passenger, approaching});
 
-    const auto session = makeSession(w);
+    const auto session = w.makeSession(5);
     eft::WorldState world;
     eft::Players players(session, world);
     for (int i = 0; i < 4; ++i) players.rosterTick(Clock::now() + std::chrono::milliseconds(20 * i));
@@ -445,7 +503,7 @@ TEST_CASE("Quests: in-progress quests with their completed conditions") {
 
     eft::WorldState world;
     {
-        eft::Quests quests(makeSession(w), world);
+        eft::Quests quests(w.makeSession(5), world);
         CHECK_FALSE(world.quests.get()->known);
         quests.update();
         auto snap = world.quests.get();
@@ -491,7 +549,7 @@ TEST_CASE("Loot: battle-pass info documents are ordinary items despite the quest
     h.put<Address>(w.world + off::ClientLocalGameWorld::LootList, h.list(std::vector<Address>{doc, quest}, 64));
 
     eft::WorldState world;
-    eft::Loot loot(makeSession(w), world);
+    eft::Loot loot(w.makeSession(5), world);
     loot.scan(Clock::now());
     const auto snap = world.loot.get();
     REQUIRE(snap->loot.size() == 2);
@@ -500,43 +558,21 @@ TEST_CASE("Loot: battle-pass info documents are ordinary items despite the quest
 }
 
 TEST_CASE("Quest probe: templates, item conditions and condition counters") {
-    FakeWorld w;
-    w.newWorld(u"bigmap", 1);
-    auto& h = w.heap;
-    mem::MemoryView view(w.fake, FakeWorld::kPid);
-    const Address profile = view.read<Address>(w.localPlayer + off::Player::Profile);
-
-    const Address listClass = h.klass("List`1", "System.Collections.Generic");
-    const auto managedList = [&](const std::vector<Address>& items) {
-        const Address l = h.list(items);
-        h.put<Address>(l + kIl2Cpp.objectKlass, listClass);
-        return l;
-    };
-    const auto strings = [&](std::initializer_list<std::u16string_view> ss) {
-        std::vector<Address> v;
-        for (auto s : ss) v.push_back(h.managedString(s));
-        return h.array(v);
-    };
-    struct MongoId {
-        std::uint32_t timestamp;
-        std::uint64_t counter;
-        Address stringId;
-    };
+    QuestWorld q;
+    auto& w = q.w;
+    auto& h = q.h;
+    const Address profile = q.profile;
     const auto putMongo = [&](Address at, std::u16string_view id) { h.put(at, MongoId{1, 2, h.managedString(id)}); };
 
-    const Address condition = h.klass("Condition", "EFT.Quests");
-    const Address multi = h.klass("ConditionMultipleTargets", "EFT.Quests", condition);
-    const Address item = h.klass("ConditionItem", "EFT.Quests", multi);
-    const Address findItem = h.klass("ConditionFindItem", "EFT.Quests", item);
-    const Address find = h.object(findItem, 0x100);
+    const Address find = h.object(q.findClass, 0x100);
     putMongo(find + 0x10, u"cond_find");
     h.put<float>(find + 0x28, 3.0f);
-    h.put<Address>(find + 0xE0, strings({u"tpl_a", u"tpl_b"}));
+    h.put<Address>(find + 0xE0, q.strings({u"tpl_a", u"tpl_b"}));
     h.put<bool>(find + 0xF4, true);
 
     // ConditionCollection (a BindableList) holding a List`1 at 0x58.
     const Address collection = h.object(h.klass("ConditionCollection", "EFT.Quests"), 0x80);
-    h.put<Address>(collection + 0x58, managedList({find}));
+    h.put<Address>(collection + 0x58, q.managedList({find}));
     struct DictEntry {
         std::int32_t hashCode, next, key;
         Address value;
@@ -552,14 +588,14 @@ TEST_CASE("Quest probe: templates, item conditions and condition counters") {
     h.put<Address>(tmpl + 0x68, conds);
     h.put<bool>(tmpl + 0x128, true);  // IsMainQuest
 
-    const Address q = h.alloc(0x48);
-    h.put<Address>(q + off::QuestsData::Id, h.managedString(u"quest_story"));
-    h.put<std::int32_t>(q + off::QuestsData::Status, eft::kQuestStarted);
-    h.put<Address>(q + 0x38, tmpl);
+    const Address data = h.alloc(0x48);
+    h.put<Address>(data + off::QuestsData::Id, h.managedString(u"quest_story"));
+    h.put<std::int32_t>(data + off::QuestsData::Status, eft::kQuestStarted);
+    h.put<Address>(data + 0x38, tmpl);
     const Address noTemplate = h.alloc(0x48);
     h.put<Address>(noTemplate + off::QuestsData::Id, h.managedString(u"quest_bare"));
     h.put<std::int32_t>(noTemplate + off::QuestsData::Status, eft::kQuestStarted);
-    h.put<Address>(profile + off::Profile::QuestsData, h.list(std::vector<Address>{q, noTemplate}));
+    h.put<Address>(profile + off::Profile::QuestsData, h.list(std::vector<Address>{data, noTemplate}));
 
     // Profile.TaskConditionCounters: Dictionary<MongoID, TaskConditionCounter>.
     const Address counter = h.object(h.klass("TaskConditionCounter", "EFT.Quests"), 0x50);
@@ -567,17 +603,9 @@ TEST_CASE("Quest probe: templates, item conditions and condition counters") {
     h.put<Address>(counter + 0x38, h.managedString(u"quest_story"));
     h.put<std::int32_t>(counter + 0x40, 2);
     h.put<Address>(counter + 0x48, find);
-    struct CounterEntry {
-        std::int32_t hashCode, next;
-        MongoId key;
-        Address value;
-    };
-    const Address counters = h.alloc(0x50);
-    h.put<Address>(counters + kIl2Cpp.dictEntries, h.array(std::vector<CounterEntry>{{1, -1, {1, 2, 0}, counter}}));
-    h.put<std::int32_t>(counters + kIl2Cpp.dictCount, 1);
-    h.put<Address>(profile + 0x90, counters);
+    q.putCounters(counter, 0);
 
-    const auto session = makeSession(w);
+    const auto session = w.makeSession(5);
     const auto r = app::probeQuests(session->game, w.localPlayer);
     INFO(r.json);
     INFO(r.summary);
@@ -600,28 +628,12 @@ TEST_CASE("Quest probe: templates, item conditions and condition counters") {
 }
 
 TEST_CASE("Quests: templates give objectives, names, kinds and hand-over progress") {
-    FakeWorld w;
-    w.newWorld(u"bigmap", 1);
-    auto& h = w.heap;
-    mem::MemoryView view(w.fake, FakeWorld::kPid);
-    const Address profile = view.read<Address>(w.localPlayer + off::Player::Profile);
-
-    const Address listClass = h.klass("List`1", "System.Collections.Generic");
-    const auto managedList = [&](const std::vector<Address>& items) {
-        const Address l = h.list(items);
-        h.put<Address>(l + kIl2Cpp.objectKlass, listClass);
-        return l;
-    };
-    const auto strings = [&](std::initializer_list<std::u16string_view> ss) {
-        std::vector<Address> v;
-        for (auto s : ss) v.push_back(h.managedString(s));
-        return h.array(v);
-    };
-    struct MongoId {
-        std::uint32_t timestamp;
-        std::uint64_t counter;
-        Address stringId;
-    };
+    QuestWorld qw;
+    auto& w = qw.w;
+    auto& h = qw.h;
+    const Address profile = qw.profile;
+    const auto managedList = [&](const std::vector<Address>& items) { return qw.managedList(items); };
+    const auto strings = [&](std::initializer_list<std::u16string_view> ss) { return qw.strings(ss); };
     struct RefEntry {
         std::int32_t hashCode, next;
         Address key, value;
@@ -635,14 +647,11 @@ TEST_CASE("Quests: templates give objectives, names, kinds and hand-over progres
         return d;
     };
 
-    const Address condition = h.klass("Condition", "EFT.Quests");
-    const Address multi = h.klass("ConditionMultipleTargets", "EFT.Quests", condition);
-    const Address item = h.klass("ConditionItem", "EFT.Quests", multi);
-    const Address findClass = h.klass("ConditionFindItem", "EFT.Quests", item);
-    const Address handoverClass = h.klass("ConditionHandoverItem", "EFT.Quests", item);
-    const Address zone = h.klass("ConditionZone", "EFT.Quests", multi);
+    const Address findClass = qw.findClass;
+    const Address handoverClass = h.klass("ConditionHandoverItem", "EFT.Quests", qw.item);
+    const Address zone = h.klass("ConditionZone", "EFT.Quests", qw.multi);
     const Address plantClass = h.klass("ConditionLeaveItemAtLocation", "EFT.Quests", zone);
-    const Address killClass = h.klass("ConditionCounterCreator", "EFT.Quests", condition);
+    const Address killClass = h.klass("ConditionCounterCreator", "EFT.Quests", qw.condition);
     const auto cond = [&](Address klass, std::u16string_view id, float count, std::initializer_list<std::u16string_view> targets,
                           bool fir = false) {
         const Address c = h.object(klass, 0x100);
@@ -704,26 +713,16 @@ TEST_CASE("Quests: templates give objectives, names, kinds and hand-over progres
     auto [weekly, weeklyTemplate] = quest(u"q_weekly", repeatableClass, conditionsDict({}), u"trader_2");
     h.put<std::int32_t>(weekly + off::QuestsData::StartTime, 1000);
     h.put<std::int32_t>(weeklyTemplate + off::RepeatableQuestTemplate::ExpirationTime, 1000 + 7 * 24 * 3600);
-    auto [broken, brokenTemplate] = quest(u"q_broken", templateClass, 0, u"trader_1");  // no conditions: unreadable
-    (void)brokenTemplate;
+    const Address broken = quest(u"q_broken", templateClass, 0, u"trader_1").first;  // no conditions: unreadable
     h.put<Address>(profile + off::Profile::QuestsData, h.list(std::vector<Address>{side, story, daily, weekly, broken}));
 
     // Condition counters: Dictionary<MongoID, TaskConditionCounter>, keyed by condition id.
     const Address counter = h.object(h.klass("TaskConditionCounter", "EFT.Quests"), 0x50);
     h.put<std::int32_t>(counter + off::TaskConditionCounter::Value, 1);
-    struct CounterEntry {
-        std::int32_t hashCode, next;
-        MongoId key;
-        Address value;
-    };
-    const Address counters = h.alloc(0x50);
-    h.put<Address>(counters + kIl2Cpp.dictEntries,
-                   h.array(std::vector<CounterEntry>{{1, -1, {1, 2, h.managedString(u"c_hand")}, counter}}));
-    h.put<std::int32_t>(counters + kIl2Cpp.dictCount, 1);
-    h.put<Address>(profile + off::Profile::TaskConditionCounters, counters);
+    qw.putCounters(counter, h.managedString(u"c_hand"));
 
     eft::WorldState world;
-    eft::Quests quests(makeSession(w), world);
+    eft::Quests quests(w.makeSession(5), world);
     quests.update();
     const auto snap = world.quests.get();
     REQUIRE(snap->quests.size() == 5);

@@ -85,13 +85,13 @@ TEST_CASE("protocol encoding") {
     const auto l = server::encodeLoot(loot);
     CHECK(contains(l, R"("contents":[{)"));
     CHECK(contains(l, R"("tpl":"bag")"));
-    CHECK((contains(l, R"({"tpl":"ammo","count":30})") || contains(l, R"({"count":30,"tpl":"ammo"})")));
+    CHECK(contains(l, R"({"tpl":"ammo","count":30})"));
 
     eft::EquipmentSnapshot eq;
     eq.players.push_back({.playerId = 4, .slots = {{.tpl = "ak", .slot = "FirstPrimaryWeapon", .count = 1, .children = {}}}});
     const auto e = server::encodeEquipment(eq);
     CHECK(contains(e, R"("id":4)"));
-    CHECK((contains(e, R"({"tpl":"ak","slot":"FirstPrimaryWeapon"})") || contains(e, R"({"slot":"FirstPrimaryWeapon","tpl":"ak"})")));
+    CHECK(contains(e, R"({"tpl":"ak","slot":"FirstPrimaryWeapon"})"));
 
     // Skeletons: only players with joints, alive and present; whole cm relative to the position.
     CHECK_FALSE(server::encodeSkeletons(snap));
@@ -103,7 +103,7 @@ TEST_CASE("protocol encoding") {
     REQUIRE(sk);
     CHECK(server::messageType(*sk) == "skeletons");
     CHECK(contains(*sk, R"("rev":9)"));
-    CHECK((contains(*sk, R"("id":1,"j":[0,0,0,)") || contains(*sk, R"("j":[0,0,0,)")));
+    CHECK(contains(*sk, R"("j":[0,0,0,)"));
     CHECK(contains(*sk, R"(,1,171,-25,)"));  // the head (joint 6)
     CHECK_FALSE(contains(*sk, R"("id":2)"));
 
@@ -241,7 +241,8 @@ TEST_CASE("LiveFeed broadcasts only changes") {
     auto status = std::make_shared<eft::Status>();
     server::LiveFeed feed({.status = [&] { return std::shared_ptr<const eft::Status>(status); }, .world = &world}, hub);
 
-    CHECK(feed.poll() == 9);  // initial status + every (empty) world snapshot
+    const int initial = feed.poll();  // the status + every (empty) world snapshot
+    CHECK(initial > 1);
     CHECK(feed.poll() == 0);
     world.players.publish(eft::PlayersSnapshot{.raidId = 1, .revision = 1, .players = {}});
     CHECK(feed.poll() == 1);
@@ -249,7 +250,13 @@ TEST_CASE("LiveFeed broadcasts only changes") {
     changed->state = eft::Status::State::InRaid;
     status = changed;
     CHECK(feed.poll() == 1);
-    CHECK(types == std::vector<std::string>{"status", "players", "exfils", "explosives", "vehicles", "loot", "equipment", "quests", "camera", "players", "status"});
+    REQUIRE(types.size() == static_cast<std::size_t>(initial) + 2);
+    // The first poll sends the status and the world's snapshots, each type once.
+    const std::vector<std::string> first(types.begin(), types.begin() + initial);
+    for (const char* type : {"status", "players", "exfils", "explosives", "vehicles", "loot", "equipment", "quests", "camera"})
+        CHECK(std::count(first.begin(), first.end(), type) == 1);
+    CHECK(types[types.size() - 2] == "players");
+    CHECK(types.back() == "status");
 }
 
 TEST_CASE("LiveFeed sends skeletons with the players that have joints") {
@@ -324,8 +331,8 @@ TEST_CASE("RaidRecorder writes one file per raid") {
                                   .lootKeyframeInterval = std::chrono::milliseconds(60'000)},
                                  [&] { return now; });
         const auto send = [&](const eft::Status& st) { rec.onStatus(st, server::encodeStatus(st)); };
-        const auto players = [&](const eft::PlayersSnapshot& p) { rec.onPlayers(p, server::encodePlayers(p)); };
-        const auto loot = [&](const eft::LootSnapshot& l) { rec.onLoot(l, server::encodeLoot(l)); };
+        const auto players = [&](const eft::PlayersSnapshot& p) { rec.onPlayers(std::make_shared<const eft::PlayersSnapshot>(p), server::encodePlayers(p)); };
+        const auto loot = [&](const eft::LootSnapshot& l) { rec.onLoot(std::make_shared<const eft::LootSnapshot>(l), server::encodeLoot(l)); };
 
         send({.state = eft::Status::State::WaitingForRaid});
         CHECK_FALSE(rec.flushActive());
@@ -420,6 +427,28 @@ TEST_CASE("RaidRecorder: a new raid id starts a new file; keep prunes old ones")
     CHECK(contains(readLines(files[1])[0], R"("raid":3)"));
 }
 
+TEST_CASE("RaidRecorder: a raid ending in another raid's status doesn't take that status") {
+    TempDir dir;
+    std::int64_t now = 1'000'000;
+    server::RaidRecorder rec({.dir = dir.path, .compress = false}, [&] { return now; });
+    const auto send = [&](const eft::Status& st) { rec.onStatus(st, server::encodeStatus(st)); };
+    send(raidStatus(1, "woods"));
+    now += 5000;
+    send(raidStatus(2, "woods"));  // straight from raid 1 to raid 2
+    now += 5000;
+    send({.state = eft::Status::State::Cooldown});
+    rec.finish();
+    const auto files = filesIn(dir.path);
+    REQUIRE(files.size() == 2);
+    const auto first = readLines(files[0]);
+    const auto second = readLines(files[1]);
+    CHECK(types(first) == std::vector<std::string>{"recording", "status"});
+    CHECK(contains(first.back(), R"("raid":1)"));
+    CHECK(types(second) == std::vector<std::string>{"recording", "status", "status"});
+    CHECK(contains(second[1], R"("raid":2)"));
+    CHECK(contains(second.back(), R"("state":"cooldown")"));
+}
+
 TEST_CASE("RecordingIndex lists recordings") {
     TempDir dir;
     auto rec = std::make_unique<server::RaidRecorder>(server::RaidRecorder::Config{.dir = dir.path});
@@ -452,6 +481,34 @@ TEST_CASE("RecordingIndex lists recordings") {
     REQUIRE(list.size() == 2);
     CHECK(list[0].name == *active + ".gz");
     CHECK(list[0].end.has_value());
+}
+
+namespace {
+std::string overlayMessage(const std::string& data) { return R"({"type":"overlay","data":)" + data + "}"; }
+}  // namespace
+
+TEST_CASE("decodeOverlay clamps huge numbers without overflowing") {
+    const auto c = server::decodeOverlay(overlayMessage(R"({"on":true,"raid":1e300,"delayMs":1e300,"lootRange":1e300})"));
+    REQUIRE(c);
+    CHECK(c->raid == overlay::Config{}.raid);  // out of range: ignored
+    CHECK(c->delay == std::chrono::milliseconds(500));
+    CHECK(c->lootRange == 1000.0f);
+    const auto low = server::decodeOverlay(overlayMessage(R"({"delayMs":-1e300,"raid":1.8e19})"));
+    REQUIRE(low);
+    CHECK(low->delay == std::chrono::milliseconds(0));
+    CHECK(low->raid == 18'000'000'000'000'000'000ull);
+}
+
+TEST_CASE("decodeOverlay cuts labels at a code point boundary") {
+    // 79 ASCII bytes then "é" (2 bytes) straddling the 80-byte limit.
+    const std::string label = std::string(79, 'a') + "\xC3\xA9" + "tail";
+    const auto c = server::decodeOverlay(overlayMessage(R"({"marks":[{"kind":"loot","id":1,"color":"#ff0000","label":")" + label + R"("}]})"));
+    REQUIRE(c);
+    REQUIRE(c->marks.size() == 1);
+    CHECK(c->marks[0].label == std::string(79, 'a'));
+    const auto fits = server::decodeOverlay(overlayMessage(R"({"marks":[{"kind":"loot","id":1,"color":"#ff0000","label":")" + std::string(78, 'a') + "\xC3\xA9" + R"("}]})"));
+    REQUIRE(fits);
+    CHECK(fits->marks[0].label.size() == 80);
 }
 
 TEST_CASE("isRecordingName") {

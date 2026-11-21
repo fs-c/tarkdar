@@ -34,12 +34,17 @@
 #include <poll.h>
 #include <time.h>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstring>
+#include <expected>
 #include <filesystem>
 #include <format>
 #include <memory>
+#include <optional>
+#include <string>
+#include <variant>
 #include <vector>
 
 namespace radar::overlay {
@@ -77,7 +82,6 @@ constexpr std::array kSystemFonts = {
 
 struct Output {
     wl_output* output = nullptr;
-    std::uint32_t globalName = 0;
     std::string name;
     std::int32_t scale = 1;
 };
@@ -118,8 +122,8 @@ struct Window {
     std::vector<std::unique_ptr<Feedback>> feedbacks;
     FramePacer pacer;
     std::optional<FramePacer::Plan> planned;  // a frame waiting for its start
-    std::chrono::steady_clock::time_point lastStatsLog{};
-    std::chrono::steady_clock::time_point lastFrame{};
+    std::optional<std::chrono::steady_clock::time_point> lastStatsLog;  // none until the first frame
+    std::optional<std::chrono::steady_clock::time_point> lastFrame;
 
     explicit Window(Frames& f, std::string out) : frames(f), wantedOutput(std::move(out)) {}
     ~Window();
@@ -176,7 +180,6 @@ void registryGlobal(void* data, wl_registry* registry, uint32_t name, const char
         wp_presentation_add_listener(w.presentation, &kPresentationListener, &w);
     } else if (std::strcmp(interface, wl_output_interface.name) == 0) {
         auto out = std::make_unique<Output>();
-        out->globalName = name;
         out->output = static_cast<wl_output*>(wl_registry_bind(registry, name, &wl_output_interface, std::min(version, 4u)));
         wl_output_add_listener(out->output, &kOutputListener, out.get());
         w.outputs.push_back(std::move(out));
@@ -235,8 +238,8 @@ std::expected<void, std::string> Window::open(const WindowOptions& options) {
     if (!display) return std::unexpected("no Wayland session (WAYLAND_DISPLAY not set or not reachable)");
     registry = wl_display_get_registry(display);
     wl_registry_add_listener(registry, &kRegistryListener, this);
-    wl_display_roundtrip(display);  // globals
-    wl_display_roundtrip(display);  // output names and scales
+    if (wl_display_roundtrip(display) < 0) return std::unexpected("lost the Wayland connection");  // globals
+    if (wl_display_roundtrip(display) < 0) return std::unexpected("lost the Wayland connection");  // output names and scales
     if (!compositor) return std::unexpected("the compositor has no wl_compositor");
     if (!layerShell) return std::unexpected("the compositor doesn't support wlr-layer-shell (GNOME doesn't; KDE Plasma and wlroots compositors do)");
 
@@ -272,7 +275,7 @@ std::expected<void, std::string> Window::open(const WindowOptions& options) {
     // EGL / OpenGL ES 3.
     egl = eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND_KHR, display, nullptr);
     if (egl == EGL_NO_DISPLAY || !eglInitialize(egl, nullptr, nullptr)) return std::unexpected("EGL: can't initialise");
-    eglBindAPI(EGL_OPENGL_ES_API);
+    if (!eglBindAPI(EGL_OPENGL_ES_API)) return std::unexpected("EGL: no OpenGL ES API");
     const EGLint configAttribs[] = {EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
                                     EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8, EGL_NONE};
     EGLint count = 0;
@@ -282,7 +285,7 @@ std::expected<void, std::string> Window::open(const WindowOptions& options) {
     context = eglCreateContext(egl, eglConfig, EGL_NO_CONTEXT, contextAttribs);
     if (context == EGL_NO_CONTEXT) return std::unexpected("EGL: can't create an OpenGL ES 3 context");
     resize();
-    if (eglSurface == EGL_NO_SURFACE) return std::unexpected("EGL: can't create the window surface");
+    if (eglSurface == EGL_NO_SURFACE) return std::unexpected("EGL: can't create the window surface or make its context current");
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -301,7 +304,11 @@ std::expected<void, std::string> Window::open(const WindowOptions& options) {
         if (!font.empty()) log::warn("overlay: can't load font {}; using the built-in one", font);
         io.Fonts->AddFontDefault();
     }
-    if (!ImGui_ImplOpenGL3_Init("#version 300 es")) return std::unexpected("can't set up the OpenGL ES renderer");
+    if (!ImGui_ImplOpenGL3_Init("#version 300 es")) {
+        ImGui::DestroyContext();  // the destructor would shut down a backend that isn't there
+        imgui = false;
+        return std::unexpected("can't set up the OpenGL ES renderer");
+    }
     log::info("overlay: {}x{} on {} (scale {}), font {}", width, height, output ? output->name : "the compositor's choice of output",
               scale, font.empty() ? "built-in" : font);
     return {};
@@ -315,7 +322,11 @@ void Window::resize() {
         eglWindow = wl_egl_window_create(surface, width * scale, height * scale);
         eglSurface = eglCreateWindowSurface(egl, eglConfig, reinterpret_cast<EGLNativeWindowType>(eglWindow), nullptr);
         if (eglSurface == EGL_NO_SURFACE) return;
-        eglMakeCurrent(egl, eglSurface, eglSurface, context);
+        if (!eglMakeCurrent(egl, eglSurface, eglSurface, context)) {
+            eglDestroySurface(egl, eglSurface);
+            eglSurface = EGL_NO_SURFACE;  // open() reports it
+            return;
+        }
         eglSwapInterval(egl, 0);  // paced by frame callbacks: swapping mustn't wait as well
     } else {
         wl_egl_window_resize(eglWindow, width * scale, height * scale, 0, 0);
@@ -367,7 +378,7 @@ void Window::draw(std::optional<std::int64_t> target) {
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = {static_cast<float>(width), static_cast<float>(height)};
     io.DisplayFramebufferScale = {static_cast<float>(scale), static_cast<float>(scale)};
-    const float dt = lastFrame == decltype(lastFrame){} ? 1.f / 60 : std::chrono::duration<float>(now - lastFrame).count();
+    const float dt = lastFrame ? std::chrono::duration<float>(now - *lastFrame).count() : 1.f / 60;
     io.DeltaTime = std::max(dt, 1e-4f);
     lastFrame = now;
     ImGui_ImplOpenGL3_NewFrame();
@@ -415,8 +426,8 @@ void Window::draw(std::optional<std::int64_t> target) {
     eglSwapBuffers(egl, eglSurface);
     if (active) pacer.drew(nowOn(clock) - read, target);
 
-    if (active && now - lastStatsLog >= kStatsLogInterval) {
-        if (lastStatsLog != decltype(lastStatsLog){})
+    if (active && (!lastStatsLog || now - *lastStatsLog >= kStatsLogInterval)) {
+        if (lastStatsLog)
             for (const auto& line : timingLines()) {
                 if (test) log::info("overlay: {}", line);
                 else log::debug("overlay: {}", line);

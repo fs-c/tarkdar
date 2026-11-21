@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-// Snapshots of non-player raid state: exfils, explosives, vehicles, loot.
+// Snapshots of non-player raid state: exfils, explosives, vehicles, loot, and players' equipment.
 namespace radar::eft {
 
 struct Exfil {

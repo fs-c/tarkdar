@@ -42,7 +42,8 @@ public:
     [[nodiscard]] std::string objectName(Address gameObject) const;
 
     // Native components of a GameObject, in array order (index 0 is the Transform). Empty if the
-    // count is outside 1..kMaxComponents.
+    // count is outside 1..kMaxComponents or the Transform entry could not be read; other entries
+    // that could not be read are omitted.
     [[nodiscard]] std::vector<Address> components(Address gameObject) const;
     [[nodiscard]] std::optional<Address> transform(Address gameObject) const;
     [[nodiscard]] std::optional<Address> managedObject(Address component) const;

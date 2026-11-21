@@ -3,6 +3,7 @@
 #include "core/mem/VmmBackend.hpp"
 #include "server/Server.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>

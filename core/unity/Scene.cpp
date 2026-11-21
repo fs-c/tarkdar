@@ -1,24 +1,16 @@
 #include "core/unity/Scene.hpp"
 
 #include "core/mem/ReadBatch.hpp"
+#include "core/text/Ascii.hpp"
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <unordered_set>
 
 namespace radar::unity {
 
 using mem::Freshness;
 using mem::MemoryView;
-
-namespace {
-bool equalsIgnoreCase(std::string_view a, std::string_view b) {
-    return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
-               return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
-           });
-}
-}  // namespace
 
 Scene::Walk Scene::activeObjects(Address gom, std::size_t maxNodes) const {
     Walk walk;
@@ -77,7 +69,7 @@ std::vector<GameObjectRef> Scene::findByName(Address gom, std::string_view name)
     for (std::size_t i = 0; i < n; ++i) {
         const auto& buf = names[i];
         const std::string_view candidate(buf.data(), std::find(buf.begin(), buf.end(), '\0') - buf.begin());
-        if (equalsIgnoreCase(candidate, name)) out.push_back({walk.objects[i], std::string(candidate)});
+        if (text::equalsIgnoreCase(candidate, name)) out.push_back({walk.objects[i], std::string(candidate)});
     }
     return out;
 }
@@ -100,9 +92,17 @@ std::vector<Address> Scene::components(Address gameObject) const {
     for (std::size_t i = 0; i < count; ++i)
         batch.add(entries + i * layout_.componentEntryStride + layout_.componentEntryComponent, out[i]);
     batch.execute(Freshness::Cached);
+    // Index 0 must be the Transform, so if its read failed there is nothing trustworthy to return.
+    // Other entries whose read failed are dropped rather than reported as null components.
+    if (!batch.complete(0)) return {};
+    std::size_t kept = 0;
+    for (std::size_t i = 0; i < count; ++i)
+        if (batch.complete(i)) out[kept++] = out[i];
+    out.resize(kept);
     return out;
 }
 
+// Same lookup as components()[0] without reading the other entries (callers only need the Transform).
 std::optional<Address> Scene::transform(Address gameObject) const {
     Address entries = 0;
     if (!MemoryView::isUserPointer(gameObject) || !mem_.tryRead(gameObject + layout_.gameObjectComponents, entries) ||

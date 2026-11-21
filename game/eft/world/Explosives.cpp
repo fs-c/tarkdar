@@ -17,10 +17,7 @@ using math::Vec3;
 
 namespace {
 // Finite, within ±100 km, and not at the world origin (zero-filled memory).
-bool plausible(Vec3 p) {
-    return math::isSane(p, 100000.0f) &&
-           !(std::fabs(p.x) <= 1e-4f && std::fabs(p.y) <= 1e-4f && std::fabs(p.z) <= 1e-4f);
-}
+bool plausible(Vec3 p) { return math::isPlausiblePosition(p, 100000.0f, 1e-4f); }
 
 std::vector<Address> distinctValid(const std::vector<Address>& in) {
     std::vector<Address> out;
@@ -56,8 +53,11 @@ void Explosives::updateGrenades() {
 
     bool changed = std::erase_if(grenades_, [&](const auto& kv) { return !present.contains(kv.first); }) > 0;
     std::erase_if(destroyed_, [&](Address g) { return !present.contains(g); });
-    for (Address g : current)
-        if (!grenades_.contains(g) && !destroyed_.contains(g)) grenades_.emplace(g, GrenadeEntry{.id = nextId_++, .transform = 0, .position = std::nullopt});
+    for (Address g : current) {
+        if (grenades_.contains(g) || destroyed_.contains(g)) continue;
+        const GrenadeEntry fresh{.id = nextId_++, .transform = 0, .position = std::nullopt};
+        grenades_.emplace(g, fresh);
+    }
 
     // Destroyed flags, then positions of the live ones.
     std::vector<std::pair<Address, std::uint8_t>> destroyed;
@@ -98,12 +98,14 @@ void Explosives::updateTripwires() {
     const Address statics = readPointer(
         game_, processor + off::SynchronizableObjectLogicProcessor::_staticSynchronizableObjects, Freshness::Fresh);
     std::vector<Address> candidates;
-    for (Address list : {active, statics == active ? Address{0} : statics}) {
-        if (!list) continue;
-        auto items = game_.managed.readList<Address>(list, kMaxObjects, Freshness::Fresh);
-        if (!items) return;  // torn read: try again next tick
-        candidates.insert(candidates.end(), items->begin(), items->end());
-    }
+    const auto addList = [&](Address list) {
+        if (!list) return true;
+        const auto items = game_.managed.readList<Address>(list, kMaxObjects, Freshness::Fresh);
+        if (items) candidates.insert(candidates.end(), items->begin(), items->end());
+        return items.has_value();
+    };
+    if (!addList(active)) return;  // torn read: try again next tick
+    if (statics != active && !addList(statics)) return;
     candidates = distinctValid(candidates);
 
     // Type, then state and endpoints of the tripwires.
@@ -120,7 +122,8 @@ void Explosives::updateTripwires() {
     };
     std::vector<Wire> wires;
     for (std::size_t i = 0; i < candidates.size(); ++i)
-        if (typeBatch.complete(i) && types[i] == kTripwireType) wires.push_back(Wire{.object = candidates[i], .state = 0, .from = {}, .to = {}});
+        if (typeBatch.complete(i) && types[i] == kTripwireType)
+            wires.push_back(Wire{.object = candidates[i], .state = 0, .from = {}, .to = {}});
     if (wires.size() > kMaxObjects) return;
     mem::ReadBatch batch(game_.mem);
     for (auto& w : wires) {
@@ -139,7 +142,8 @@ void Explosives::updateTripwires() {
         w.to.y += kTripwireYOffset;
         if (!plausible(w.from) || !plausible(w.to)) continue;
         const auto old = tripwires_.find(w.object);
-        next.emplace(w.object, Tripwire{.id = old != tripwires_.end() ? old->second.id : nextId_++, .from = w.from, .to = w.to});
+        const auto id = old != tripwires_.end() ? old->second.id : nextId_++;
+        next.emplace(w.object, Tripwire{.id = id, .from = w.from, .to = w.to});
     }
     const bool changed = next.size() != tripwires_.size() ||
                          std::any_of(next.begin(), next.end(), [&](const auto& kv) {

@@ -8,8 +8,6 @@
 
 namespace radar::eft {
 
-std::optional<ItemNode> ItemTreeReader::read(Address item, std::string slot) { return readNode(item, std::move(slot), 0); }
-
 std::vector<ItemNode> ItemTreeReader::readSlots(Address slotArray) {
     std::vector<ItemNode> out;
     readSlotArray(slotArray, 0, out);

@@ -19,15 +19,6 @@ using mem::Freshness;
 using mem::MemoryView;
 using sched::Clock;
 
-namespace {
-
-
-struct Vec2 {
-    float x, y;
-};
-
-}  // namespace
-
 Players::Players(std::shared_ptr<const RaidSession> session, WorldState& world)
     : session_(std::move(session)), game_(session_->game), world_(world) {
     publish();
@@ -105,8 +96,8 @@ void Players::rosterTick(Clock::time_point now) {
             log::debug("players: #{} role {} (after {} attempts)", e.id, *e.layout.role, e.roleAttempts);
     }
 
-    // Local flag follows GameWorld.MainPlayer (it can change, e.g. after death). Full Players other
-    // than ours are local bots; observed players keep the flag they were built with.
+    // Local flag follows GameWorld.MainPlayer for every entry (it can change, e.g. after death). Of the
+    // full Players, ours is Local and the rest are local bots; observed players keep their kind.
     for (auto& [instance, e] : entries_) {
         e.local = instance == roster->localPlayer;
         if (e.layout.kind == PlayerKind::Observed) continue;
@@ -157,7 +148,13 @@ std::vector<ItemNode> Players::readEquipment(Address inventoryControllerField) c
     const Address equipment = inventory ? readPointer(game_, inventory + off::Inventory::Equipment) : 0;
     if (!equipment) return {};
     ItemTreeReader reader(game_);
-    return reader.readSlots(readPointer(game_, equipment + off::InventoryEquipment::_cachedSlots));
+    auto slots = reader.readSlots(readPointer(game_, equipment + off::InventoryEquipment::_cachedSlots));
+    if (reader.truncated() && !loggedTruncation_) {
+        loggedTruncation_ = true;
+        log::debug("players: equipment of {:#x} cut at the item tree's node cap (first occurrence; others not logged)",
+                   equipment);
+    }
+    return slots;
 }
 
 void Players::equipmentTick(Clock::time_point now) {
@@ -174,9 +171,11 @@ void Players::equipmentTick(Clock::time_point now) {
         if (r.dead && it != equipment_.end() && it->second.read) continue;
         if (it == equipment_.end() || !it->second.read || now - it->second.lastRead >= kEquipmentRefresh) due.push_back(&r);
     }
-    std::sort(due.begin(), due.end(), [&](const Ref* a, const Ref* b) {
-        return equipment_[a->id].lastRead < equipment_[b->id].lastRead;
-    });
+    const auto lastRead = [&](const Ref* r) {
+        const auto it = equipment_.find(r->id);
+        return it != equipment_.end() ? it->second.lastRead : Clock::time_point{};
+    };
+    std::sort(due.begin(), due.end(), [&](const Ref* a, const Ref* b) { return lastRead(a) < lastRead(b); });
 
     bool changed = false;
     for (std::size_t i = 0; i < std::min(kEquipmentPerTick, due.size()); ++i) {
@@ -201,6 +200,9 @@ void Players::equipmentTick(Clock::time_point now) {
 }
 
 void Players::refresh(Clock::time_point now) {
+    struct Vec2 {
+        float x, y;
+    };
     struct Pending {
         Entry* entry = nullptr;
         Vec2 rotation{};

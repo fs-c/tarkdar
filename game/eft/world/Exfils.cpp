@@ -2,6 +2,7 @@
 
 #include "core/log/Log.hpp"
 #include "core/mem/ReadBatch.hpp"
+#include "core/text/Ascii.hpp"
 #include "game/eft/Locale.hpp"
 #include "game/eft/Read.hpp"
 #include "game/eft/model/Players.hpp"
@@ -9,7 +10,6 @@
 #include <eft_offsets.hpp>
 
 #include <algorithm>
-#include <cctype>
 
 namespace radar::eft {
 
@@ -20,8 +20,7 @@ std::string normalized(std::string s) {
     const auto first = s.find_first_not_of(" \t\r\n");
     const auto last = s.find_last_not_of(" \t\r\n");
     s = first == std::string::npos ? std::string{} : s.substr(first, last - first + 1);
-    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return s;
+    return text::lowerAscii(s);
 }
 }  // namespace
 
@@ -108,13 +107,15 @@ void Exfils::discover() {
     for (const auto& e : found)
         if (!names_.contains(e.exfil.key) && std::ranges::find(unnamed, e.exfil.key) == unnamed.end()) unnamed.push_back(e.exfil.key);
     if (!unnamed.empty()) {
-        auto texts = lookupTexts(game_, unnamed);
-        for (auto& k : unnamed) {
-            const auto it = texts.find(k);
-            names_.emplace(k, it != texts.end() ? std::move(it->second) : k);
-        }
+        for (auto& [k, text] : lookupTexts(game_, unnamed)) names_.emplace(k, std::move(text));
     }
-    for (auto& e : found) e.exfil.name = names_.at(e.exfil.key);
+    bool unresolved = false;
+    for (auto& e : found) {
+        const auto it = names_.find(e.exfil.key);
+        unresolved |= it == names_.end();
+        e.exfil.name = it != names_.end() ? it->second : e.exfil.key;
+    }
+    if (unresolved) nextNameRetry_ = sched::Clock::now() + kNameRetryInterval;
 
     const auto poses = game_.transforms.worldPoses(transforms, Freshness::Cached);
     for (std::size_t i = 0; i < found.size(); ++i) {
@@ -129,8 +130,12 @@ void Exfils::discover() {
     publish();
 }
 
-void Exfils::refreshStatus() {
+void Exfils::refreshStatus(sched::Clock::time_point now) {
     bool changed = readStatus();
+    if (now >= nextNameRetry_) {
+        nextNameRetry_ = now + kNameRetryInterval;
+        changed |= retryNames();
+    }
     // Retry positions that couldn't be read at discovery.
     std::vector<Entry*> missing;
     std::vector<Address> transforms;
@@ -149,6 +154,26 @@ void Exfils::refreshStatus() {
         }
     }
     if (changed) publish();
+}
+
+bool Exfils::retryNames() {
+    std::vector<std::string> keys;
+    for (auto& [instance, e] : entries_) {
+        if (e.exfil.name != e.exfil.key || e.nameRetries >= kMaxNameRetries) continue;
+        ++e.nameRetries;
+        if (std::ranges::find(keys, e.exfil.key) == keys.end()) keys.push_back(e.exfil.key);
+    }
+    if (keys.empty()) return false;
+    for (auto& [k, text] : lookupTexts(game_, keys)) names_.emplace(k, std::move(text));
+    bool changed = false;
+    for (auto& [instance, e] : entries_) {
+        const auto it = names_.find(e.exfil.key);
+        if (it == names_.end() || it->second == e.exfil.name) continue;
+        log::debug("exfils: '{}' is '{}'", e.exfil.key, it->second);
+        e.exfil.name = it->second;
+        changed = true;
+    }
+    return changed;
 }
 
 bool Exfils::readStatus() {

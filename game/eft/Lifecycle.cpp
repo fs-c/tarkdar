@@ -8,17 +8,6 @@
 
 namespace radar::eft {
 
-const char* stateName(Status::State state) noexcept {
-    switch (state) {
-    case Status::State::WaitingForProcess: return "waiting for process";
-    case Status::State::WaitingForModules: return "waiting for modules";
-    case Status::State::WaitingForRaid: return "waiting for raid";
-    case Status::State::InRaid: return "in raid";
-    case Status::State::Cooldown: return "cooldown";
-    }
-    return "?";
-}
-
 void Lifecycle::publish(Status::State state, bool pending) {
     const auto previous = status_.get();
     Status s;

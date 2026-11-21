@@ -10,11 +10,14 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
+#include <vector>
 
 // Raid recordings: one file per raid, written while it runs (docs/protocol.md, "Raid recordings").
 namespace radar::server {
@@ -52,8 +55,10 @@ public:
 
     // Starts a recording when a raid starts, finishes it when the raid ends.
     void onStatus(const eft::Status& status, const std::string& message);
-    void onPlayers(const eft::PlayersSnapshot& players, const std::string& message);
-    void onLoot(const eft::LootSnapshot& loot, const std::string& message);
+    // Players and loot are shared, not copied: the recorder may hold on to them (before a raid's
+    // recording starts, and the last loot for diffing).
+    void onPlayers(std::shared_ptr<const eft::PlayersSnapshot> players, const std::string& message);
+    void onLoot(std::shared_ptr<const eft::LootSnapshot> loot, const std::string& message);
     void onSkeletons(std::uint64_t raidId, const std::string& message);
     void onCamera(std::uint64_t raidId, const std::string& message);
     // Other per-raid messages (exfils, explosives, vehicles, equipment, quests): written as they are.
@@ -74,7 +79,7 @@ private:
     void finishLocked();
     void write(const std::string& type, const std::string& line);
     void writePlayers(const eft::PlayersSnapshot& players, const std::string& message, std::int64_t now);
-    void writeLoot(const eft::LootSnapshot& loot, const std::string& message);
+    void writeLoot(std::shared_ptr<const eft::LootSnapshot> loot, const std::string& message);
     void prune();
     [[nodiscard]] bool recording(std::uint64_t raidId) const { return out_.is_open() && raidId == raidId_; }
 
@@ -94,13 +99,13 @@ private:
     std::int64_t lastPlayersWrite_ = 0;
     std::string pendingPlayers_;  // newest players message not written yet (written on finish)
     std::unordered_map<std::uint32_t, int> playerFlags_;  // id → dead/absent bits as last written
-    std::optional<eft::PlayersSnapshot> earlyPlayers_;    // this raid's players from before the recording started
+    std::shared_ptr<const eft::PlayersSnapshot> earlyPlayers_;  // this raid's players from before the recording started
     std::int64_t lastSkeletonsWrite_ = 0;
     std::int64_t lastCameraWrite_ = 0;
 
     // Loot diffing: the loot as last written, and when the last keyframe was.
-    std::optional<eft::LootSnapshot> lastLoot_;
-    std::optional<eft::LootSnapshot> earlyLoot_;  // this raid's loot from before the recording started
+    std::shared_ptr<const eft::LootSnapshot> lastLoot_;
+    std::shared_ptr<const eft::LootSnapshot> earlyLoot_;  // this raid's loot from before the recording started
     std::int64_t lastLootKeyframe_ = 0;
 
     // Stats for the end-of-raid log line.
@@ -129,8 +134,6 @@ public:
     [[nodiscard]] std::vector<RecordingInfo> list(const std::optional<std::string>& active);
     // JSON array of the list (docs/protocol.md).
     [[nodiscard]] std::string listJson(const std::optional<std::string>& active);
-
-    [[nodiscard]] const std::filesystem::path& dir() const { return dir_; }
 
 private:
     struct Cached {

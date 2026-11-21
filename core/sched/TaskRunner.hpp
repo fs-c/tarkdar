@@ -38,9 +38,6 @@ public:
     // relative to `now`.
     Clock::time_point step(Clock::time_point now);
 
-    // Called after each task with its duration; for diagnostics.
-    std::function<void(const std::string& task, Clock::duration took)> onTaskDone;
-
 private:
     struct Task {
         std::string name;

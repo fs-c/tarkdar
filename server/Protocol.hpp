@@ -34,11 +34,9 @@ inline constexpr int kRecordingFormat = 1;
 [[nodiscard]] std::string encodeVehicles(const eft::VehiclesSnapshot& vehicles);
 [[nodiscard]] std::string encodeLoot(const eft::LootSnapshot& loot);
 [[nodiscard]] std::string encodeCamera(const eft::CameraSnapshot& camera);
+[[nodiscard]] std::string encodeEquipment(const eft::EquipmentSnapshot& equipment);
+[[nodiscard]] std::string encodeQuests(const eft::QuestsSnapshot& quests);
 // Recordings only: the first line of a raid recording.
-// Client → server: the overlay's configuration from an `overlay` message (docs/protocol.md); nullopt
-// if the text isn't one or is malformed.
-[[nodiscard]] std::optional<overlay::Config> decodeOverlay(std::string_view text);
-
 [[nodiscard]] std::string encodeRecordingHeader(const eft::Status& status);
 // Recordings only: the loot changes since the previous loot (or lootDiff) line. `revision` is the
 // loot snapshot's revision.
@@ -46,12 +44,14 @@ inline constexpr int kRecordingFormat = 1;
                                          const std::vector<const eft::LootEntry*>& added,
                                          const std::vector<std::uint32_t>& removed,
                                          const std::vector<const eft::LootEntry*>& changed);
-[[nodiscard]] std::string encodeEquipment(const eft::EquipmentSnapshot& equipment);
-[[nodiscard]] std::string encodeQuests(const eft::QuestsSnapshot& quests);
 
-// The "type" field of an encoded message; nullopt if it isn't a valid message.
+// Client → server: the overlay's configuration from an `overlay` message (docs/protocol.md); nullopt
+// if the text isn't one or is malformed.
+[[nodiscard]] std::optional<overlay::Config> decodeOverlay(std::string_view text);
+
+// The "type" field of an encoded message; nullopt if it isn't a valid message. (Only tests use this.)
 [[nodiscard]] std::optional<std::string> messageType(std::string_view message);
-// The "t" field (ms since the Unix epoch); nullopt if missing.
+// The "t" field (ms since the Unix epoch); nullopt if missing. Used to read recording lines.
 [[nodiscard]] std::optional<std::int64_t> messageTime(std::string_view message);
 
 }  // namespace radar::server

@@ -69,7 +69,7 @@ private:
     std::deque<std::int64_t> draws_;
     struct Sample {
         std::int64_t latency, presented;
-        bool planned, missed;
+        bool missed;
     };
     std::deque<Sample> samples_;
     std::uint64_t discarded_ = 0;

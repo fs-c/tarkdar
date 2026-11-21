@@ -69,7 +69,8 @@ std::optional<Vehicle> Vehicles::readBtr() {
         return std::nullopt;
     }
     const auto pose = game_.transforms.worldPose(btrTransform_, Freshness::Fresh);
-    if (!pose || !math::isSane(pose->position, 100000.0f)) return last_;  // keep the last good one
+    if (!pose || !math::isSane(pose->position, 100000.0f))  // sane only: no origin check
+        return last_;  // keep the last good one
 
     Vehicle btr{.id = 1, .kind = Vehicle::Kind::Btr, .state = 0, .position = pose->position, .yaw = yawOf(pose->rotation)};
     std::uint8_t state = 0;

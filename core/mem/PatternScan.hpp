@@ -2,6 +2,7 @@
 
 #include "core/mem/MemoryView.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -20,6 +21,11 @@ struct Pattern {
     // nullopt if the text isn't a valid pattern (or is empty / all wildcards).
     [[nodiscard]] static std::optional<Pattern> parse(std::string_view text);
     [[nodiscard]] std::size_t size() const noexcept { return bytes.size(); }
+    // False for an empty or all-wildcard pattern (bytes is public, so parse() isn't the only way
+    // to get one); scan() skips those.
+    [[nodiscard]] bool hasFixedByte() const noexcept {
+        return std::ranges::any_of(bytes, [](std::int16_t b) { return b >= 0; });
+    }
     [[nodiscard]] bool matchesAt(std::span<const std::uint8_t> data, std::size_t at) const;
 };
 

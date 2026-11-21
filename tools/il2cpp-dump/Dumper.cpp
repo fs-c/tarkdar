@@ -44,11 +44,9 @@ constexpr std::uint32_t TypeData = off::managed::Il2CppType::Data;
 constexpr std::uint32_t TypeAttrs = off::managed::Il2CppType::Attrs;  // u16
 constexpr std::uint32_t TypeKind = off::managed::Il2CppType::Kind;    // u8
 // Bytes of the class header read in one go: everything up to and including field_count.
-constexpr std::uint32_t ClassHeaderSize = std::max({ClassName, ClassNamespace, ClassByvalArg, ClassDeclaringType,
-                                                    ClassParent, ClassFields}) + 8 > ClassFieldCount + 2
-                                              ? std::max({ClassName, ClassNamespace, ClassByvalArg, ClassDeclaringType,
-                                                          ClassParent, ClassFields}) + 8
-                                              : ClassFieldCount + 2;
+constexpr std::uint32_t ClassPointersEnd =
+    std::max({ClassName, ClassNamespace, ClassByvalArg, ClassDeclaringType, ClassParent, ClassFields}) + 8;
+constexpr std::uint32_t ClassHeaderSize = std::max(ClassPointersEnd, ClassFieldCount + 2);
 }  // namespace L
 
 constexpr std::uint16_t kFieldAttrStatic = 0x10;
@@ -737,8 +735,8 @@ std::optional<MetadataInfo> Il2CppDumper::readLiteralValues(std::vector<ClassRec
         }
     }
     if (!base)
-        return fail(std::format("no metadata header (sanity {:#X}, typeDefinitions at +{:#X}) within {:#X} bytes below the "
-                                "type definitions at {:#X} (stride {:#X})",
+        return fail(std::format("no metadata header (sanity 0x{:X}, typeDefinitions at +0x{:X}) within 0x{:X} bytes below the "
+                                "type definitions at 0x{:X} (stride 0x{:X})",
                                 kMetadataSanity, kHeaderTypeDefinitions, options_.metadataScanLimit, first, stride));
 
     // 3. fieldStart: the int32 that advances by field_count from one type to the next.
@@ -778,7 +776,7 @@ std::optional<MetadataInfo> Il2CppDumper::readLiteralValues(std::vector<ClassRec
     const auto [valuesOffset, valuesSize] = section(kHeaderFieldDefaultValues);
     const auto [dataOffset, dataSize] = section(kHeaderDefaultValueData);
     if (valuesSize % 12 != 0 || valuesSize > kMaxSection || dataSize > kMaxSection)
-        return fail(std::format("implausible default-value sections ({:#X} bytes, {:#X} bytes)", valuesSize, dataSize));
+        return fail(std::format("implausible default-value sections (0x{:X} bytes, 0x{:X} bytes)", valuesSize, dataSize));
     std::vector<std::uint8_t> valueTable, data;
     if (!readRange(mem_, *base + valuesOffset, valueTable, valuesSize) || !readRange(mem_, *base + dataOffset, data, dataSize))
         return fail("default-value sections unreadable");
@@ -811,8 +809,8 @@ std::optional<MetadataInfo> Il2CppDumper::readLiteralValues(std::vector<ClassRec
             if ((f.value = decodeConstant(data, static_cast<std::size_t>(it->second), kind, version))) ++info.literalValues;
         }
     }
-    notes.push_back(std::format("literal values: {} of {} literal fields (metadata v{} at {:#X}, type definitions "
-                                "{:#X} bytes each, fieldStart at +{:#X})",
+    notes.push_back(std::format("literal values: {} of {} literal fields (metadata v{} at 0x{:X}, type definitions "
+                                "0x{:X} bytes each, fieldStart at +0x{:X})",
                                 info.literalValues, info.literalFields, version, info.base, stride, *fieldStartOffset));
     return info;
 }

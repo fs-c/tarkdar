@@ -22,6 +22,15 @@ struct Status {
     bool offsetsMismatch = false;    // loaded game build differs from the offsets' build
 };
 
-[[nodiscard]] const char* stateName(Status::State state) noexcept;
+[[nodiscard]] inline const char* stateName(Status::State state) noexcept {
+    switch (state) {
+    case Status::State::WaitingForProcess: return "waiting for process";
+    case Status::State::WaitingForModules: return "waiting for modules";
+    case Status::State::WaitingForRaid: return "waiting for raid";
+    case Status::State::InRaid: return "in raid";
+    case Status::State::Cooldown: return "cooldown";
+    }
+    return "?";
+}
 
 }  // namespace radar::eft

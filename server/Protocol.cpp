@@ -434,6 +434,15 @@ std::optional<double> number(const crow::json::rvalue& o, const char* key) {
     return std::isfinite(v) ? std::optional(v) : std::nullopt;
 }
 
+// At most `max` bytes of `s`, cut at a code point boundary.
+std::string truncateUtf8(std::string s, std::size_t max) {
+    if (s.size() <= max) return s;
+    std::size_t cut = max;
+    while (cut > 0 && (static_cast<unsigned char>(s[cut]) & 0xC0) == 0x80) --cut;  // s[cut] is a continuation byte
+    s.resize(cut);
+    return s;
+}
+
 std::optional<bool> boolean(const crow::json::rvalue& o, const char* key) {
     if (!o.has(key)) return std::nullopt;
     if (o[key].t() == crow::json::type::True) return true;
@@ -453,8 +462,11 @@ std::optional<overlay::Config> decodeOverlay(std::string_view text) {
     const auto& d = msg["data"];
     overlay::Config c;
     c.on = boolean(d, "on").value_or(false);
-    if (const auto raid = number(d, "raid"); raid && *raid >= 0) c.raid = static_cast<std::uint64_t>(*raid);
-    if (const auto delay = number(d, "delayMs")) c.delay = std::chrono::milliseconds(std::clamp(static_cast<int>(*delay), 0, 500));
+    // 2^64 as a double; anything below fits a uint64.
+    if (const auto raid = number(d, "raid"); raid && *raid >= 0 && *raid < 18446744073709551616.0)
+        c.raid = static_cast<std::uint64_t>(*raid);
+    if (const auto delay = number(d, "delayMs"))
+        c.delay = std::chrono::milliseconds(static_cast<int>(std::clamp(*delay, 0.0, 500.0)));
     c.grid = boolean(d, "grid").value_or(false);
     if (const auto range = number(d, "lootRange")) c.lootRange = static_cast<float>(std::clamp(*range, 0.0, 1000.0));
     if (const auto radius = number(d, "scopeRadius")) c.scopeRadius = static_cast<float>(std::clamp(*radius, 0.0, 1.0));
@@ -474,7 +486,7 @@ std::optional<overlay::Config> decodeOverlay(std::string_view text) {
             if (!id || *id < 0 || *id > 4294967295.0 || !color) continue;
             mark.id = static_cast<std::uint32_t>(*id);
             mark.color = *color;
-            if (m.has("label") && m["label"].t() == crow::json::type::String) mark.label = std::string(m["label"].s()).substr(0, kMaxLabel);
+            if (m.has("label") && m["label"].t() == crow::json::type::String) mark.label = truncateUtf8(std::string(m["label"].s()), kMaxLabel);
             if (m.has("emphasis") && m["emphasis"].t() == crow::json::type::String) {
                 const std::string e = m["emphasis"].s();
                 mark.emphasis = e == "faint" ? overlay::Emphasis::Faint

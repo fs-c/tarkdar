@@ -88,7 +88,7 @@ struct BoneInfo {
     std::string name;                   // the bone's GameObject name; empty if unreadable
     std::optional<unity::Pose> pose{};  // world pose
 };
-// Every bone of the skeleton behind bodyField (up to kMaxBones), read one by one. Empty if the
+// Every bone of the skeleton behind bodyField (up to 1024 bones), read one by one. Empty if the
 // bone list is unreadable. Slow: for diagnostics only.
 [[nodiscard]] std::vector<BoneInfo> readAllBones(const Game& game, Address bodyField);
 

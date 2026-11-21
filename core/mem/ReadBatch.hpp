@@ -10,7 +10,7 @@ namespace radar::mem {
 
 // Collects reads and executes them as batched backend reads. Requests are split to respect the
 // backend's limits(); results are reassembled per request. Destination buffers must stay valid
-// until execute() returns. Single-use per execute(); call clear() to reuse.
+// until execute() returns. Single-use: one execute() per batch.
 //
 //   ReadBatch batch(mem);
 //   auto a = batch.add(addrA, valueA);
@@ -34,11 +34,11 @@ public:
     void execute(Freshness freshness = Freshness::Cached);
 
     // True if every byte of the request was read. Failed bytes are zero.
-    [[nodiscard]] bool complete(Handle h) const { return entries_.at(h).bytesRead == entries_.at(h).size; }
+    [[nodiscard]] bool complete(Handle h) const {
+        const Entry& e = entries_.at(h);
+        return e.size != 0 && e.bytesRead == e.size;
+    }
     [[nodiscard]] std::size_t bytesRead(Handle h) const { return entries_.at(h).bytesRead; }
-    [[nodiscard]] std::size_t size() const noexcept { return entries_.size(); }
-    [[nodiscard]] bool empty() const noexcept { return entries_.empty(); }
-    void clear() { entries_.clear(); }
 
 private:
     struct Entry {

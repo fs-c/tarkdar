@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cctype>
 #include <ctime>
+#include <format>
 #include <set>
 
 namespace radar::server {
@@ -99,7 +100,9 @@ void RaidRecorder::onStatus(const eft::Status& status, const std::string& messag
     std::lock_guard lock(mutex_);
     const bool inRaid = status.state == eft::Status::State::InRaid && status.raidId != 0;
     if (out_.is_open() && (!inRaid || status.raidId != raidId_)) {
-        write("status", message);  // the file ends with the status that ended the raid
+        // The file ends with the status that ended the raid. A status that starts the next raid
+        // belongs to the next file.
+        if (!inRaid) write("status", message);
         finishLocked();
     }
     if (inRaid && !out_.is_open()) start(status);
@@ -143,11 +146,12 @@ void RaidRecorder::start(const eft::Status& status) {
     earlyLoot_.reset();
 }
 
-void RaidRecorder::onPlayers(const eft::PlayersSnapshot& players, const std::string& message) {
+void RaidRecorder::onPlayers(std::shared_ptr<const eft::PlayersSnapshot> snapshot, const std::string& message) {
     std::lock_guard lock(mutex_);
+    const auto& players = *snapshot;
     latest_["players"] = {players.raidId, message};
     if (!recording(players.raidId)) {
-        if (players.raidId != 0) earlyPlayers_ = players;
+        if (players.raidId != 0) earlyPlayers_ = std::move(snapshot);
         return;
     }
     // Someone appeared, died, left or vanished: write at once, whatever the throttle says.
@@ -169,19 +173,21 @@ void RaidRecorder::writePlayers(const eft::PlayersSnapshot& players, const std::
     for (const auto& p : players.players) playerFlags_[p.id] = playerFlags(p);
 }
 
-void RaidRecorder::onLoot(const eft::LootSnapshot& loot, const std::string& message) {
+void RaidRecorder::onLoot(std::shared_ptr<const eft::LootSnapshot> snapshot, const std::string& message) {
     std::lock_guard lock(mutex_);
+    const auto& loot = *snapshot;
     latest_["loot"] = {loot.raidId, message};
-    if (recording(loot.raidId)) writeLoot(loot, message);
-    else if (loot.raidId != 0) earlyLoot_ = loot;
+    if (recording(loot.raidId)) writeLoot(std::move(snapshot), message);
+    else if (loot.raidId != 0) earlyLoot_ = std::move(snapshot);
 }
 
-void RaidRecorder::writeLoot(const eft::LootSnapshot& loot, const std::string& message) {
+void RaidRecorder::writeLoot(std::shared_ptr<const eft::LootSnapshot> snapshot, const std::string& message) {
+    const auto& loot = *snapshot;
     const auto now = now_();
     if (!lastLoot_ || now - lastLootKeyframe_ >= config_.lootKeyframeInterval.count()) {
         write("loot", message);
         lastLootKeyframe_ = now;
-        lastLoot_ = loot;
+        lastLoot_ = std::move(snapshot);
         return;
     }
     std::unordered_map<std::uint32_t, const eft::LootEntry*> before;
@@ -201,7 +207,7 @@ void RaidRecorder::writeLoot(const eft::LootSnapshot& loot, const std::string& m
     std::sort(removed.begin(), removed.end());
     if (!added.empty() || !removed.empty() || !changed.empty())
         write("lootDiff", encodeLootDiff(loot.raidId, loot.revision, added, removed, changed));
-    lastLoot_ = loot;
+    lastLoot_ = std::move(snapshot);
 }
 
 void RaidRecorder::onSkeletons(std::uint64_t raidId, const std::string& message) {
@@ -229,6 +235,7 @@ void RaidRecorder::onMessage(const std::string& type, std::uint64_t raidId, cons
 }
 
 void RaidRecorder::write(const std::string& type, const std::string& line) {
+    if (!out_.is_open()) return;  // a failed write already ended this recording
     out_ << line << '\n';
     auto& [lines, bytes] = stats_[type];
     ++lines;
@@ -237,6 +244,13 @@ void RaidRecorder::write(const std::string& type, const std::string& line) {
     if (now - lastFlush_ >= config_.flushInterval.count()) {
         out_.flush();
         lastFlush_ = now;
+    }
+    if (!out_) {
+        // Disk full, directory removed, ...: the rest of the raid can't be recorded.
+        log::error("recorder: writing {} failed; stopping the recording of raid {}", file_.string(), raidId_);
+        out_.close();
+        raidId_ = 0;
+        pendingPlayers_.clear();
     }
 }
 
@@ -257,6 +271,7 @@ void RaidRecorder::finishLocked() {
     if (!out_.is_open()) return;
     if (!pendingPlayers_.empty()) write("players", pendingPlayers_);
     pendingPlayers_.clear();
+    if (!out_.is_open()) return;  // that write failed
     out_.close();
     std::string summary;
     std::size_t total = 0;
@@ -304,12 +319,6 @@ std::optional<crow::json::rvalue> parseLine(const std::string& line) {
     return json;
 }
 
-std::optional<std::int64_t> lineTime(const std::string& line) {
-    auto json = parseLine(line);
-    if (!json || !json->has("t") || (*json)["t"].t() != crow::json::type::Number) return std::nullopt;
-    return (*json)["t"].i();
-}
-
 // Location from a header ("recording") or status line.
 std::optional<std::string> lineLocation(const std::string& line) {
     if (line.find("\"locationId\"") == std::string::npos) return std::nullopt;
@@ -333,7 +342,7 @@ void scan(const fs::path& path, RecordingInfo& info, bool wantEnd) {
     const auto takeLine = [&] {
         if (line.empty()) return;
         if (first) {
-            info.start = lineTime(line);
+            info.start = messageTime(line);
             first = false;
         }
         if (!info.locationId) info.locationId = lineLocation(line);
@@ -354,8 +363,8 @@ void scan(const fs::path& path, RecordingInfo& info, bool wantEnd) {
     gzclose(in);
     takeLine();  // a last line without newline (possibly cut off)
     if (wantEnd) {
-        info.end = lineTime(last);
-        if (!info.end) info.end = lineTime(prev);
+        info.end = messageTime(last);
+        if (!info.end) info.end = messageTime(prev);
     }
 }
 

@@ -28,8 +28,7 @@ bool has(const std::string& s, std::string_view part) { return s.find(part) != s
 TEST_CASE("diagnose reports each step, with hints for failures") {
     FakeWorld w;
     w.newWorld(u"Woods", 3);
-    mem::Target target(w.fake, std::string(eft::kProcessName),
-                       {std::string(eft::kGameAssembly), std::string(eft::kUnityPlayer)});
+    auto target = w.makeTarget();
     const auto out = runToString(target);
     INFO(out);
     CHECK(has(out, "OK   attached to EscapeFromTarkov.exe"));
@@ -64,8 +63,7 @@ TEST_CASE("diagnose lists player kinds and why entries didn't build") {
     list.push_back(observed);
     list.push_back(broken);
     w.setRosterList(list);
-    mem::Target target(w.fake, std::string(eft::kProcessName),
-                       {std::string(eft::kGameAssembly), std::string(eft::kUnityPlayer)});
+    auto target = w.makeTarget();
     const auto out = runToString(target);
     INFO(out);
     CHECK(has(out, "FAIL only 3 of 4 players built (client ×1, local ×1, observed ×1)"));
@@ -79,8 +77,7 @@ TEST_CASE("diagnose lists player kinds and why entries didn't build") {
 TEST_CASE("diagnose without a raid stops after discovery") {
     FakeWorld w;
     w.newWorld(u"hideout", 1);
-    mem::Target target(w.fake, std::string(eft::kProcessName),
-                       {std::string(eft::kGameAssembly), std::string(eft::kUnityPlayer)});
+    auto target = w.makeTarget();
     const auto out = runToString(target);
     INFO(out);
     CHECK(has(out, "lobby location 'hideout'"));
@@ -92,8 +89,7 @@ TEST_CASE("diagnose flags joint bones the skeleton doesn't have") {
     FakeWorld w;
     w.skeletonBones = 100;  // no neck (132) or head (133)
     w.newWorld(u"Woods", 2);
-    mem::Target target(w.fake, std::string(eft::kProcessName),
-                       {std::string(eft::kGameAssembly), std::string(eft::kUnityPlayer)});
+    auto target = w.makeTarget();
     const auto out = runToString(target);
     INFO(out);
     CHECK(has(out, "OK   2 of 2 players have a position"));

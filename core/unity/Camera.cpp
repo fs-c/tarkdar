@@ -3,7 +3,9 @@
 #include "core/mem/ReadBatch.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <functional>
 
 namespace radar::unity {
 
@@ -17,7 +19,11 @@ namespace {
 constexpr float kMaxElement = 1e5f;
 constexpr float kNonZero = 1e-5f;
 
-bool unit(Vec3 v) { return std::isfinite(math::length(v)) && math::length(v) > kNonZero; }
+// Finite and not (nearly) zero length.
+bool hasUsableLength(Vec3 v) {
+    const float length = math::length(v);
+    return std::isfinite(length) && length > kNonZero;
+}
 
 }  // namespace
 
@@ -35,14 +41,14 @@ bool matrixLooksValid(const Mat4& m) {
 bool viewProjectionLooksValid(const Mat4& vp) {
     if (!matrixLooksValid(vp)) return false;
     const Vec3 x = vp.row3(0), y = vp.row3(1), w = vp.row3(3);
-    if (!unit(x) || !unit(y) || !unit(w)) return false;
+    if (!hasUsableLength(x) || !hasUsableLength(y) || !hasUsableLength(w)) return false;
     const float volume = std::fabs(math::dot(math::cross(x, y), w)) / (math::length(x) * math::length(y) * math::length(w));
     return std::isfinite(volume) && volume > 1e-4f;
 }
 
 bool viewProjectionMatchesView(const Mat4& vp, const Mat4& view) {
     const Vec3 w = vp.row3(3), z = view.row3(2);
-    if (!unit(w) || !unit(z)) return false;
+    if (!hasUsableLength(w) || !hasUsableLength(z)) return false;
     // Perspective projection puts camera-space Z into clip W; the sign depends on the convention.
     const float alignment = std::fabs(math::dot(w, z) / (math::length(w) * math::length(z)));
     return std::isfinite(alignment) && alignment >= 0.995f;

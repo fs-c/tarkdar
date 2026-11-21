@@ -6,6 +6,7 @@
 
 #include "app/Diagnose.hpp"
 #include "app/Options.hpp"
+#include "app/PlayerText.hpp"
 #include "core/log/Log.hpp"
 #include "core/mem/Target.hpp"
 #include "core/mem/VmmBackend.hpp"
@@ -76,12 +77,9 @@ void logPlayerSummary(const radar::eft::PlayersSnapshot& snap) {
     log::info("players: {} alive, {} dead, {} absent ({} with position)", alive, dead, absent, positioned);
     for (const auto& p : snap.players) {
         if (!p.position) continue;
-        const auto line = std::format("  #{} {}{} side {}{}{} {}{}: ({:.1f}, {:.1f}, {:.1f}) yaw {:.0f} pitch {:.0f}",
-                                      p.id, radar::eft::kindName(p.kind), p.ai ? " ai" : "", static_cast<int>(p.side),
-                                      p.voice.empty() ? "" : " voice " + p.voice,
-                                      p.role ? std::format(" role {}", *p.role) : "", p.dead ? "dead" : "alive",
-                                      p.absent ? " absent" : "", p.position->x, p.position->y, p.position->z, p.yaw,
-                                      p.pitch);
+        const auto line = std::format("  {}{}: ({:.1f}, {:.1f}, {:.1f}) yaw {:.0f} pitch {:.0f}",
+                                      app::describePlayer(p), p.absent ? " absent" : "", p.position->x, p.position->y,
+                                      p.position->z, p.yaw, p.pitch);
         if (p.local) log::info("{}", line);
         else log::debug("{}", line);
     }
@@ -142,7 +140,9 @@ int main(int argc, char** argv) {
     mem::Target target(backend, std::string(eft::kProcessName), modules);
 
     if (options->once) return runOnce(target, options->timeoutSeconds);
-    if (options->diagnose) return app::runDiagnose(target, options->timeoutSeconds.value_or(30), stdout, options->questProbe, options->localeProbe);
+    if (options->diagnose)
+        return app::runDiagnose(target, options->timeoutSeconds.value_or(30), stdout, options->questProbe,
+                                options->localeProbe, &gStop);
 
     eft::WorldState world;
     eft::Lifecycle lifecycle(target, [&world](std::shared_ptr<const eft::RaidSession> session) {
@@ -181,8 +181,9 @@ int main(int argc, char** argv) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         if (std::chrono::steady_clock::now() - lastSummary >= std::chrono::seconds(5)) {
             lastSummary = std::chrono::steady_clock::now();
-            logPlayerSummary(*world.players.get());
-            if (world.players.get()->raidId != 0) {
+            const auto players = world.players.get();
+            logPlayerSummary(*players);
+            if (players->raidId != 0) {
                 const auto exfils = world.exfils.get();
                 const auto explosives = world.explosives.get();
                 const auto loot = world.loot.get();

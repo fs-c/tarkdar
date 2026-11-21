@@ -86,6 +86,21 @@ TEST_CASE("overlay: projection and letterboxing") {
     CHECK(vp.y == doctest::Approx(60));
 }
 
+TEST_CASE("overlay: the grid's dots stay on the 5 m lattice whatever the range") {
+    Scene s;
+    s.config.grid = true;
+    s.config.lootRange = 10;
+    const auto onLattice = itemsOf<DrawList::Circle>(s.build());
+    CHECK_FALSE(onLattice.empty());
+    s.config.lootRange = 12;  // not a multiple of 5: still the same dots
+    const auto d = itemsOf<DrawList::Circle>(s.build());
+    REQUIRE(d.size() == onLattice.size());
+    for (std::size_t i = 0; i < d.size(); ++i) {
+        CHECK(d[i].center.x == doctest::Approx(onLattice[i].center.x));
+        CHECK(d[i].center.y == doctest::Approx(onLattice[i].center.y));
+    }
+}
+
 TEST_CASE("overlay: a 4:3 picture letterboxed or stretched to 16:9") {
     Scene s;
     s.fps = cameraAt({0, 1.7f, 0}, 90, 4.f / 3.f);

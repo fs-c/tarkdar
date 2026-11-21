@@ -25,9 +25,7 @@ Quat axisAngle(Vec3 axis, float degrees) {
     return {axis.x * s, axis.y * s, axis.z * s, std::cos(half)};
 }
 
-bool near(Vec3 a, Vec3 b, float eps = 1e-4f) {
-    return std::fabs(a.x - b.x) < eps && std::fabs(a.y - b.y) < eps && std::fabs(a.z - b.z) < eps;
-}
+bool near(Vec3 a, Vec3 b, float eps = 1e-4f) { return test::near(a, b, eps); }
 
 unity::TrsX trs(Vec3 t, Quat q = {}, Vec3 s = {1, 1, 1}) { return {t, 0, q, s, 0}; }
 }  // namespace
@@ -242,3 +240,5 @@ TEST_CASE("Scene components and managed component lookup") {
     heap.put<std::uint64_t>(go + kUnity.gameObjectComponentCount, 100000);
     CHECK(scene.components(go).empty());
 }
+
+#undef SETUP

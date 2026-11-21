@@ -15,6 +15,15 @@ struct PeFingerprint {
     friend bool operator==(const PeFingerprint&, const PeFingerprint&) = default;
 };
 
+// Offsets from the NT headers address (as returned by ntHeadersAddress).
+inline constexpr std::uint32_t kPeFileHeaderOffset = 4;  // after the NT signature
+inline constexpr std::uint32_t kPeFileHeaderSize = 20;
+inline constexpr std::uint32_t kPeOptionalHeaderOffset = kPeFileHeaderOffset + kPeFileHeaderSize;
+
+// Address of the NT headers of a PE image loaded at imageBase: checks the DOS magic, follows
+// e_lfanew and checks the NT signature. nullopt if any of that doesn't look right.
+[[nodiscard]] std::optional<Address> ntHeadersAddress(const MemoryView& mem, Address imageBase);
+
 // Reads the fingerprint from the PE headers of a loaded 64-bit image. nullopt if the headers
 // don't look like a valid PE32+ image.
 [[nodiscard]] std::optional<PeFingerprint> readPeFingerprint(const MemoryView& mem,

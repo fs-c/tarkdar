@@ -66,4 +66,10 @@ struct Mat4 {
            std::fabs(v.y) <= limit && std::fabs(v.z) <= limit;
 }
 
+// isSane, and not at the world origin (within `originEpsilon` on every axis; zero-filled memory).
+[[nodiscard]] inline bool isPlausiblePosition(Vec3 v, float limit = 1e6f, float originEpsilon = 0.0f) {
+    return isSane(v, limit) &&
+           !(std::fabs(v.x) <= originEpsilon && std::fabs(v.y) <= originEpsilon && std::fabs(v.z) <= originEpsilon);
+}
+
 }  // namespace radar::math

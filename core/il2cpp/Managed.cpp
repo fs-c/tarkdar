@@ -8,6 +8,8 @@ namespace radar::il2cpp {
 
 namespace {
 constexpr std::size_t kClassNameMax = 256;
+constexpr std::size_t kMaxChars = 4096;  // hard cap on readString's maxChars
+constexpr int kMaxClassDepth = 32;       // ancestry walk limit (guards against corrupt parent cycles)
 }
 
 std::optional<std::string> Managed::readString(Address stringObject, std::size_t maxChars,
@@ -116,9 +118,8 @@ std::vector<Managed::ClassNames> Managed::ancestry(Address klass) const {
             complete = true;  // reached the root (System.Object has no parent)
             break;
         }
-        const auto parent = parentClass(*k);
-        if (!parent || parent == k) break;  // unreadable or corrupt
-        k = parent;
+        if (!mem::MemoryView::isUserPointer(parentField) || parentField == *k) break;  // unreadable or corrupt
+        k = parentField;
     }
     if (complete && namesComplete) {
         std::lock_guard lock(classCache_->mutex);

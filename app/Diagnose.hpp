@@ -2,6 +2,7 @@
 
 #include "core/mem/Target.hpp"
 
+#include <atomic>
 #include <cstdio>
 #include <filesystem>
 
@@ -9,12 +10,13 @@ namespace radar::app {
 
 // One-shot check of the whole read chain against the running game (or a memory dump): attach,
 // IL2CPP type table, GameObjectManager, both raid-finding strategies, and, if a raid is found, one
-// pass of every subsystem (players, positions, equipment, exfils, explosives, loot) with a summary
-// of what came out. Each step prints what it read and which offsets it depended on, so a failure
+// pass of every raid subsystem (see runDiagnose in Diagnose.cpp for the list) with a summary of what
+// came out. Each step prints what it read and which offsets it depended on, so a failure
 // points at what to check. Returns 0 if a raid was found and every step produced data, 1 otherwise.
 // With `questProbe`, also writes the quest probe (QuestProbe.hpp) there; with `localeProbe`, the locale
-// probe (LocaleProbe.hpp).
+// probe (LocaleProbe.hpp). Waiting for the attach ends early (returning 1) once `stop` is set.
 int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out, const std::filesystem::path& questProbe = {},
-                const std::filesystem::path& localeProbe = {});
+                const std::filesystem::path& localeProbe = {},
+                const std::atomic<bool>* stop = nullptr);
 
 }  // namespace radar::app

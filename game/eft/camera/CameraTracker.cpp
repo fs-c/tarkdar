@@ -1,6 +1,7 @@
 #include "game/eft/camera/CameraTracker.hpp"
 
 #include "core/log/Log.hpp"
+#include "core/text/Ascii.hpp"
 #include "game/eft/Layouts.hpp"
 #include "game/eft/Read.hpp"
 #include "core/mem/ReadBatch.hpp"
@@ -8,7 +9,6 @@
 #include <eft_offsets.hpp>
 
 #include <algorithm>
-#include <cctype>
 
 namespace radar::eft {
 
@@ -19,14 +19,8 @@ namespace {
 
 constexpr auto kFresh = Freshness::Fresh;
 
-bool containsIgnoreCase(std::string_view haystack, std::string_view needle) {
-    return std::ranges::search(haystack, needle, [](char a, char b) {
-               return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
-           }).begin() != haystack.end();
-}
-
-bool isFpsCamera(std::string_view name) { return containsIgnoreCase(name, "FPS") && containsIgnoreCase(name, "Camera"); }
-bool isOpticCamera(std::string_view name) { return containsIgnoreCase(name, "Optic") && containsIgnoreCase(name, "Camera"); }
+bool isFpsCamera(std::string_view name) { return text::containsIgnoreCase(name, "FPS") && text::containsIgnoreCase(name, "Camera"); }
+bool isOpticCamera(std::string_view name) { return text::containsIgnoreCase(name, "Optic") && text::containsIgnoreCase(name, "Camera"); }
 
 CameraView viewOf(const unity::CameraSample& s) { return {s.viewProjection, s.position, s.fieldOfView, s.aspect}; }
 
@@ -161,7 +155,8 @@ std::vector<SightState> CameraTracker::readSights(Address pwa, Address opticMana
     first.execute(kFresh);
     mem::ReadBatch second(game_.mem);
     for (auto& r : reads) {
-        if (mem::MemoryView::isUserPointer(r.bone)) second.add(r.bone + kIl2CppLayout.unityObjectCachedPtr, r.boneNative);
+        if (mem::MemoryView::isUserPointer(r.bone))
+            second.add(r.bone + game_.managed.layout().unityObjectCachedPtr, r.boneNative);
         if (!mem::MemoryView::isUserPointer(r.mod)) continue;
         second.add(r.mod + off::SightComponent::SelectedScope, r.scope);
         second.add(r.mod + off::SightComponent::ScopeZoomValue, r.scopeZoomValue);

@@ -10,6 +10,7 @@ using namespace radar;
 using radar::test::FakeWorld;
 using radar::test::kIl2Cpp;
 using radar::test::kUnity;
+using radar::test::place;
 using mem::Address;
 using sched::Clock;
 
@@ -56,16 +57,6 @@ Address makeGrids(FakeWorld& w, const std::vector<std::vector<Address>>& grids) 
         objects.push_back(grid);
     }
     return w.heap.array(objects);
-}
-
-std::shared_ptr<const eft::RaidSession> makeSession(FakeWorld& w) {
-    return std::make_shared<eft::RaidSession>(eft::RaidSession{
-        .id = 9,
-        .game = w.attachGame(),
-        .start = eft::RaidCandidate{.localGameWorld = w.world, .gameWorldObject = w.world,
-                                    .localPlayer = w.localPlayer, .locationId = "bigmap", .registeredCount = 1},
-        .startedAt = Clock::now(),
-    });
 }
 
 // A loadout: an AK with a magazine (holding ammo) in a slot, and an empty holster.
@@ -168,7 +159,7 @@ TEST_CASE("Players publishes equipment trees") {
 
     eft::WorldState world;
     {
-        eft::Players players(makeSession(w), world);
+        eft::Players players(w.makeSession(9), world);
         const auto t = Clock::now();
         players.rosterTick(t);
         players.equipmentTick(t);
@@ -204,7 +195,7 @@ TEST_CASE("Players reads observed players' equipment through their controller") 
     w.heap.put<Address>(equipment + off::InventoryEquipment::_cachedSlots, makeLoadout(w, c));
 
     eft::WorldState world;
-    eft::Players players(makeSession(w), world);
+    eft::Players players(w.makeSession(9), world);
     const auto t = Clock::now();
     players.rosterTick(t);
     players.equipmentTick(t);
@@ -223,40 +214,23 @@ TEST_CASE("Loot reads corpse equipment, not container contents") {
     const Address corpseClass = h.klass("Corpse", "EFT.Interactive", lootItemClass);
     const Address containerClass = h.klass("LootableContainer", "EFT.Interactive", interactive);
 
-    auto place = [&](Address managed, std::string_view name) {
-        // Minimal GameObject with a transform at (1, 1, 1).
-        const Address native = h.alloc(0x100), go = h.alloc(0x100), transform = h.alloc(0x100);
-        const Address hierarchy = h.alloc(0x100), trs = h.alloc(sizeof(unity::TrsX)), parents = h.alloc(4);
-        h.put<Address>(managed + kIl2Cpp.unityObjectCachedPtr, native);
-        h.put<Address>(native + kUnity.componentGameObject, go);
-        h.put<Address>(go + kUnity.gameObjectName, h.cString(name));
-        const Address entries = h.alloc(kUnity.componentEntryStride);
-        h.put<Address>(entries + kUnity.componentEntryComponent, transform);
-        h.put<Address>(go + kUnity.gameObjectComponents, entries);
-        h.put<Address>(transform + kUnity.transformHierarchy, hierarchy);
-        h.put<Address>(hierarchy + kUnity.hierarchyLocalTransforms, trs);
-        h.put<Address>(hierarchy + kUnity.hierarchyParentIndices, parents);
-        h.put<std::int32_t>(parents, -1);
-        h.put(trs, unity::TrsX{{1, 1, 1}, 0, {}, {1, 1, 1}, 0});
-    };
-
     // Container: its root item is a compound item whose slots hold the contents.
     const Address container = h.object(containerClass, 0x200), owner = h.alloc(0x100);
     const Address root = makeItem(w, c.compound, u"578f8782245977354405a1e3");
     h.put<Address>(container + off::LootableContainer::ItemOwner, owner);
     h.put<Address>(owner + off::LootableContainerItemOwner::RootItem, root);
     h.put<Address>(root + off::LootItemMod::Slots, makeSlots(w, {{u"main", makeItem(w, c.item, u"roubles", 5000)}}));
-    place(container, "safe");
+    place(w, container, {1, 1, 1}, "safe");
 
     const Address corpse = h.object(corpseClass, 0x200);
     const Address equipment = makeItem(w, c.equipment, u"equipmentroot");
     h.put<Address>(corpse + off::InteractiveLootItem::Item, equipment);
     h.put<Address>(equipment + off::LootItemMod::Slots, makeLoadout(w, c));
-    place(corpse, "corpse");
+    place(w, corpse, {1, 1, 1}, "corpse");
 
     h.put<Address>(w.world + off::ClientLocalGameWorld::LootList, h.list(std::vector<Address>{container, corpse}, 8));
     eft::WorldState world;
-    eft::Loot loot(makeSession(w), world);
+    eft::Loot loot(w.makeSession(9), world);
     const auto t = Clock::now();
     loot.scan(t);
     const auto snap = world.loot.get();

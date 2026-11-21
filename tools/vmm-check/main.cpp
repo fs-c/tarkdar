@@ -96,7 +96,7 @@ bool checkQemuRamBackend(std::string_view device) {
         check(false, "guest RAM backend",
               "memory-backend-ram (anonymous memory, nothing to map); in the libvirt domain XML add\n"
               "       <memoryBacking><source type='memfd'/><access mode='shared'/></memoryBacking>\n"
-              "       and restart the VM (see docs/verification-playbook.md 0.2)");
+              "       and restart the VM");
         return false;
     } else
         check(true, "guest RAM backend", "unknown, trying anyway");

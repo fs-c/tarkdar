@@ -39,7 +39,7 @@ void FramePacer::presented(std::int64_t read, std::int64_t presented, std::int64
     }
     lastVblank_ = presented;
     refresh_ = refresh;
-    samples_.push_back({presented - read, presented, target.has_value(), missed});
+    samples_.push_back({presented - read, presented, missed});
     while (samples_.size() > kStatSamples) samples_.pop_front();
 }
 

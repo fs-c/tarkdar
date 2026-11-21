@@ -37,7 +37,6 @@ Clock::time_point TaskRunner::step(Clock::time_point now) {
     std::stable_sort(due.begin(), due.end(), [](const Task* a, const Task* b) { return a->nextRun < b->nextRun; });
 
     for (Task* t : due) {
-        const auto begin = Clock::now();
         try {
             t->fn();
         } catch (const std::exception& e) {
@@ -46,7 +45,6 @@ Clock::time_point TaskRunner::step(Clock::time_point now) {
             log::error("[{}] task {} threw an unknown exception", name_, t->name);
         }
         const auto end = Clock::now();
-        if (onTaskDone) onTaskDone(t->name, end - begin);
 
         // Keep the phase; skip missed cycles. Reference point: the later of `now` and the wall
         // clock, so tests driving step() with synthetic times behave deterministically.

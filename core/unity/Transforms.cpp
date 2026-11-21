@@ -61,8 +61,10 @@ std::optional<Pose> Transforms::composeByChain(std::int32_t index, Address local
     // Parent indices one hop at a time, then the TRS of each chain slot.
     std::vector<std::int32_t> chain{index};
     while (true) {
-        const auto parent =
-            mem_.read<std::int32_t>(parentIndices + static_cast<Address>(chain.back()) * sizeof(std::int32_t), freshness);
+        std::int32_t parent = 0;
+        if (!mem_.tryRead(parentIndices + static_cast<Address>(chain.back()) * sizeof(std::int32_t), parent,
+                          freshness))
+            return std::nullopt;
         if (parent < 0) break;
         if (parent >= kMaxIndex || chain.size() >= kMaxDepth) return std::nullopt;  // garbage or a cycle
         chain.push_back(parent);

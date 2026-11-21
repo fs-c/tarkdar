@@ -12,7 +12,8 @@ namespace {
 ULONG64 vmmFlags(Freshness freshness) {
     // ZEROPAD_ON_FAIL: unreadable pages within physical memory come back as zeros. We zero-fill
     // destination buffers ourselves as well, so the "failed bytes are zero" contract holds
-    // regardless of how VMM fails.
+    // regardless of how VMM fails. Consequence: a read can be reported complete while holding
+    // zeros for pages VMM could not read (see the caveat on ReadRequest in Types.hpp).
     ULONG64 flags = VMMDLL_FLAG_ZEROPAD_ON_FAIL;
     if (freshness == Freshness::Fresh) flags |= VMMDLL_FLAG_NOCACHE;
     return flags;
@@ -129,7 +130,7 @@ void VmmBackend::readMany(Pid pid, std::span<ReadRequest> requests, Freshness fr
 
     bool anyPrepared = false;
     for (auto& r : requests) {
-        if (r.va == 0 || !r.dst || r.size == 0) continue;
+        if ((r.va == 0 && pid != kPhysicalMemory) || !r.dst || r.size == 0) continue;
         // pcbRead is filled by VMMDLL_Scatter_Execute. The buffers must outlive the handle.
         if (VMMDLL_Scatter_PrepareEx(scatter, r.va, r.size, static_cast<PBYTE>(r.dst),
                                      reinterpret_cast<PDWORD>(&r.bytesRead))) {

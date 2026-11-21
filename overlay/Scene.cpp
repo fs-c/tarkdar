@@ -6,9 +6,11 @@
 #include <format>
 #include <numbers>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace radar::overlay {
 
+using eft::CameraView;
 using math::Vec3;
 
 namespace {
@@ -56,7 +58,7 @@ public:
     };
     // nullopt: behind the camera, hidden behind the scope's picture, or off the picture.
     [[nodiscard]] std::optional<Screen> toScreen(Vec3 p) const {
-        const Point centre{vp_.x + vp_.width / 2, vp_.y + vp_.height / 2};
+        const Point centre = this->centre();
         if (const auto q = project(fps_.viewProjection, p)) {
             const Point at{vp_.x + (q->x + 1) * 0.5f * vp_.width, vp_.y + (1 - q->y) * 0.5f * vp_.height};
             if (!scope_ || !insideLens(at, centre)) return visible(at) ? std::optional(Screen{at, q->depth}) : std::nullopt;
@@ -97,8 +99,7 @@ void label(DrawList& out, Point at, float offset, const std::string& text, float
     out.items.emplace_back(DrawList::Text{{at.x + offset + 3, at.y - kTextSize / 2}, line, color, kTextSize});
 }
 
-// The figure's limbs (as the map draws them, web/src/render.ts), and the head: a circle this big (m),
-// its centre this far beyond the head bone along neck → head (m).
+// The figure's limbs, as the map draws them (web/src/render.ts).
 constexpr std::pair<eft::Joint, eft::Joint> kBones[] = {
     {eft::Joint::Pelvis, eft::Joint::Chest},           {eft::Joint::Chest, eft::Joint::Neck},
     {eft::Joint::Neck, eft::Joint::Head},              {eft::Joint::LeftHip, eft::Joint::RightHip},
@@ -108,20 +109,22 @@ constexpr std::pair<eft::Joint, eft::Joint> kBones[] = {
     {eft::Joint::LeftElbow, eft::Joint::LeftHand},     {eft::Joint::RightShoulder, eft::Joint::RightElbow},
     {eft::Joint::RightElbow, eft::Joint::RightHand},
 };
+// The head is a circle this big (m)...
 constexpr float kHeadRadius = 0.12f;
+// ... its centre this far beyond the head bone along neck → head (m).
+constexpr float kHeadLift = 0.09f;
 // Smaller on screen than this (px, feet to head) a skeleton doesn't read: the plain line instead.
 constexpr float kMinSkeletonHeight = 30;
-constexpr float kHeadLift = 0.09f;
 
 // The full skeleton. A limb with one end inside the scope's circle and the other outside isn't drawn:
-// its ends are placed through different views. False if no part of it shows.
-bool drawSkeleton(DrawList& out, const Painter& painter, Vec3 eye, const eft::PlayerState& p, const Mark& m) {
+// its ends are placed through different views.
+void drawSkeleton(DrawList& out, const Painter& painter, Vec3 eye, const eft::PlayerState& p, const Mark& m) {
     const Vec3 base = *p.position;
     const eft::Joints& joints = *p.joints;
     std::array<std::optional<Painter::Screen>, eft::kJointCount> at;
     for (std::size_t i = 0; i < eft::kJointCount; ++i) at[i] = painter.toScreen(base + joints[i]);
     const float width = widthOf(m.emphasis);
-    bool drawn = false;
+    bool drawn = false;  // whether any part shows
     for (const auto& [from, to] : kBones) {
         const auto& a = at[static_cast<std::size_t>(from)];
         const auto& b = at[static_cast<std::size_t>(to)];
@@ -141,14 +144,13 @@ bool drawSkeleton(DrawList& out, const Painter& painter, Vec3 eye, const eft::Pl
         out.items.emplace_back(DrawList::Circle{c->at, std::max(r, 2.f), m.color, r > 3 ? width : 0});
         drawn = true;
     }
-    if (!drawn) return false;
+    if (!drawn) return;
     // The label next to the highest point shown.
     const Painter::Screen* top = nullptr;
     for (const auto& s : at)
         if (s && (!top || s->at.y < top->at.y)) top = &*s;
     if (c && (!top || c->at.y < top->at.y)) top = &*c;
     if (top) label(out, top->at, sizeAt(top->depth, m.emphasis), m.label, math::length(base - eye), m.color);
-    return true;
 }
 
 void drawPlayer(DrawList& out, const Painter& painter, Vec3 eye, const eft::PlayerState& p, const Mark& m) {
@@ -194,10 +196,11 @@ void drawExfil(DrawList& out, const Painter& painter, Vec3 eye, Vec3 pos, const 
 
 void drawGrid(DrawList& out, const Painter& painter, Vec3 eye, float ground, float range) {
     const float x0 = std::round(eye.x / kGridStep) * kGridStep, z0 = std::round(eye.z / kGridStep) * kGridStep;
-    const float r = std::min(range, kGridRange);
-    for (float dx = -r; dx <= r; dx += kGridStep)
-        for (float dz = -r; dz <= r; dz += kGridStep)
-            if (const auto s = painter.toScreen({x0 + dx, ground, z0 + dz}))
+    // Whole steps of the lattice around the rounded origin, so the dots stay on it.
+    const int n = static_cast<int>(std::floor(std::min(range, kGridRange) / kGridStep));
+    for (int i = -n; i <= n; ++i)
+        for (int j = -n; j <= n; ++j)
+            if (const auto s = painter.toScreen({x0 + static_cast<float>(i) * kGridStep, ground, z0 + static_cast<float>(j) * kGridStep}))
                 out.items.emplace_back(
                     DrawList::Circle{s->at, 1.5f, faded(kGridColor, std::max(0.2f, 1 - s->depth / kGridRange)), 0});
 }
@@ -258,7 +261,7 @@ DrawList buildScene(const SceneInput& in) {
     const bool marksApply = cfg.raid == in.players.raidId;
     std::unordered_map<std::uint32_t, const eft::PlayerState*> players;
     for (const auto& p : in.players.players) players.emplace(p.id, &p);
-    std::unordered_map<std::uint32_t, bool> markedPlayers;
+    std::unordered_set<std::uint32_t> markedPlayers;
 
     if (marksApply) {
         std::unordered_map<std::uint32_t, const eft::LootEntry*> loot;
@@ -271,7 +274,7 @@ DrawList buildScene(const SceneInput& in) {
             switch (m.kind) {
                 case MarkKind::Player:
                     if (const auto it = players.find(m.id); it != players.end()) {
-                        markedPlayers[m.id] = true;
+                        markedPlayers.insert(m.id);
                         const auto& p = *it->second;
                         if (!p.local && !p.absent && p.position) drawPlayer(out, painter, eye, p, m);
                     }

@@ -7,26 +7,13 @@
 
 using namespace radar;
 using radar::test::FakeWorld;
+using radar::test::near;
 using mem::Address;
 using math::Vec3;
 using sched::Clock;
 using std::chrono::milliseconds;
 
 namespace {
-bool near(Vec3 a, Vec3 b, float eps = 1e-3f) {
-    return std::fabs(a.x - b.x) < eps && std::fabs(a.y - b.y) < eps && std::fabs(a.z - b.z) < eps;
-}
-
-std::shared_ptr<const eft::RaidSession> makeSession(FakeWorld& w) {
-    return std::make_shared<eft::RaidSession>(eft::RaidSession{
-        .id = 7,
-        .game = w.attachGame(),
-        .start = eft::RaidCandidate{.localGameWorld = w.world, .gameWorldObject = w.world,
-                                    .localPlayer = w.localPlayer, .locationId = "bigmap", .registeredCount = 1},
-        .startedAt = Clock::now(),
-    });
-}
-
 const eft::PlayerState* byPosition(const eft::PlayersSnapshot& s, Vec3 pos) {
     for (const auto& p : s.players)
         if (p.position && near(*p.position, pos)) return &p;
@@ -90,7 +77,7 @@ TEST_CASE("Players tracks the roster, positions, rotation and death") {
     w.setRotation(bot1, 123.0f, -5.0f);
 
     eft::WorldState world;
-    auto session = makeSession(w);
+    auto session = w.makeSession(7);
     eft::Players players(session, world);
     auto t = Clock::now();
 
@@ -189,7 +176,7 @@ TEST_CASE("Players tracks the position of a skeleton too short for the joints") 
     w.setRosterList({w.localPlayer, bot});
 
     eft::WorldState world;
-    eft::Players players(makeSession(w), world);
+    eft::Players players(w.makeSession(7), world);
     const auto t = Clock::now();
     players.rosterTick(t);
     players.positionsTick(t);
@@ -210,7 +197,7 @@ TEST_CASE("Players tracks a body with only some position bones, and picks up the
     w.setRosterList({w.localPlayer, zombie});
 
     eft::WorldState world;
-    eft::Players players(makeSession(w), world);
+    eft::Players players(w.makeSession(7), world);
     auto t = Clock::now();
     players.rosterTick(t);
     players.positionsTick(t);
@@ -244,7 +231,7 @@ TEST_CASE("Players builds observed players through their own layout") {
     w.setRotation(boss, 45.0f, 2.0f);
 
     eft::WorldState world;
-    eft::Players players(makeSession(w), world);
+    eft::Players players(w.makeSession(7), world);
     const auto t = Clock::now();
     players.rosterTick(t);
     players.positionsTick(t);
@@ -292,7 +279,7 @@ TEST_CASE("Players retries build failures and reports why") {
 
     eft::WorldState world;
     {
-        eft::Players players(makeSession(w), world);
+        eft::Players players(w.makeSession(7), world);
         auto t = Clock::now();
         // Retries are spaced kBuildRetry (500 ms) apart: 5 attempts at 0, 500, …, 2000 ms.
         for (int i = 0; i < 10; ++i) players.rosterTick(t + milliseconds(250 * i));
@@ -334,7 +321,7 @@ TEST_CASE("Players builds at most kMaxBuildsPerTick players per tick") {
     w.setRosterList(list);
 
     eft::WorldState world;
-    eft::Players players(makeSession(w), world);
+    eft::Players players(w.makeSession(7), world);
     auto t = Clock::now();
     players.rosterTick(t);
     CHECK(world.players.get()->players.size() == eft::Players::kMaxBuildsPerTick);
@@ -349,7 +336,7 @@ TEST_CASE("Players ignores a single empty roster read") {
     w.setRosterList({w.localPlayer, bot});
 
     eft::WorldState world;
-    eft::Players players(makeSession(w), world);
+    eft::Players players(w.makeSession(7), world);
     auto t = Clock::now();
     players.rosterTick(t);
     REQUIRE(world.players.get()->players.size() == 2);
@@ -383,7 +370,7 @@ TEST_CASE("Players reads observed players' role, nickname and group, also once t
     w.setRosterList({w.localPlayer, boss, guard, odd});
 
     eft::WorldState world;
-    eft::Players players(makeSession(w), world);
+    eft::Players players(w.makeSession(7), world);
     const auto t = Clock::now();
     players.rosterTick(t);
     players.positionsTick(t);

@@ -12,9 +12,6 @@
 // they can be tested without a window.
 namespace radar::overlay {
 
-using eft::CameraSnapshot;
-using eft::CameraView;
-
 // Points closer than this (m) in front of the camera aren't drawn (behind it can't be).
 inline constexpr float kNear = 0.05f;
 
@@ -36,8 +33,8 @@ struct Viewport {
 // picture's height (y up). Through the optic camera when it's known: its NDC · tan(fpsFov / 2) (the
 // reference's mapping); otherwise the first-person view magnified by the sight's zoom.
 struct ScopeMapping {
-    std::optional<CameraView> optic;  // if read
-    CameraView fps;
+    std::optional<eft::CameraView> optic;  // if read
+    eft::CameraView fps;
     float magnification = 1;
     [[nodiscard]] std::optional<Projected> offset(math::Vec3 p) const;
 };
@@ -45,9 +42,9 @@ struct ScopeMapping {
 // Everything one frame is built from.
 struct SceneInput {
     const Config& config;
-    const CameraSnapshot& camera;          // aiming, scope (the views come from below)
-    std::optional<CameraView> fps;         // read for this frame
-    std::optional<CameraView> optic;       // read for this frame, while scoped
+    const eft::CameraSnapshot& camera;          // aiming, scope (the views come from below)
+    std::optional<eft::CameraView> fps;         // read for this frame
+    std::optional<eft::CameraView> optic;       // read for this frame, while scoped
     const eft::PlayersSnapshot& players;
     const eft::LootSnapshot& loot;
     const eft::ExfilsSnapshot& exfils;

@@ -21,9 +21,6 @@ class ItemTreeReader {
 public:
     explicit ItemTreeReader(const Game& game, ItemTreeLimits limits = {}) : game_(game), limits_(limits) {}
 
-    // One item and its contents. nullopt if the item or its template id can't be read.
-    [[nodiscard]] std::optional<ItemNode> read(Address item, std::string slot = {});
-
     // The items in a Slot[] array (e.g. an equipment root's slots), one node per occupied slot.
     [[nodiscard]] std::vector<ItemNode> readSlots(Address slotArray);
 

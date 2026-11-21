@@ -12,14 +12,11 @@
 
 namespace radar::overlay {
 
-using eft::CameraSnapshot;
-using eft::CameraView;
-
 // The cameras as read at one moment.
 struct CameraReading {
     sched::Clock::time_point at{};
-    std::optional<CameraView> fps{};
-    std::optional<CameraView> optic{};
+    std::optional<eft::CameraView> fps{};
+    std::optional<eft::CameraView> optic{};
 };
 
 // Recent camera readings, to draw with the one from `delay` ago (Config::delay).

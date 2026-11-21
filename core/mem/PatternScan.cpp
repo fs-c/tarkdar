@@ -1,5 +1,7 @@
 #include "core/mem/PatternScan.hpp"
 
+#include "core/mem/Pe.hpp"
+
 #include <algorithm>
 #include <cstring>
 
@@ -9,7 +11,15 @@ namespace {
 constexpr std::uint32_t kScnCntCode = 0x00000020;
 constexpr std::uint32_t kScnMemExecute = 0x20000000;
 constexpr std::uint32_t kMaxSections = 96;
+// IMAGE_FILE_HEADER fields, relative to the file header.
+constexpr std::uint32_t kNumberOfSectionsOffset = 2;
+constexpr std::uint32_t kSizeOfOptionalHeaderOffset = 16;
+// IMAGE_SECTION_HEADER layout.
 constexpr std::uint32_t kSectionHeaderSize = 40;
+constexpr std::uint32_t kSecVirtualSizeOffset = 8;
+constexpr std::uint32_t kSecVirtualAddressOffset = 12;
+constexpr std::uint32_t kSecRawSizeOffset = 16;
+constexpr std::uint32_t kSecCharacteristicsOffset = 36;
 
 int hexValue(char c) {
     if (c >= '0' && c <= '9') return c - '0';
@@ -54,29 +64,24 @@ bool Pattern::matchesAt(std::span<const std::uint8_t> data, std::size_t at) cons
 
 std::vector<Region> codeRegions(const MemoryView& mem, Address base, std::size_t imageSize) {
     const std::vector<Region> whole{{base, imageSize}};
-    std::uint16_t dosMagic = 0;
-    std::uint32_t lfanew = 0;
-    if (!mem.tryRead(base, dosMagic) || dosMagic != 0x5A4D || !mem.tryRead(base + 0x3C, lfanew) || lfanew == 0 ||
-        lfanew > 0x1000)
-        return whole;
-    const Address nt = base + lfanew;
-    std::uint32_t signature = 0;
+    const auto nt = ntHeadersAddress(mem, base);
+    if (!nt) return whole;
     std::uint16_t sectionCount = 0, optionalSize = 0;
-    if (!mem.tryRead(nt, signature) || signature != 0x00004550 || !mem.tryRead(nt + 4 + 2, sectionCount) ||
-        !mem.tryRead(nt + 4 + 16, optionalSize))
+    if (!mem.tryRead(*nt + kPeFileHeaderOffset + kNumberOfSectionsOffset, sectionCount) ||
+        !mem.tryRead(*nt + kPeFileHeaderOffset + kSizeOfOptionalHeaderOffset, optionalSize))
         return whole;
     sectionCount = std::min<std::uint16_t>(sectionCount, kMaxSections);
-    const Address table = nt + 4 + 20 + optionalSize;
+    const Address table = *nt + kPeOptionalHeaderOffset + optionalSize;
 
     std::vector<Region> regions;
     for (std::uint16_t i = 0; i < sectionCount; ++i) {
         std::uint8_t header[kSectionHeaderSize]{};
         if (!mem.readBytes(table + i * kSectionHeaderSize, std::as_writable_bytes(std::span{header}))) return whole;
         std::uint32_t virtualSize, virtualAddress, rawSize, characteristics;
-        std::memcpy(&virtualSize, header + 8, 4);
-        std::memcpy(&virtualAddress, header + 12, 4);
-        std::memcpy(&rawSize, header + 16, 4);
-        std::memcpy(&characteristics, header + 36, 4);
+        std::memcpy(&virtualSize, header + kSecVirtualSizeOffset, 4);
+        std::memcpy(&virtualAddress, header + kSecVirtualAddressOffset, 4);
+        std::memcpy(&rawSize, header + kSecRawSizeOffset, 4);
+        std::memcpy(&characteristics, header + kSecCharacteristicsOffset, 4);
         if (!(characteristics & (kScnCntCode | kScnMemExecute))) continue;
         if (virtualAddress >= imageSize) continue;
         const std::size_t size = std::min<std::size_t>(std::max(virtualSize, rawSize), imageSize - virtualAddress);
@@ -89,7 +94,8 @@ std::vector<std::vector<Address>> scan(const MemoryView& mem, std::span<const Re
                                        std::span<const Pattern> patterns, std::size_t limit, std::size_t chunkSize) {
     std::vector<std::vector<Address>> out(patterns.size());
     std::size_t longest = 0;
-    for (const auto& p : patterns) longest = std::max(longest, p.size());
+    for (const auto& p : patterns)
+        if (p.hasFixedByte()) longest = std::max(longest, p.size());
     if (longest == 0 || limit == 0) return out;
     chunkSize = std::max(chunkSize, longest * 2);
     const std::size_t overlap = longest - 1;
@@ -105,7 +111,7 @@ std::vector<std::vector<Address>> scan(const MemoryView& mem, std::span<const Re
             const std::size_t starts = std::min(chunkSize, readSize);
             for (std::size_t pi = 0; pi < patterns.size(); ++pi) {
                 const Pattern& p = patterns[pi];
-                if (out[pi].size() >= limit) continue;
+                if (out[pi].size() >= limit || !p.hasFixedByte()) continue;  // empty / all-wildcard: nothing to anchor on
                 // Anchor on the first fixed byte to skip quickly.
                 std::size_t anchor = 0;
                 while (p.bytes[anchor] < 0) ++anchor;

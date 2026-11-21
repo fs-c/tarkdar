@@ -28,15 +28,11 @@ using mem::Freshness;
 class Managed {
 public:
     // Default sanity caps, matching what the game code needs today.
-    static constexpr std::size_t kDefaultMaxChars = 128;
-    static constexpr std::size_t kMaxChars = 4096;
     static constexpr std::size_t kDefaultMaxElements = 16384;
-    static constexpr int kMaxClassDepth = 32;
 
     Managed(const mem::MemoryView& mem, const Layout& layout)
         : mem_(mem), layout_(layout), classCache_(std::make_shared<ClassCache>()) {}
 
-    [[nodiscard]] const mem::MemoryView& memory() const noexcept { return mem_; }
     [[nodiscard]] const Layout& layout() const noexcept { return layout_; }
 
     // ---- strings ------------------------------------------------------------------------------
@@ -152,7 +148,6 @@ public:
     [[nodiscard]] std::optional<Address> klassOf(Address object,
                                                  Freshness freshness = Freshness::Cached) const;
     [[nodiscard]] std::string className(Address klass) const;
-    [[nodiscard]] std::string classNamespace(Address klass) const;
     // "Namespace.Name", or just "Name" for an empty namespace (e.g. nested types).
     [[nodiscard]] std::string fullClassName(Address klass) const;
     [[nodiscard]] std::optional<Address> parentClass(Address klass) const;
@@ -171,6 +166,10 @@ public:
                                                        Freshness freshness = Freshness::Cached) const;
 
 private:
+    static constexpr std::size_t kDefaultMaxChars = 128;
+
+    [[nodiscard]] std::string classNamespace(Address klass) const;
+
     struct ListHeader {
         Address items;
         std::size_t size;

@@ -30,8 +30,7 @@ constexpr std::size_t kMaxJointBone = [] {
 
 bool usable(const std::optional<unity::Pose>& pose) {
     if (!pose) return false;
-    const Vec3 p = pose->position;
-    return math::isSane(p) && !(std::fabs(p.x) < 0.001f && std::fabs(p.y) < 0.001f && std::fabs(p.z) < 0.001f);
+    return math::isPlausiblePosition(pose->position, 1e6f, 0.001f);
 }
 
 bool nearOrigin(Vec3 p, float range) {
@@ -49,8 +48,9 @@ std::optional<BoneList> boneList(const Game& game, Address bodyField) {
     const Address list = root ? readPointer(game, root + off::Skeleton::Values, Freshness::Fresh) : 0;
     if (!list) return std::nullopt;
     std::int32_t size = 0;
-    const Address items = readPointer(game, list + kIl2CppLayout.listItems, Freshness::Fresh);
-    if (!items || !game.mem.tryRead(list + kIl2CppLayout.listSize, size, Freshness::Fresh) || size < 0 || size > kMaxBones)
+    const Address items = readPointer(game, list + game.managed.layout().listItems, Freshness::Fresh);
+    if (!items || !game.mem.tryRead(list + game.managed.layout().listSize, size, Freshness::Fresh) || size < 0 ||
+        size > kMaxBones)
         return std::nullopt;
     return BoneList{items, static_cast<std::size_t>(size)};
 }
@@ -65,7 +65,7 @@ std::optional<SkeletonBones> resolveSkeletonBones(const Game& game, Address body
     // transform in one batch.
     std::vector<Address> managed(std::min(list->size, kMaxJointBone + 1), 0);
     if (managed.empty() ||
-        !game.mem.readBytes(list->items + kIl2CppLayout.arrayData, std::as_writable_bytes(std::span{managed}),
+        !game.mem.readBytes(list->items + game.managed.layout().arrayData, std::as_writable_bytes(std::span{managed}),
                             Freshness::Fresh))
         return std::nullopt;
 
@@ -74,7 +74,7 @@ std::optional<SkeletonBones> resolveSkeletonBones(const Game& game, Address body
     for (std::size_t j = 0; j < kJointCount; ++j) {
         const std::size_t index = kJointSources[j].bone;
         if (index < managed.size() && MemoryView::isUserPointer(managed[index]))
-            batch.add(managed[index] + kIl2CppLayout.unityObjectCachedPtr, bones.transforms[j]);
+            batch.add(managed[index] + game.managed.layout().unityObjectCachedPtr, bones.transforms[j]);
     }
     batch.execute(Freshness::Fresh);
 
@@ -145,7 +145,8 @@ std::vector<BoneInfo> readAllBones(const Game& game, Address bodyField) {
     for (std::size_t i = 0; i < list->size; ++i) {
         BoneInfo b;
         b.index = i;
-        const Address managed = readPointer(game, list->items + kIl2CppLayout.arrayData + i * sizeof(Address), Freshness::Fresh);
+        const Address managed =
+            readPointer(game, list->items + game.managed.layout().arrayData + i * sizeof(Address), Freshness::Fresh);
         if (const auto native = managed ? game.managed.nativePointer(managed, Freshness::Fresh) : std::nullopt) {
             const Address object = readPointer(game, *native + kUnityLayout.componentGameObject, Freshness::Fresh);
             if (object)

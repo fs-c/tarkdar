@@ -9,6 +9,7 @@
 
 using namespace radar;
 using radar::test::FakeWorld;
+using radar::test::near;
 using math::Mat4;
 using math::Vec3;
 using mem::Address;
@@ -17,17 +18,6 @@ using std::chrono::milliseconds;
 
 namespace {
 
-std::shared_ptr<const eft::RaidSession> makeSession(FakeWorld& w) {
-    return std::make_shared<eft::RaidSession>(eft::RaidSession{
-        .id = 3,
-        .game = w.attachGame(),
-        .start = eft::RaidCandidate{.localGameWorld = w.world, .gameWorldObject = w.world,
-                                    .localPlayer = w.localPlayer, .locationId = "bigmap", .registeredCount = 1},
-        .startedAt = Clock::now(),
-    });
-}
-
-bool near(Vec3 a, Vec3 b) { return math::length(a - b) < 1e-3f; }
 
 eft::SightZoomData zoomData(std::vector<std::vector<float>> zooms, int scope, int mode, float scopeZoomValue = 0) {
     return {.selectedScope = scope, .selectedMode = mode, .zooms = std::move(zooms), .scopeZoomValue = scopeZoomValue};
@@ -161,7 +151,7 @@ TEST_CASE("CameraTracker follows the FPS camera, aiming and the scope") {
 
     eft::WorldState world;
     {
-        eft::CameraTracker tracker(makeSession(w), world);
+        eft::CameraTracker tracker(w.makeSession(3), world);
         const auto found = tracker.resolve();
         CHECK(found.cameras.size() == 3);
         CHECK(found.fps == fps.native);
@@ -224,7 +214,7 @@ TEST_CASE("CameraTracker follows the FPS camera, aiming and the scope") {
         CHECK_FALSE(world.cameraReader.get()->reader);  // nothing to read: no reader
 
         // Its replacement is picked up at once: the live task asks for a look-up.
-        const auto fps2 = w.addCamera("FPS Camera", {7, 1.6f, 7});
+        w.addCamera("FPS Camera", {7, 1.6f, 7});
         tracker.refresh(later + eft::CameraTracker::kFailureGrace + milliseconds(8));
         tracker.tick(later + eft::CameraTracker::kFailureGrace + milliseconds(16));
         REQUIRE(world.camera.get()->fps);
@@ -232,7 +222,6 @@ TEST_CASE("CameraTracker follows the FPS camera, aiming and the scope") {
         reader = world.cameraReader.get()->reader;
         REQUIRE(reader);
         CHECK(near(*reader->fps()->position, {7, 1.6f, 7}));
-        (void)fps2;
     }
     CHECK_FALSE(world.camera.get()->fps);  // cleared at raid end
     CHECK_FALSE(world.cameraReader.get()->reader);
@@ -280,7 +269,7 @@ TEST_CASE("CameraTracker ignores an OpticCameraManager camera that doesn't read"
     w.heap.put<Address>(manager + off::OpticCameraManager::Camera, bogus);
 
     eft::WorldState world;
-    eft::CameraTracker tracker(makeSession(w), world);
+    eft::CameraTracker tracker(w.makeSession(3), world);
     const auto found = tracker.resolve();
     CHECK(found.optic == optic.native);  // the one found by name stays
     CHECK(found.opticManager == manager);

@@ -34,12 +34,12 @@ int LiveFeed::poll() {
             if (current == last) return;
             const auto message = encode(*current);
             hub_.broadcast(type, message);
-            if (rec) record(*current, message);
+            if (rec) record(current, message);
             last = std::move(current);
             ++sent;
         };
         const auto other = [&](const std::string& type) {
-            return [&rec, type](const auto& snap, const std::string& m) { rec->onMessage(type, snap.raidId, m); };
+            return [&rec, type](const auto& snap, const std::string& m) { rec->onMessage(type, snap->raidId, m); };
         };
         const auto& w = *sources_.world;
         // Skeletons come from the same snapshot, as their own message (the recorder keeps fewer of them
@@ -53,19 +53,19 @@ int LiveFeed::poll() {
             lastSkeletonsFrom_ = std::move(players);
         }
         forward(w.players, lastPlayers_, "players", [](const auto& s) { return encodePlayers(s); },
-                [&](const auto& s, const std::string& m) { rec->onPlayers(s, m); });
+                [&](auto s, const std::string& m) { rec->onPlayers(std::move(s), m); });
         forward(w.exfils, lastExfils_, "exfils", [](const auto& s) { return encodeExfils(s); }, other("exfils"));
         forward(w.explosives, lastExplosives_, "explosives", [](const auto& s) { return encodeExplosives(s); },
                 other("explosives"));
         forward(w.vehicles, lastVehicles_, "vehicles", [](const auto& s) { return encodeVehicles(s); },
                 other("vehicles"));
         forward(w.loot, lastLoot_, "loot", [](const auto& s) { return encodeLoot(s); },
-                [&](const auto& s, const std::string& m) { rec->onLoot(s, m); });
+                [&](auto s, const std::string& m) { rec->onLoot(std::move(s), m); });
         forward(w.equipment, lastEquipment_, "equipment", [](const auto& s) { return encodeEquipment(s); },
                 other("equipment"));
         forward(w.quests, lastQuests_, "quests", [](const auto& s) { return encodeQuests(s); }, other("quests"));
         forward(w.camera, lastCamera_, "camera", [](const auto& s) { return encodeCamera(s); },
-                [&](const auto& s, const std::string& m) { rec->onCamera(s.raidId, m); });
+                [&](const auto& s, const std::string& m) { rec->onCamera(s->raidId, m); });
     }
     return sent;
 }

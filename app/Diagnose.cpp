@@ -1,6 +1,7 @@
 #include "app/Diagnose.hpp"
 
 #include "app/LocaleProbe.hpp"
+#include "app/PlayerText.hpp"
 #include "app/QuestProbe.hpp"
 
 #include "game/eft/BuildCheck.hpp"
@@ -22,6 +23,7 @@
 #include <eft_offsets.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <format>
 #include <fstream>
@@ -216,9 +218,7 @@ void checkPlayers(Report& r, const std::shared_ptr<const eft::RaidSession>& sess
         r.ok(std::format("{} of {} players have a full skeleton", withJoints, snap->players.size()));
     for (const auto& p : snap->players) {
         if (!p.local && &p - snap->players.data() > 4) continue;  // the local player + a few others
-        r.info(std::format("#{} {}{} side {}{}{} {}: pos {} yaw {:.1f} pitch {:.1f}", p.id, eft::kindName(p.kind),
-                           p.ai ? " ai" : "", static_cast<int>(p.side), p.voice.empty() ? "" : " voice " + p.voice,
-                           p.role ? std::format(" role {}", *p.role) : "", p.dead ? "dead" : "alive",
+        r.info(std::format("{}: pos {} yaw {:.1f} pitch {:.1f}", describePlayer(p),
                            p.position ? std::format("({:.1f}, {:.1f}, {:.1f})", p.position->x, p.position->y, p.position->z)
                                       : std::string("none"),
                            p.yaw, p.pitch));
@@ -601,17 +601,21 @@ void probeLocaleTable(Report& r, const std::shared_ptr<const eft::RaidSession>& 
 }  // namespace
 
 int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out, const std::filesystem::path& questProbe,
-                const std::filesystem::path& localeProbe) {
+                const std::filesystem::path& localeProbe, const std::atomic<bool>* stop) {
     Report r(out);
     r.section("Attach");
     const auto start = Clock::now();
     while (target.poll() != mem::Target::State::Attached) {
+        if (stop && stop->load()) {
+            r.fail("interrupted while waiting for the game");
+            return 1;
+        }
         if (Clock::now() - start > std::chrono::seconds(timeoutSeconds)) {
             r.fail(std::format("not attached after {} s (state: {})", timeoutSeconds, mem::stateName(target.state())),
                    "is the game running? process/module names in game/eft/Names.hpp");
             return 1;
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        for (int i = 0; i < 5 && !(stop && stop->load()); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     r.ok(std::format("attached to {} (pid {})", target.processName(), target.pid().value_or(0)));
     for (const auto& [name, info] : target.modules()) r.info(std::format("{} at {} ({:#x} bytes)", name, hex(info.base), info.size));
@@ -649,7 +653,7 @@ int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out, const s
 
     r.section("Summary");
     if (r.failures() == 0 && raid) r.ok("everything produced data");
-    else r.info(std::format("{} failed check(s); see the 'check:' hints above and docs/verification-playbook.md", r.failures()));
+    else r.info(std::format("{} failed check(s); see the 'check:' hints above", r.failures()));
     return r.failures() == 0 && raid ? 0 : 1;
 }
 

@@ -7,6 +7,7 @@ The header only gets rewritten when its content changes, so unrelated edits don'
 rebuilds. Any schema error aborts the build with a message pointing at the offending entry.
 """
 import json
+import os
 import re
 import sys
 
@@ -142,6 +143,8 @@ def generate(doc):
         groups.setdefault(group, []).append(decl(name))
 
     for i, e in enumerate(doc.get("types", [])):
+        if not isinstance(e, dict):
+            raise SchemaError(f"types[{i}]: expected an object, got {type(e).__name__}")
         where = f"types[{i}] ({e.get('group')}::{e.get('name')})"
         v = parse_value(e.get("value"), where, 31)
         cls = comment(e.get("class", "?"))
@@ -150,6 +153,8 @@ def generate(doc):
             where)
 
     for i, e in enumerate(doc.get("fields", [])):
+        if not isinstance(e, dict):
+            raise SchemaError(f"fields[{i}]: expected an object, got {type(e).__name__}")
         where = f"fields[{i}] ({e.get('group')}::{e.get('name')})"
         optional = e.get("optional") is True
         # Optional fields (not yet known for every build) may have a null value; code checks them.
@@ -169,6 +174,8 @@ def generate(doc):
         add(e.get("group"), e.get("name"), decl, where)
 
     for i, e in enumerate(doc.get("literals", [])):
+        if not isinstance(e, dict):
+            raise SchemaError(f"literals[{i}]: expected an object, got {type(e).__name__}")
         where = f"literals[{i}] ({e.get('group')}::{e.get('name')})"
         v = parse_value(e.get("value"), where, 32)
         note = comment(e.get("note", "uncatalogued literal"))
@@ -203,7 +210,6 @@ def main():
                 return 0
     except OSError:
         pass
-    import os
     os.makedirs(os.path.dirname(os.path.abspath(dst)), exist_ok=True)
     with open(dst, "w", encoding="utf-8") as f:
         f.write(text)

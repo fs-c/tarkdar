@@ -11,8 +11,7 @@
 namespace radar::mem {
 
 // Raw access to a target machine's processes. Implementations: VmmBackend (QEMU
-// guest or dump file via VMM) and FakeBackend (tests). Planned: Recording/ReplayBackend, which
-// log reads and replay them later for offline development with moving game state.
+// guest or dump file via VMM) and FakeBackend (tests).
 //
 // Read semantics, common to all implementations:
 //  - Bytes that could not be read are zero-filled. Callers that care check the return value or
@@ -38,8 +37,6 @@ public:
     virtual void readMany(Pid pid, std::span<ReadRequest> requests, Freshness freshness) = 0;
 
     [[nodiscard]] virtual Limits limits() const = 0;
-    // Optional periodic upkeep (e.g. cache refresh). Default: nothing to do.
-    virtual void maintenance() {}
     // Drops every cache the backend keeps about the target (page tables, memory, process lists),
     // e.g. when a raid starts and the game has just remapped much of its memory. Default: nothing
     // cached.

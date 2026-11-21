@@ -2,6 +2,7 @@
 
 #include <format>
 #include <string_view>
+#include <utility>
 
 // Minimal thread-safe logging to stderr. Replace with something richer if/when needed.
 namespace radar::log {

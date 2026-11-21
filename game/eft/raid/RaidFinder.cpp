@@ -46,7 +46,7 @@ WorldCheck checkWorld(const Game& game, Address localGameWorld, Address localPla
     c.locationId = locationId;
 
     // Roster: a missing list or backing array just means "not ready yet"; only an implausible count
-    // rejects the world.
+    // rejects the world. (Not readRosterHeader, Roster.hpp: it fails alike for both.)
     if (const Address list = readPointer(game, localGameWorld + off::ClientLocalGameWorld::RegisteredPlayers, Freshness::Fresh)) {
         std::int32_t count = 0;
         game.mem.tryRead(list + game.managed.layout().listSize, count, Freshness::Fresh);
@@ -82,15 +82,15 @@ void RaidFinder::restart(sched::Clock::time_point now) {
     pendingAttempts_ = 0;
 }
 
-WorldCheck RaidFinder::check(Address localGameWorld, Address localPlayer, Address gameWorldObject) {
+WorldCheck RaidFinder::check(sched::Clock::time_point now, Address localGameWorld, Address localPlayer, Address gameWorldObject) {
     WorldCheck wc = checkWorld(game_, localGameWorld, localPlayer, gameWorldObject);
     if (endedWorld_ && localGameWorld == endedWorld_) {
         // The world of the raid that just ended. While it still looks like a running raid it is
         // lingering, so refuse it. Once it stops looking ready it has been torn down, so a ready world
         // at the same address later is a new raid that reuses the allocation.
         if (wc.status == WorldCheck::Status::Ready) {
-            if (!endedReadySince_) endedReadySince_ = now_;
-            if (now_ - *endedReadySince_ < kEndedWorldGrace) {
+            if (!endedReadySince_) endedReadySince_ = now;
+            if (now - *endedReadySince_ < kEndedWorldGrace) {
                 wc.status = WorldCheck::Status::Rejected;
                 wc.reason = "world of the raid that just ended";
                 return wc;
@@ -107,20 +107,20 @@ WorldCheck RaidFinder::check(Address localGameWorld, Address localPlayer, Addres
     return wc;
 }
 
-std::optional<WorldCheck> RaidFinder::viaGamePlayerOwner() {
+std::optional<WorldCheck> RaidFinder::viaGamePlayerOwner(sched::Clock::time_point now) {
     const auto local = localPlayerWorld(game_);
     if (!local) return std::nullopt;
-    return check(local->world, local->player, 0);
+    return check(now, local->world, local->player, 0);
 }
 
-std::optional<WorldCheck> RaidFinder::viaSceneScan() {
+std::optional<WorldCheck> RaidFinder::viaSceneScan(sched::Clock::time_point now) {
     const auto gom = game_.gameObjectManager();
     if (!gom) return std::nullopt;
     std::optional<WorldCheck> pending;
     for (const auto& object : game_.scene.findByName(*gom, "GameWorld")) {
         const auto world = game_.scene.findManagedComponent(object.native, "EFT.GameWorld", game_.managed);
         if (!world) continue;
-        WorldCheck wc = check(*world, 0, object.native);
+        WorldCheck wc = check(now, *world, 0, object.native);
         if (wc.status == WorldCheck::Status::Ready) return wc;
         if (wc.status == WorldCheck::Status::Pending) pending = std::move(wc);
     }
@@ -128,7 +128,6 @@ std::optional<WorldCheck> RaidFinder::viaSceneScan() {
 }
 
 RaidFinder::Result RaidFinder::poll(sched::Clock::time_point now) {
-    now_ = now;
     Result result;
     std::optional<RaidCandidate> newPending;
 
@@ -145,7 +144,7 @@ RaidFinder::Result RaidFinder::poll(sched::Clock::time_point now) {
 
     // Retry a pending world first.
     if (pending_) {
-        const WorldCheck wc = check(pending_->localGameWorld, 0, pending_->gameWorldObject);
+        const WorldCheck wc = check(now, pending_->localGameWorld, 0, pending_->gameWorldObject);
         if (wc.status == WorldCheck::Status::Ready) {
             result.raid = wc.candidate;
         } else if (wc.status == WorldCheck::Status::Pending && ++pendingAttempts_ < kMaxPendingAttempts) {
@@ -157,12 +156,12 @@ RaidFinder::Result RaidFinder::poll(sched::Clock::time_point now) {
         }
     }
 
-    if (!result.raid && !consider(viaGamePlayerOwner())) {
+    if (!result.raid && !consider(viaGamePlayerOwner(now))) {
         const bool scanAllowed = now - searchStart_ >= kSceneScanDelay &&
                                  (!lastSceneScan_ || now - *lastSceneScan_ >= kSceneScanInterval);
         if (scanAllowed) {
             lastSceneScan_ = now;
-            consider(viaSceneScan());
+            consider(viaSceneScan(now));
         }
     }
 

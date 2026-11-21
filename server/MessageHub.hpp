@@ -22,10 +22,8 @@ public:
     // Sends to every client and remembers it as the latest of its type.
     void broadcast(const std::string& type, const std::string& message);
 
-    // Called for every broadcast message (e.g. stream recording). Set before use.
+    // Called for every broadcast message, under the hub's lock (tests use it to observe the stream). Set before use.
     void setTap(std::function<void(const std::string&)> tap);
-
-    [[nodiscard]] std::size_t clientCount() const;
 
 private:
     mutable std::mutex mutex_;

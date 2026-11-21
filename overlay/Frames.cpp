@@ -82,19 +82,26 @@ DrawList Frames::testPattern(float width, float height, const DrawList& scene, s
                       : !camera->fps                                ? "no first-person camera read"
                       : scene.empty()                               ? "nothing in view or in range"
                                                                     : "drawing";
-    const std::string lines[] = {
-        std::format("OVERLAY TEST  {:.0f}x{:.0f}  picture {}, camera aspect {:.3f}", width, height,
+    struct Line {
+        std::string text;
+        Color color;
+    };
+    const Line lines[] = {
+        {std::format("OVERLAY TEST  {:.0f}x{:.0f}  picture {}, camera aspect {:.3f}", width, height,
                     stretch_ ? "stretched" : "letterboxed", camera->fps ? camera->fps->aspect : 0.f),
-        std::format("status: {}", why),
-        std::format("config: {}, raid {}, {} marks, other players {}, loot range {:.0f} m", config->on ? "on" : "off",
-                    config->raid, config->marks.size(), config->otherPlayers ? "shown" : "hidden", config->lootRange),
-        std::format("reader raid: {}  camera raid: {} ({})  players: {} (raid {})", reader ? reader->raidId() : 0,
-                    camera->raidId, camera->fps ? "fps ok" : "no fps", players->players.size(), players->raidId),
-        std::format("scene items: {}  camera fallbacks (both reads failed): {}", scene.items.size(), fallbacks_),
+         magenta},
+        {std::format("status: {}", why), yellow},
+        {std::format("config: {}, raid {}, {} marks, other players {}, loot range {:.0f} m", config->on ? "on" : "off",
+                     config->raid, config->marks.size(), config->otherPlayers ? "shown" : "hidden", config->lootRange),
+         white},
+        {std::format("reader raid: {}  camera raid: {} ({})  players: {} (raid {})", reader ? reader->raidId() : 0,
+                     camera->raidId, camera->fps ? "fps ok" : "no fps", players->players.size(), players->raidId),
+         white},
+        {std::format("scene items: {}  camera fallbacks (both reads failed): {}", scene.items.size(), fallbacks_), white},
     };
     float y = 24;
     for (const auto& line : lines) {
-        d.items.push_back(DrawList::Text{{24, y}, line, y == 24 ? magenta : line.starts_with("status") ? yellow : white, 18});
+        d.items.push_back(DrawList::Text{{24, y}, line.text, line.color, 18});
         y += 22;
     }
     for (const auto& line : extra) {

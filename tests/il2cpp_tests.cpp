@@ -3,6 +3,7 @@
 #include "core/il2cpp/Managed.hpp"
 #include "core/il2cpp/TypeInfoTable.hpp"
 #include "core/mem/ReadBatch.hpp"
+#include "core/text/Ascii.hpp"
 #include "core/text/Utf16.hpp"
 
 #include <doctest/doctest.h>
@@ -32,6 +33,19 @@ TEST_CASE("utf16ToUtf8") {
     CHECK(utf16ToUtf8(lone) == "a\xEF\xBF\xBD" "b");  // unpaired surrogate → U+FFFD
     const char16_t nul[] = {u'a', 0, u'b'};
     CHECK(utf16ToUtf8(nul) == "a");
+}
+
+TEST_CASE("ASCII case-insensitive helpers") {
+    using namespace text;
+    CHECK(lowerAscii("Item_BARTER_Info") == "item_barter_info");
+    CHECK(lowerAscii("\xD0\x9F") == "\xD0\x9F");  // non-ASCII bytes are left alone
+    CHECK(equalsIgnoreCase("BigMap", "bigmap"));
+    CHECK_FALSE(equalsIgnoreCase("bigmap", "bigmaps"));
+    CHECK(startsWithIgnoreCase("Item_barter_info_x", "item_barter_info_"));
+    CHECK_FALSE(startsWithIgnoreCase("item_barter", "item_barter_info_"));
+    CHECK(containsIgnoreCase("Optic Camera", "CAMERA"));
+    CHECK(containsIgnoreCase("anything", ""));
+    CHECK_FALSE(containsIgnoreCase("FPS", "Camera"));
 }
 
 TEST_CASE("sanitizeUtf8 replaces invalid sequences") {
@@ -222,3 +236,5 @@ TEST_CASE("TypeInfoTable static fields") {
     CHECK(tit->klass(-1) == std::nullopt);
     CHECK_FALSE(il2cpp::TypeInfoTable::locate(view, kIl2Cpp, gameAssembly, rva + 8));
 }
+
+#undef SETUP

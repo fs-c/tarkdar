@@ -166,3 +166,5 @@ TEST_CASE("Target attach state machine") {
         CHECK(target.pid().value_or(0) == newPid);
     }
 }
+
+#undef OPEN_FAKE

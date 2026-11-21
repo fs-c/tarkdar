@@ -5,6 +5,7 @@ namespace radar::server {
 MessageHub::ClientId MessageHub::connect(Sender sender, const std::string& hello) {
     std::lock_guard lock(mutex_);
     const ClientId id = nextId_++;
+    // Senders run under the mutex: fine for the server's, which only queue the text on the connection.
     sender(hello);
     for (const auto& [type, message] : latest_) sender(message);
     clients_.emplace(id, std::move(sender));
@@ -26,11 +27,6 @@ void MessageHub::broadcast(const std::string& type, const std::string& message) 
 void MessageHub::setTap(std::function<void(const std::string&)> tap) {
     std::lock_guard lock(mutex_);
     tap_ = std::move(tap);
-}
-
-std::size_t MessageHub::clientCount() const {
-    std::lock_guard lock(mutex_);
-    return clients_.size();
 }
 
 }  // namespace radar::server

@@ -3,10 +3,17 @@
 #include "core/mem/MemoryBackend.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <cstring>
+#include <expected>
 #include <map>
 #include <mutex>
+#include <optional>
+#include <span>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace radar::mem {
@@ -41,7 +48,10 @@ public:
     void writeValue(Pid pid, Address va, const T& value) {
         write(pid, va, &value, sizeof(T));
     }
-    void setOpenResult(bool ok) { openOk_ = ok; }
+    void setOpenResult(bool ok) {
+        std::lock_guard lock(mutex_);
+        openOk_ = ok;
+    }
     [[nodiscard]] std::size_t readCalls() const {
         std::lock_guard lock(mutex_);
         return readCalls_;
@@ -49,12 +59,19 @@ public:
 
     // ---- IMemoryBackend ----------------------------------------------------------------------
     std::expected<void, std::string> open() override {
+        std::lock_guard lock(mutex_);
         if (!openOk_) return std::unexpected("fake open failure");
         open_ = true;
         return {};
     }
-    void close() override { open_ = false; }
-    [[nodiscard]] bool isOpen() const override { return open_; }
+    void close() override {
+        std::lock_guard lock(mutex_);
+        open_ = false;
+    }
+    [[nodiscard]] bool isOpen() const override {
+        std::lock_guard lock(mutex_);
+        return open_;
+    }
 
     [[nodiscard]] std::optional<Pid> findProcess(std::string_view imageName) override {
         std::lock_guard lock(mutex_);
@@ -85,8 +102,14 @@ public:
         for (auto& r : requests)
             r.bytesRead = static_cast<std::uint32_t>(readLocked(pid, r.va, r.dst, r.size));
     }
-    [[nodiscard]] Limits limits() const override { return limits_; }
-    void setLimits(Limits limits) { limits_ = limits; }
+    [[nodiscard]] Limits limits() const override {
+        std::lock_guard lock(mutex_);
+        return limits_;
+    }
+    void setLimits(Limits limits) {
+        std::lock_guard lock(mutex_);
+        limits_ = limits;
+    }
 
 private:
     // Zero-fills dst, copies known bytes, returns the count of leading bytes that were present.

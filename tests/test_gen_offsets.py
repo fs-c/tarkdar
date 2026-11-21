@@ -1,11 +1,15 @@
-"""Tests for cmake/gen_offsets.py. Run via CTest (sets GEN_OFFSETS and OFFSETS_JSON)."""
+"""Tests for cmake/gen_offsets.py. Run via CTest (sets GEN_OFFSETS and OFFSETS_JSON), or directly (defaults to the repo's files)."""
 import copy
 import importlib.util
 import json
 import os
 import unittest
 
-spec = importlib.util.spec_from_file_location("gen_offsets", os.environ["GEN_OFFSETS"])
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+GEN_OFFSETS = os.environ.get("GEN_OFFSETS", os.path.join(ROOT, "cmake", "gen_offsets.py"))
+OFFSETS_JSON = os.environ.get("OFFSETS_JSON", os.path.join(ROOT, "game", "eft", "offsets", "eft.offsets.json"))
+
+spec = importlib.util.spec_from_file_location("gen_offsets", GEN_OFFSETS)
 gen = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gen)
 
@@ -60,6 +64,13 @@ class GenOffsetsTest(unittest.TestCase):
         with self.assertRaisesRegex(gen.SchemaError, "duplicate"):
             gen.generate(d)
 
+    def test_rejects_non_object_entries(self):
+        for key in ("types", "fields", "literals"):
+            d = self.doc()
+            d[key].append("not an object")
+            with self.assertRaisesRegex(gen.SchemaError, rf"{key}\[1\]"):
+                gen.generate(d)
+
     def test_rejects_bad_values(self):
         for bad in ["0x", "12abc", "017", -1, True, None, "0x1FFFFFFFF"]:
             d = self.doc()
@@ -90,7 +101,7 @@ class GenOffsetsTest(unittest.TestCase):
         self.assertNotIn("\nnext", text)
 
     def test_checked_in_offsets_file_is_valid(self):
-        with open(os.environ["OFFSETS_JSON"], encoding="utf-8") as f:
+        with open(OFFSETS_JSON, encoding="utf-8") as f:
             gen.generate(json.load(f))
 
 

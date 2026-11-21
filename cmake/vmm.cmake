@@ -1,5 +1,5 @@
 # Builds LeechCore, the LeechCore QEMU device plugin and VMM (from MemProcFS) as shared
-# libraries, following build-sketch/. All runtime artefacts go into one bin/ directory with
+# libraries. All runtime artefacts go into one bin/ directory with
 # $ORIGIN RPATH: vmm.so and leechcore.so locate info.db, libpdbcrust.so and the device plugins
 # relative to their own location (dladdr).
 #
@@ -28,11 +28,22 @@ foreach(entry IN LISTS RADAR_THIRD_PARTY_PATCHES)
     list(GET parts 1 patch_file)
     execute_process(COMMAND ${GIT_EXECUTABLE} apply --reverse --check ${patch_file}
         WORKING_DIRECTORY ${patch_dir} RESULT_VARIABLE already_applied OUTPUT_QUIET ERROR_QUIET)
+    # RESULT_VARIABLE holds an error string instead of an exit code when the process can't be run
+    # (e.g. a stale GIT_EXECUTABLE in CMakeCache.txt).
+    if(NOT already_applied MATCHES "^[0-9]+$")
+        message(FATAL_ERROR "Could not execute git (${GIT_EXECUTABLE}): ${already_applied}. "
+                            "Re-configure with -DGIT_EXECUTABLE=/path/to/git")
+    endif()
     if(NOT already_applied EQUAL 0)
         execute_process(COMMAND ${GIT_EXECUTABLE} apply ${patch_file}
             WORKING_DIRECTORY ${patch_dir} RESULT_VARIABLE apply_result)
-        if(NOT apply_result EQUAL 0)
-            message(FATAL_ERROR "Failed to apply ${patch_file} in ${patch_dir}")
+        if(NOT apply_result MATCHES "^[0-9]+$")
+            message(FATAL_ERROR "Could not execute git (${GIT_EXECUTABLE}): ${apply_result}. "
+                                "Re-configure with -DGIT_EXECUTABLE=/path/to/git")
+        elseif(NOT apply_result EQUAL 0)
+            message(FATAL_ERROR "Failed to apply ${patch_file} in ${patch_dir}. The submodule tree "
+                                "is probably partially patched or at a different commit: run "
+                                "`git -C ${patch_dir} checkout .` and re-configure.")
         endif()
         message(STATUS "Applied patch ${patch_file}")
     endif()

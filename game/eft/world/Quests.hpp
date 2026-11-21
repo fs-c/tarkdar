@@ -3,7 +3,6 @@
 #include "game/eft/model/WorldState.hpp"
 #include "game/eft/raid/RaidSession.hpp"
 
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -62,9 +61,9 @@ private:
     // The quest list; nullopt if it couldn't be read.
     [[nodiscard]] std::optional<std::vector<QuestState>> read();
     [[nodiscard]] std::optional<std::vector<std::string>> readConditions(Address set);
-    [[nodiscard]] std::optional<Template> readTemplate(Address statusData);
+    [[nodiscard]] std::optional<Template> readTemplate(Address statusData, const std::string& questId);
     [[nodiscard]] std::optional<std::vector<QuestObjective>> readObjectives(Address conditionsDict);
-    [[nodiscard]] std::map<std::string, std::string> readTexts(Address localization);
+    [[nodiscard]] std::unordered_map<std::string, std::string> readTexts(Address localization);
     // Condition id → counter value; empty if unreadable.
     [[nodiscard]] std::unordered_map<std::string, std::int32_t> readCounters(Address profile);
     [[nodiscard]] bool isA(Address object, std::string_view className);

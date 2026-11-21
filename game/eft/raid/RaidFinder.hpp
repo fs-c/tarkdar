@@ -76,11 +76,11 @@ public:
 
     // The individual strategies, without timing or pending logic (also used by diagnostics).
     // nullopt: the strategy found no candidate world at all.
-    std::optional<WorldCheck> viaGamePlayerOwner();
-    std::optional<WorldCheck> viaSceneScan();
+    std::optional<WorldCheck> viaGamePlayerOwner(sched::Clock::time_point now = sched::Clock::now());
+    std::optional<WorldCheck> viaSceneScan(sched::Clock::time_point now = sched::Clock::now());
 
 private:
-    WorldCheck check(Address localGameWorld, Address localPlayer, Address gameWorldObject);
+    WorldCheck check(sched::Clock::time_point now, Address localGameWorld, Address localPlayer, Address gameWorldObject);
 
     Game game_;
     sched::Clock::time_point searchStart_{};
@@ -89,7 +89,6 @@ private:
     int pendingAttempts_ = 0;
     Address endedWorld_ = 0;
     std::optional<sched::Clock::time_point> endedReadySince_;
-    sched::Clock::time_point now_{};
 };
 
 }  // namespace radar::eft

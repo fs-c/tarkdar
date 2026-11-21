@@ -155,6 +155,7 @@ private:
     // Equipment task only.
     std::unordered_map<std::uint32_t, EquipmentState> equipment_;
     std::uint64_t equipmentRevision_ = 0;
+    mutable bool loggedTruncation_ = false;
 };
 
 }  // namespace radar::eft

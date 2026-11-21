@@ -12,17 +12,13 @@ import { type Cache, type CacheDef, feedCache, isFresh, readCache, writeCache } 
 import type { ItemCatalog, ItemCategory, ItemInfo } from "./items";
 
 export const FEED_BASE = "https://json.tarkov.dev/pvp-season";
-const CACHE: CacheDef = { key: "items", version: 4 };
+const CACHE: CacheDef = { key: "items", version: 5 }; // 5: objects, not tuples
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-/** id → [name, shortName, price (0 = unknown), price is basePrice (1) or avg24hPrice (0), handbook
- *  category ids (the item's own and those above it; 0 when there are none), inventory slots (width ×
- *  height; weapons: as assembled by default), stats]. Everything from the categories on is left out
- *  when there's nothing to say (no categories, one slot, no stats). */
-export type SlimItems = Record<string, [string, string, number, 0 | 1, (string[] | 0)?, number?, SlimStats?]>;
-
-/** [penetration, damage, armor damage, armor class]; 0 = none. */
-export type SlimStats = [number, number, number, number];
+/** id → what's known about the item; a field is left out when there's nothing to say (no price, no
+ *  categories, one slot, no stats). Stored as is in the cache (IndexedDB: no need to squeeze it into
+ *  tuples). */
+export type SlimItems = Record<string, ItemInfo>;
 
 /** Handbook category id → [name, parent id (null at the top)] */
 export type SlimCategories = Record<string, [string, string | null]>;
@@ -51,18 +47,24 @@ export function slimItems(itemsFeed: unknown, translationsFeed: unknown): SlimIt
     const positive = (v: unknown) => (typeof v === "number" && v > 0 ? v : 0);
     const flea = positive(item.avg24hPrice);
     const base = positive(item.basePrice);
-    const entry: SlimItems[string] = [en[nameKey] ?? nameKey, en[shortKey] ?? shortKey, flea || base, flea ? 0 : base ? 1 : 0];
+    const info: ItemInfo = { name: en[nameKey] ?? nameKey, shortName: en[shortKey] ?? shortKey };
+    if (flea || base) {
+      info.price = flea || base;
+      info.priceSource = flea ? "flea" : "base";
+    }
     const cats = Array.isArray(item.handbookCategories) ? item.handbookCategories.filter((c): c is string => typeof c === "string") : [];
+    if (cats.length) info.categories = cats;
     const props = (item.properties && typeof item.properties === "object" ? item.properties : {}) as Record<string, unknown>;
     // Weapons: their base item's size is the bare receiver's; as found, they're assembled.
     const w = positive(props.defaultWidth) || positive(item.width) || 1;
     const h = positive(props.defaultHeight) || positive(item.height) || 1;
-    const slots = w * h;
-    const stats: SlimStats = [positive(item.penetrationPower), positive(item.damage), positive(item.armorDamage), positive(props.class)];
-    const hasStats = stats.some((v) => v > 0);
-    if (cats.length || slots > 1 || hasStats) entry.push(cats.length ? cats : 0, slots);
-    if (hasStats) entry.push(stats);
-    out[id] = entry;
+    if (w * h > 1) info.slots = w * h;
+    const set = (key: "penetration" | "damage" | "armorDamage" | "armorClass", v: unknown) => void (positive(v) && (info[key] = positive(v)));
+    set("penetration", item.penetrationPower);
+    set("damage", item.damage);
+    set("armorDamage", item.armorDamage);
+    set("armorClass", props.class);
+    out[id] = info;
   }
   return out;
 }
@@ -101,31 +103,14 @@ export class SlimCatalog implements ItemCatalog {
     return Object.keys(this.slim).length;
   }
   lookup(templateId: string): ItemInfo | undefined {
-    if (!Object.hasOwn(this.slim, templateId)) return undefined;
-    const e = this.slim[templateId];
-    return e ? toInfo(e) : undefined;
+    return Object.hasOwn(this.slim, templateId) ? this.slim[templateId] : undefined;
   }
   *items(): Iterable<[string, ItemInfo]> {
-    for (const [id, e] of Object.entries(this.slim)) yield [id, toInfo(e)];
+    yield* Object.entries(this.slim);
   }
   categories(): readonly ItemCategory[] {
     return this.cats;
   }
-}
-
-function toInfo(e: SlimItems[string]): ItemInfo {
-  const info: ItemInfo = { name: e[0], shortName: e[1] };
-  if (e[2] > 0) Object.assign(info, { price: e[2], priceSource: e[3] === 1 ? "base" : "flea" });
-  if (e[4]) info.categories = e[4];
-  if (e[5] && e[5] > 1) info.slots = e[5];
-  const st = e[6];
-  if (st) {
-    if (st[0]) info.penetration = st[0];
-    if (st[1]) info.damage = st[1];
-    if (st[2]) info.armorDamage = st[2];
-    if (st[3]) info.armorClass = st[3];
-  }
-  return info;
 }
 
 const isCachedCatalog = (c: unknown): c is CachedCatalog =>

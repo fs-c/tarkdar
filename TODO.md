@@ -2,14 +2,8 @@
     - identify boss guards
     - only highlight found-in-raid-required items
 - backend/memory read optimization; there's noticeably more lag while the backend is running
-    - also noticed that frontend seems to be very delayed at times (maybe already backend, hard to tell)
-    - done 2026-11-21: frontend renders once per frame (stream/frame.ts) instead of once per message (a slow render made the page fall further and further behind); Nagle off on /ws; timing everywhere: `-v` logs task times per runner (stalls warn always), memory read calls/latency, feed msg/s + KiB/s per type; the browser console logs lag/handle/render every 5 s (warns when off)
-    - next: measure a raid with `-v` + the console, then pick from: cache transform hierarchy/index lookups (2 of the 3 read rounds per positions tick), move builds/bone resolves off the live thread, publish players only on change, slower tripwire scan, VMM refresh tuning if reads spike; per-client coalescing in the hub only if lag spread shows up with fast renders (needs a Crow patch: no queue-depth/write-done hook)
+    - still open: cache transform hierarchy/index lookups (2 of the 3 read rounds per positions tick), move builds/bone resolves off the live thread, publish players only on change, slower tripwire scan
 - cleanup/review round: follow-ups (found 2026-11, not done)
-    - frontend
-        - floating map controls are positioned by magic numbers spread over four CSS files; switch/input styling is copy-pasted instead of `ui/` primitives
-        - some switches incorrectly expand to fill the parent
-        - `SlimItems` positional tuple in `model/catalog.ts`; player gear recomputed on every players tick
     - backend
         - loot: quest "info" items are hidden in the backend by object-name prefix; the frontend can't override it
         - loot resolve reads whole corpse item trees serially on the scan thread

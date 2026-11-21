@@ -33,10 +33,10 @@ const okFetch = () =>
 describe("slimItems", () => {
   it("resolves translations and keeps only name, short name, price, size and stats", () => {
     const slim = slimItems(itemsFeed, enFeed);
-    expect(slim.a).toEqual(["Alpha thing", "Alpha", 1200, 0, ["elec", "barter"], 2]);
-    expect(slim.b).toEqual(["Bravo", "b ShortName", 120, 1]); // missing translation → key; base price
-    expect(slim.c![2]).toBe(0); // no price at all
-    expect(slim.d![2]).toBe(900); // flea price preferred over base price
+    expect(slim.a).toEqual({ name: "Alpha thing", shortName: "Alpha", price: 1200, priceSource: "flea", categories: ["elec", "barter"], slots: 2 });
+    expect(slim.b).toEqual({ name: "Bravo", shortName: "b ShortName", price: 120, priceSource: "base" }); // missing translation → key
+    expect(slim.c).toEqual({ name: "c Name", shortName: "c ShortName" }); // no price at all
+    expect(slim.d).toMatchObject({ price: 900, priceSource: "flea" }); // flea price preferred over base price
     const cat = new SlimCatalog(slim);
     expect(cat.lookup("a")).toMatchObject({ price: 1200, priceSource: "flea" });
     expect(cat.lookup("b")).toMatchObject({ price: 120, priceSource: "base" });
@@ -94,7 +94,7 @@ describe("loadCatalog", () => {
 
 describe("totalValue", () => {
   it("multiplies by stack count and recurses", () => {
-    const cat = new SlimCatalog({ ammo: ["Ammo", "A", 100, 1], gun: ["Gun", "G", 50000, 0] });
+    const cat = new SlimCatalog({ ammo: { name: "Ammo", shortName: "A", price: 100, priceSource: "base" }, gun: { name: "Gun", shortName: "G", price: 50000, priceSource: "flea" } });
     expect(totalValue([{ tpl: "gun", items: [{ tpl: "ammo", count: 30 }, { tpl: "unknown" }] }], cat)).toBe(53000);
   });
 });

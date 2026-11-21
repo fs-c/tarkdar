@@ -4,10 +4,10 @@ import { parseValue, suggest } from "./suggest";
 
 const catalog = new SlimCatalog(
   {
-    ledx: ["LEDX Skin Transilluminator", "LEDX", 900_000, 0, ["meds", "barter"]],
-    gpu: ["Graphics card", "GPU", 400_000, 0, ["elec", "barter"]],
-    gpu2: ["Graphics card", "GPU", 400_000, 0, ["elec", "barter"]],
-    tetriz: ["Tetriz portable game console", "Tetriz", 30_000, 0, ["elec", "barter"]],
+    ledx: { name: "LEDX Skin Transilluminator", shortName: "LEDX", price: 900_000, priceSource: "flea", categories: ["meds", "barter"] },
+    gpu: { name: "Graphics card", shortName: "GPU", price: 400_000, priceSource: "flea", categories: ["elec", "barter"] },
+    gpu2: { name: "Graphics card", shortName: "GPU", price: 400_000, priceSource: "flea", categories: ["elec", "barter"] },
+    tetriz: { name: "Tetriz portable game console", shortName: "Tetriz", price: 30_000, priceSource: "flea", categories: ["elec", "barter"] },
   },
   { barter: ["Barter items", null], elec: ["Electronics", "barter"], meds: ["Medical supplies", "barter"] },
 );

@@ -8,13 +8,13 @@ import { compileQuery, isStructured, parseNumber, parseQuery } from "./query";
 
 const catalog = new SlimCatalog(
   {
-    ledx: ["LEDX Skin Transilluminator", "LEDX", 900_000, 0, ["medsupplies", "barter"]],
-    gpu: ["Graphics card", "GPU", 400_000, 0, ["electronics", "barter"], 2],
-    bolts: ["Bolts", "Bolts", 12_000, 0, ["building", "barter"]],
-    m4: ["Colt M4A1", "M4A1", 40_000, 0, ["rifles", "weapons"], 8],
-    m995: ["5.56x45mm M995", "M995", 1_000, 0, ["ammo"], 1, [53, 49, 58, 0]],
-    ps: ["5.45x39mm PS gs", "PS", 200, 0, ["ammo"], 1, [28, 51, 34, 0]],
-    plate: ["Granit 4 plate", "Granit", 60_000, 0, ["armor"], 4, [0, 0, 0, 5]],
+    ledx: { name: "LEDX Skin Transilluminator", shortName: "LEDX", price: 900_000, priceSource: "flea", categories: ["medsupplies", "barter"] },
+    gpu: { name: "Graphics card", shortName: "GPU", price: 400_000, priceSource: "flea", categories: ["electronics", "barter"], slots: 2 },
+    bolts: { name: "Bolts", shortName: "Bolts", price: 12_000, priceSource: "flea", categories: ["building", "barter"] },
+    m4: { name: "Colt M4A1", shortName: "M4A1", price: 40_000, priceSource: "flea", categories: ["rifles", "weapons"], slots: 8 },
+    m995: { name: "5.56x45mm M995", shortName: "M995", price: 1_000, priceSource: "flea", categories: ["ammo"], penetration: 53, damage: 49, armorDamage: 58 },
+    ps: { name: "5.45x39mm PS gs", shortName: "PS", price: 200, priceSource: "flea", categories: ["ammo"], penetration: 28, damage: 51, armorDamage: 34 },
+    plate: { name: "Granit 4 plate", shortName: "Granit", price: 60_000, priceSource: "flea", categories: ["armor"], slots: 4, armorClass: 5 },
   },
   {
     barter: ["Barter items", null], medsupplies: ["Medical supplies", "barter"], electronics: ["Electronics", "barter"], building: ["Building materials", "barter"],

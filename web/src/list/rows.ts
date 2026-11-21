@@ -146,6 +146,32 @@ export function carried(nodes: ItemNode[] | undefined, catalog: ItemCatalog): { 
   return { tpls, names };
 }
 
+interface Gear {
+  readonly tpls: readonly string[];
+  /** The carried items' names, for the search text. */
+  readonly text: string;
+  /** equipmentValue; undefined when nothing was read or it's worth nothing known. */
+  readonly value: number | undefined;
+}
+
+const NO_GEAR: Gear = { tpls: NO_TPLS, text: "", value: undefined };
+/** Per catalogue, per item tree: equipment arrives far less often than positions (a new tree only
+ *  with a new equipment message), so a players tick reuses what the last one worked out. */
+const gearCache = new WeakMap<ItemCatalog, WeakMap<ItemNode[], Gear>>();
+
+/** What a player or corpse carries: carried() and its value, cached per item tree. */
+function gearOf(nodes: ItemNode[] | undefined, catalog: ItemCatalog): Gear {
+  if (!nodes?.length) return NO_GEAR;
+  let byTree = gearCache.get(catalog);
+  if (!byTree) gearCache.set(catalog, (byTree = new WeakMap()));
+  let gear = byTree.get(nodes);
+  if (!gear) {
+    const { tpls, names } = carried(nodes, catalog);
+    byTree.set(nodes, (gear = { tpls, text: text(...names), value: equipmentValue(nodes, catalog) || undefined }));
+  }
+  return gear;
+}
+
 /** Rows without distances, for all tabs. The per-category builders below let callers memoize each
  *  on its own input (loot changes rarely, players many times a second). */
 export function buildRows(state: Pick<RadarState, "players" | "loot" | "exfils" | "explosives" | "vehicles" | "equipment">, catalog: ItemCatalog): TabRows {
@@ -164,13 +190,12 @@ export function playerRows(players: Player[], equipment: Map<number, PlayerEquip
     const name = p.local ? "You" : `#${p.id}`;
     const t = playerType(p, groups);
     const st = p.dead ? "dead" : p.absent ? (p.extracted ? "extracted" : "left") : "alive";
-    const slots = equipment.get(p.id)?.slots;
-    const gear = carried(slots, catalog);
+    const gear = gearOf(equipment.get(p.id)?.slots, catalog);
     const raw = identityText(p);
-    const search = text(name, `#${p.id}`, t.type, t.label, p.ai ? "ai bot" : "human", raw, st, ...gear.names);
+    const search = text(name, `#${p.id}`, t.type, t.label, p.ai ? "ai bot" : "human", raw, st, gear.text);
     return {
       ...base({ kind: "player", id: p.id }, "player", p.pos, search, gear.tpls),
-      value: slots?.length ? equipmentValue(slots, catalog) || undefined : undefined,
+      value: gear.value,
       name, local: p.local, ai: p.ai, type: t.type, typeLabel: t.label, typeDetail: `${t.type}: ${t.reason}\n${raw}`,
       state: st,
     };
@@ -192,10 +217,10 @@ export function lootRows(
   for (const l of loot) {
     const sel: Selection = { kind: "loot", id: l.id };
     if (l.kind === "corpse") {
-      const gear = carried(l.contents, catalog);
+      const gear = gearOf(l.contents, catalog);
       containers.push({
-        ...base(sel, "corpse", l.pos, text("corpse body", ...gear.names), gear.tpls),
-        value: l.contents?.length ? equipmentValue(l.contents, catalog) || undefined : undefined,
+        ...base(sel, "corpse", l.pos, text("corpse body", gear.text), gear.tpls),
+        value: gear.value,
         name: "corpse", kind: "corpse",
       });
     } else if (isContainerKind(l.kind)) {

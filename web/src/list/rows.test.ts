@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type ItemCatalog, type ItemInfo, emptyCatalog } from "../model/items";
 import type { LootEntry, Player } from "../model/protocol";
-import { DEFAULT_FILTERS, type TabFilter, buildRows, filterRows, isFiltered, normalizeFilters, rowKeys, tabOf, withDistances } from "./rows";
+import { DEFAULT_FILTERS, type TabFilter, buildRows, filterRows, playerRows, isFiltered, normalizeFilters, rowKeys, tabOf, withDistances } from "./rows";
 
 const info: Record<string, ItemInfo> = {
   ledx: { name: "LEDX Skin Transilluminator", shortName: "LEDX", price: 900_000, priceSource: "flea" },
@@ -154,5 +154,22 @@ describe("normalizeFilters", () => {
     expect(f.exfils).toEqual({ text: "e" });
     expect(normalizeFilters({ items: { text: "", minValue: -5 } }).items.minValue).toBe(0);
     expect(normalizeFilters({ items: { text: "", minValue: 1e6 } }).items.minValue).toBe(1e6);
+  });
+});
+
+describe("playerRows", () => {
+  it("works out a player's gear once per equipment message, not on every players tick", () => {
+    const lookups: string[] = [];
+    const counting: ItemCatalog = { ...emptyCatalog, lookup: (tpl) => (lookups.push(tpl), info[tpl]) };
+    const first = playerRows(state.players, state.equipment, counting);
+    const moved = state.players.map((p) => ({ ...p, yaw: p.yaw + 1 }));
+    const n = lookups.length;
+    const second = playerRows(moved, state.equipment, counting);
+    expect(lookups.length).toBe(n); // nothing looked up again
+    expect(second[2]).toMatchObject({ value: 40_000, tpls: ["m4"] });
+    expect(second[2]!.search).toBe(first[2]!.search);
+    // a new equipment message (new trees) is worked out afresh
+    playerRows(moved, new Map([[3, { id: 3, slots: [{ tpl: "helmet" }] }]]), counting);
+    expect(lookups.slice(n)).toContain("helmet");
   });
 });

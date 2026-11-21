@@ -11,10 +11,10 @@ import {
   tableFeatures,
 } from "@tanstack/react-table";
 import { useContext } from "react";
-import { formatHeightDiff, formatPrice } from "../items";
-import { COLORS, DEFAULT_COLOR } from "../style";
+import { formatHeightDiff, formatPrice } from "../model/items";
+import { COLORS, DEFAULT_COLOR } from "../draw/style";
 import { RowStyles } from "./RowStyles";
-import { PLAYER_TYPES } from "../roles";
+import { PLAYER_TYPES } from "../model/roles";
 import { Price } from "../ui";
 import s from "./columns.module.css";
 import type { ContainerRow, ExfilRow, ItemRow, PlayerRow, RowBase, TabId } from "./rows";

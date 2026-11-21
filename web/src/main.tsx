@@ -2,11 +2,11 @@
 import "./styles/global.css";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { dropLocalStorageCaches, dropRetiredCaches } from "./cache";
+import { dropLocalStorageCaches, dropRetiredCaches } from "./model/cache";
 import { App } from "./components/App";
 import { PovPage } from "./components/PovPage";
 import { localStorageBackend, settings } from "./persist";
-import { applyTheme } from "./theme";
+import { applyTheme } from "./draw/theme";
 
 applyTheme();
 

@@ -21,7 +21,7 @@ import {
   type SkeletonsData,
   type StatusData,
   type WorldPos,
-} from "./protocol";
+} from "../model/protocol";
 
 /** The parts of RadarState a timeline provides for a moment. */
 export interface TimelineState {

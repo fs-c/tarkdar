@@ -4,10 +4,10 @@
 
 import { Pause, Play, Radio, X } from "lucide-react";
 import { useRef, useState } from "react";
-import { eventConcerns } from "../events";
-import type { Selection } from "../pick";
-import { type Playback, SPEEDS, formatDuration } from "../playback";
-import type { TimelineEvent } from "../timeline";
+import { eventConcerns } from "../stream/events";
+import type { Selection } from "../draw/pick";
+import { type Playback, SPEEDS, formatDuration } from "../stream/playback";
+import type { TimelineEvent } from "../stream/timeline";
 import { cx, useDismiss } from "../ui";
 import s from "./PlaybackBar.module.css";
 

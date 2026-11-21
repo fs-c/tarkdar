@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseMessage, withoutContainerContents } from "./protocol";
-import { parseLine } from "./recordings";
+import { parseLine } from "../stream/recordings";
 
 describe("withoutContainerContents", () => {
   const entries = [

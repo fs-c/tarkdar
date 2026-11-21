@@ -4,9 +4,9 @@
 import type { SortingState } from "@tanstack/react-table";
 import { useMemo } from "react";
 import { defineStore, usePersisted } from "../persist";
-import type { RadarState } from "../connection";
-import type { ItemCatalog } from "../items";
-import type { QuestNeed } from "../quests";
+import type { RadarState } from "../stream/connection";
+import type { ItemCatalog } from "../model/items";
+import type { QuestNeed } from "../model/quests";
 import { TABS, columnIds } from "./columns";
 import {
   DEFAULT_FILTERS,

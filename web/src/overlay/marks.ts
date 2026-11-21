@@ -4,9 +4,9 @@
 // rows as the map, and sent to the backend for the overlay only (docs/protocol.md, `overlay`).
 
 import type { AnyRow, TabRows } from "../list/rows";
-import type { OverlayData, OverlayMark } from "../protocol";
+import type { OverlayData, OverlayMark } from "../model/protocol";
 import { BASE, type Style } from "../rules/rules";
-import { DEFAULT_COLOR, exfilColor } from "../style";
+import { DEFAULT_COLOR, exfilColor } from "../draw/style";
 
 /** The overlay's settings (Settings → Overlay), kept in this browser. */
 export interface OverlayPrefs {

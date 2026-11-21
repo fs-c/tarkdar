@@ -1,7 +1,7 @@
 // Projecting world points into the local player's view (the POV page), from the backend's `camera`
 // message. Pure functions, so they can be tested without a canvas.
 
-import type { CameraData, CameraView, WorldPos } from "../protocol";
+import type { CameraData, CameraView, WorldPos } from "../model/protocol";
 
 /** A projected point: normalised device coordinates (−1…1, y up; outside: off screen) and the
  *  distance along the view direction (clip w, metres for a perspective camera). */

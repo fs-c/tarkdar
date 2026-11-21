@@ -2,7 +2,7 @@
 // so no migrations: an entry of another version is just not there. In IndexedDB, which holds far more
 // than localStorage and doesn't share its quota with the settings.
 
-import { isObject } from "./persist/store";
+import { isObject } from "../persist/store";
 
 export interface CacheDef {
   key: string;

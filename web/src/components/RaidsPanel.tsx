@@ -3,9 +3,9 @@
 // opens its event log (TimelinePanel).
 
 import { useEffect, useState } from "react";
-import { formatDuration } from "../playback";
-import type { RecordingInfo } from "../protocol";
-import { fetchRecordings } from "../recordings";
+import { formatDuration } from "../stream/playback";
+import type { RecordingInfo } from "../model/protocol";
+import { fetchRecordings } from "../stream/recordings";
 import { cx, Note, PanelBody, selectableRow } from "../ui";
 import s from "./RaidsPanel.module.css";
 

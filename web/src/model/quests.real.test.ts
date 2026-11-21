@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest";
 import { withoutDuplicateLoot } from "./dedupe";
 import type { LootEntry, QuestState } from "./protocol";
 import fixture from "./quests.fixture.json";
-import { questDebugReport, questItemLabels, questLabel, questNeeds, withoutUnneededQuestItems } from "./quests";
+import { questDebugReport } from "./quests.debug";
+import { questItemLabels, questLabel, questNeeds, withoutUnneededQuestItems } from "./quests";
 
 const quests = fixture.quests as QuestState[];
 const loot = fixture.questLoot as LootEntry[];

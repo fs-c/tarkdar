@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { type ItemCatalog, type ItemInfo, emptyCatalog } from "../items";
-import type { LootEntry, Player } from "../protocol";
+import { type ItemCatalog, type ItemInfo, emptyCatalog } from "../model/items";
+import type { LootEntry, Player } from "../model/protocol";
 import { DEFAULT_FILTERS, type TabFilter, buildRows, filterRows, isFiltered, normalizeFilters, rowKeys, tabOf, withDistances } from "./rows";
 
 const info: Record<string, ItemInfo> = {

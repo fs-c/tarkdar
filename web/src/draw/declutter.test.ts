@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type ItemCatalog, emptyCatalog } from "./items";
+import { type ItemCatalog, emptyCatalog } from "../model/items";
 import { topDownProjector } from "./projector.fixture";
-import type { Exfil, LootEntry, Player } from "./protocol";
+import type { Exfil, LootEntry, Player } from "../model/protocol";
 import { type Scene, renderMarkers } from "./render";
-import { highlightRule } from "./rules/rules";
-import { type LegacyPrefs, storeFrom, stylesFor } from "./rules/rules.fixture";
+import { highlightRule } from "../rules/rules";
+import { type LegacyPrefs, storeFrom, stylesFor } from "../rules/rules.fixture";
 
 /** A canvas context that records the text and the filled rectangles drawn (text is 6 px a character). */
 function fakeCtx() {

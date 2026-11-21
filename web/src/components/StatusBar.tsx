@@ -1,5 +1,5 @@
-import type { CatalogStatus } from "../catalog";
-import type { RadarState } from "../connection";
+import type { CatalogStatus } from "../model/catalog";
+import type { RadarState } from "../stream/connection";
 import { cx } from "../ui";
 import s from "./StatusBar.module.css";
 

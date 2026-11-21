@@ -4,7 +4,7 @@
 // map's markers (with their figures), trails and the list all take their look from here. For players
 // the emphasis decides everything else (size, opacity, halo, label, draw order).
 
-import type { Emphasis } from "./rules/rules";
+import type { Emphasis } from "../rules/rules";
 import { ui } from "./theme";
 
 export const COLORS = {

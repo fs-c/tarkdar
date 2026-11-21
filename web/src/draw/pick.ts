@@ -1,9 +1,9 @@
 // Hit-testing clicks on the radar: which marker (player, exfil, loot) is under the cursor.
 
-import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type WorldPos } from "./protocol";
-import { BASE, type Style } from "./rules/rules";
+import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type WorldPos } from "../model/protocol";
+import { BASE, type Style } from "../rules/rules";
 import type { Projector } from "./projector";
-import type { SubjectKind } from "./list/rows";
+import type { SubjectKind } from "../list/rows";
 
 export type Selection =
   | { kind: "player"; id: number }

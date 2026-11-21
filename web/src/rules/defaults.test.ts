@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ItemCatalog } from "../items";
-import { emptyCatalog } from "../items";
+import type { ItemCatalog } from "../model/items";
+import { emptyCatalog } from "../model/items";
 import type { AnyRow, SubjectKind } from "../list/rows";
-import type { PlayerType } from "../roles";
-import { EMPHASIS_SCALE, MARKER_SIZE } from "../style";
-import { ui } from "../theme";
+import type { PlayerType } from "../model/roles";
+import { EMPHASIS_SCALE, MARKER_SIZE } from "../draw/style";
+import { ui } from "../draw/theme";
 import { DEFAULT_RULES } from "./defaults";
 import { type Emphasis, type Style, applyRules } from "./rules";
 

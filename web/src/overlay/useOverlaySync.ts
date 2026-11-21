@@ -2,8 +2,8 @@
 // SEND_INTERVAL ms), and again after every reconnect. Only while the backend runs the overlay.
 
 import { useEffect, useRef } from "react";
-import type { Connection } from "../connection";
-import type { OverlayData } from "../protocol";
+import type { Connection } from "../stream/connection";
+import type { OverlayData } from "../model/protocol";
 
 export const SEND_INTERVAL = 250;
 

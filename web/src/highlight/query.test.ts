@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { SlimCatalog } from "../catalog";
+import { SlimCatalog } from "../model/catalog";
 import { buildRows, lootRows } from "../list/rows";
-import type { LootEntry, Player } from "../protocol";
-import type { QuestNeed } from "../quests";
+import type { LootEntry, Player } from "../model/protocol";
+import type { QuestNeed } from "../model/quests";
 import { type Highlight, HIGHLIGHT_COLORS, allRows, matchingRows, nextColor } from "./match";
 import { compileQuery, isStructured, parseNumber, parseQuery } from "./query";
 

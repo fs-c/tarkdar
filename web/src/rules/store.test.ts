@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyCatalog } from "../items";
+import { emptyCatalog } from "../model/items";
 import type { AnyRow, SubjectKind } from "../list/rows";
 import { DEFAULT_RULES } from "./defaults";
 import { applyRules } from "./rules";

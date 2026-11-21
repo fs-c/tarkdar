@@ -1,9 +1,10 @@
 // Timeline events as the log and the details panel show them: what to call things, what changed.
 
-import { type ItemCatalog, containerName, exfilStatus } from "./items";
-import type { Selection } from "./pick";
-import type { ItemNode, LootEntry, WorldPos } from "./protocol";
-import { type PlayerIdentity, bossGroups, playerType } from "./roles";
+import { exfilStatus } from "../model/exfils";
+import { type ItemCatalog, containerName } from "../model/items";
+import type { Selection } from "../draw/pick";
+import type { ItemNode, LootEntry, WorldPos } from "../model/protocol";
+import { type PlayerIdentity, bossGroups, playerType } from "../model/roles";
 import type { EventKind, Timeline, TimelineEvent } from "./timeline";
 
 /** Filter groups of the log, in display order. */

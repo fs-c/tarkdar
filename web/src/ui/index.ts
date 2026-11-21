@@ -6,6 +6,7 @@ import selectable from "./selectable.module.css";
 export { Button } from "./Button";
 export { Chip } from "./Chip";
 export { cx } from "./cx";
+export { isTyping } from "./isTyping";
 export { Actions, Note, PanelBody, Section } from "./Panel";
 export { Price } from "./Price";
 export { Segmented, type SegmentedOption } from "./Segmented";

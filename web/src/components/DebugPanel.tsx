@@ -1,8 +1,8 @@
 // The debugging sections of the Settings view: what's behind the quest item filter, and map debugging tools.
 
-import type { MapPrefs } from "../prefs";
+import type { MapPrefs } from "../persist/prefs";
 import type { MapView } from "../map3d/Map3D";
-import { type QuestDebug, type QuestDebugQuest, questStatusName } from "../quests";
+import { type QuestDebug, type QuestDebugQuest, questStatusName } from "../model/quests.debug";
 import { Actions, Button, Section, ToggleRow, cx } from "../ui";
 import s from "./DebugPanel.module.css";
 import type { SetStored } from "../persist";

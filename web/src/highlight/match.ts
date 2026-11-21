@@ -2,7 +2,7 @@
 // (highlight/query.ts). A highlight never hides anything; it wins over what hides things (the list's
 // filters, the groups switched off in the Filters view).
 
-import type { ItemCatalog } from "../items";
+import type { ItemCatalog } from "../model/items";
 import type { AnyRow, TabRows } from "../list/rows";
 import { compileQuery } from "./query";
 

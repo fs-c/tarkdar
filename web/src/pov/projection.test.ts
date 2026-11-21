@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CameraData, CameraView } from "../protocol";
+import type { CameraData, CameraView } from "../model/protocol";
 import { onScreen, project, scopeView, toPixels } from "./projection";
 
 /** Column-major 4×4 from a row-major list of rows. */

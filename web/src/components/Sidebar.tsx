@@ -3,7 +3,7 @@
 
 import { Archive, DoorOpen, Funnel, History, type LucideIcon, Map as MapIcon, Package, PanelLeftClose, Settings, Users } from "lucide-react";
 import { type PointerEvent, type ReactNode, useRef } from "react";
-import { DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, useSidebarSize } from "../prefs";
+import { DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, useSidebarSize } from "../persist/prefs";
 import { TABS } from "../list/columns";
 import type { TabId } from "../list/rows";
 import { Button, cx } from "../ui";

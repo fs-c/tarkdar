@@ -6,7 +6,6 @@ import {
   isSpecific,
   neededKinds,
   openObjectives,
-  questDebugReport,
   questItemLabels,
   questLabel,
   questNeeds,
@@ -111,28 +110,5 @@ describe("formatQuestNeed", () => {
     expect(formatQuestNeed({ quest: "Q", kind: "side", count: 1, fir: false, of: 1 })).toBe("Q");
     expect(formatQuestNeed({ quest: "Q", kind: "side", count: 3, fir: true, of: 60 })).toBe("Q (×3, FIR, any of 60)");
     expect(formatQuestNeed({ quest: "Q", kind: "side", count: 5, progress: 2, fir: false, of: 1 })).toBe("Q (2/5)");
-  });
-});
-
-describe("questDebugReport", () => {
-  it("says what each quest needs and why each quest item shows", () => {
-    const quests = [
-      quest("side", [obj("o1", "find", ["questA"]), obj("o2", "handover", ["questA"])], { name: "Gunsmith", done: ["o1"] }),
-      quest("hidden", [obj("o3", "find", ["questB"])], { kind: "story", hidden: true }),
-      quest("unknown", null),
-    ];
-    const r = questDebugReport({ quests, loot: [loot(1, "quest", "questA"), loot(2, "quest", "questB"), loot(3, "quest", "questB")], filterOn: true, itemName: () => undefined });
-    expect(r.backend).toBe("read");
-    expect(r.started).toBe(3);
-    expect(r.byKind).toEqual({ story: 1, side: 2, daily: 0, weekly: 0 });
-    expect(r.unknown).toEqual(["unknown"]);
-    expect(r.filter.effect).toMatch(/objectives unknown/);
-    expect(r.quests[0]!.id).toBe("unknown"); // unknown first, then story before side
-    expect(r.quests[1]!).toMatchObject({ id: "hidden", hidden: true, label: "Story" });
-    expect(r.quests[2]!.objectives.map((o) => [o.id, o.done, o.open])).toEqual([["o1", true, false], ["o2", false, false]]);
-    expect(r.questItems).toEqual([
-      expect.objectContaining({ tpl: "questB", count: 2, needed: true, shown: true }),
-      expect.objectContaining({ tpl: "questA", needed: false, shown: true, why: "some started quests' objectives unknown: kept" }),
-    ]);
   });
 });

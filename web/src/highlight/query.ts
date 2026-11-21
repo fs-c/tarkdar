@@ -16,10 +16,10 @@
 // Item conditions (item, cat, pen, dmg, class) hold for things that are, or carry, such an item.
 // Comparisons: >= > <= < =; numbers take k and m. An empty query matches nothing.
 
-import { type ItemCatalog, type ItemInfo, containerTypes } from "../items";
-import type { QuestKind } from "../protocol";
+import { type ItemCatalog, type ItemInfo, containerTypes } from "../model/items";
+import type { QuestKind } from "../model/protocol";
 import type { PlayerRow, RowBase, SubjectKind } from "../list/rows";
-import { type PlayerType, SPECIAL_TYPES } from "../roles";
+import { type PlayerType, SPECIAL_TYPES } from "../model/roles";
 
 export type NumField = "value" | "price" | "pen" | "dmg" | "class";
 export type Op = ">=" | ">" | "<=" | "<" | "=";

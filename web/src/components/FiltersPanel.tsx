@@ -6,8 +6,8 @@
 import { Plus, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { compileQuery, QUERY_HELP } from "../highlight/query";
-import type { LootPrefs } from "../prefs";
-import type { ItemCatalog } from "../items";
+import type { LootPrefs } from "../persist/prefs";
+import type { ItemCatalog } from "../model/items";
 import type { AnyRow } from "../list/rows";
 import { CATEGORIES, type Category, HIDEABLE } from "../rules/defaults";
 import {

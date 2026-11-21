@@ -1,5 +1,5 @@
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, mapStore, sidebarSizeStore, sidebarStore } from "./prefs";
-import { DEFAULT_MAP_SETTINGS } from "./map3d/settings";
+import { DEFAULT_MAP_SETTINGS } from "../map3d/settings";
 
 describe("stored map prefs", () => {
   it("fall back to the defaults for values that aren't among the known ones", () => {

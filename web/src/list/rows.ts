@@ -2,13 +2,14 @@
 // the highlights (highlight/) work with. Grouped into the list's tabs. Pure functions, so they can be
 // tested without React.
 
-import type { RadarState } from "../connection";
+import type { RadarState } from "../stream/connection";
 import { isObject } from "../persist/store";
-import { type ItemCatalog, containerName, equipmentValue, exfilStatus, slotValue } from "../items";
-import { type Selection, midpoint, selectionKey } from "../pick";
-import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, QuestKind, WorldPos } from "../protocol";
-import { type QuestNeed, formatQuestNeed, neededKinds } from "../quests";
-import { type PlayerType, SPECIAL_TYPES, bossGroups, identityText, playerType } from "../roles";
+import { type ItemCatalog, containerName, equipmentValue, slotValue } from "../model/items";
+import { exfilStatus } from "../model/exfils";
+import { type Selection, midpoint, selectionKey } from "../draw/pick";
+import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, QuestKind, WorldPos } from "../model/protocol";
+import { type QuestNeed, formatQuestNeed, neededKinds } from "../model/quests";
+import { type PlayerType, SPECIAL_TYPES, bossGroups, identityText, playerType } from "../model/roles";
 
 export type TabId = "players" | "items" | "containers" | "exfils";
 export const TAB_IDS: readonly TabId[] = ["players", "items", "containers", "exfils"];

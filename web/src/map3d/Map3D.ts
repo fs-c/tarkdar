@@ -14,8 +14,8 @@
 // as in protocol.ts). Internally z is negated (three.js is right-handed).
 
 import * as THREE from "three";
-import type { Projector } from "../projector";
-import type { WorldPos } from "../protocol";
+import type { Projector } from "../draw/projector";
+import type { WorldPos } from "../model/protocol";
 import { type Bounds, loadMapData, type MapData } from "./dataset";
 import { InstanceRenderer } from "./instances";
 import { DEFAULT_MAP_SETTINGS, type MapSettings, PLAN_PALETTES } from "./settings";

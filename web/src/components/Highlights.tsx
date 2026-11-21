@@ -7,14 +7,13 @@
 
 import { Highlighter, Pin, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { isTyping } from "../hooks";
 import { type Highlight, matchingRows, nextColor } from "../highlight/match";
 import { type Suggestion, suggest } from "../highlight/suggest";
-import type { ItemCatalog } from "../items";
+import type { ItemCatalog } from "../model/items";
 import type { AnyRow } from "../list/rows";
-import type { Selection } from "../pick";
-import type { WorldPos } from "../protocol";
-import { Button } from "../ui";
+import type { Selection } from "../draw/pick";
+import type { WorldPos } from "../model/protocol";
+import { Button, isTyping } from "../ui";
 import s from "./Highlights.module.css";
 
 interface Props {

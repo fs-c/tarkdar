@@ -9,9 +9,9 @@
 // in code, outside the rules: shapes (how each kind is drawn), the state of a thing (the dead are grey,
 // those who left faded, an exfil's colour is its status), the local player, and where labels go.
 
-import type { ItemCatalog } from "../items";
+import type { ItemCatalog } from "../model/items";
 import type { AnyRow, RowBase, SubjectKind } from "../list/rows";
-import { LABEL_DETAIL } from "../declutter";
+import { LABEL_DETAIL } from "../draw/declutter";
 import { compileQuery } from "../highlight/query";
 
 /**

@@ -1,7 +1,7 @@
 // Map view of the side panel: how the map looks (style, palette, colours), how it's controlled, and
 // trails. (What shows on it and how: FiltersPanel. The overlay: SettingsPanel.)
 
-import type { MapPrefs, TrailPrefs } from "../prefs";
+import type { MapPrefs, TrailPrefs } from "../persist/prefs";
 import { COLOR_SCHEMES, type ColorGrade, type ColorSchemeName, PLAN_PALETTES, type PlanPalette, type PlanPaletteName, paletteOf, schemeOf } from "../map3d/settings";
 import { Actions, Button, PanelBody, Section, Segmented, SliderRow, ToggleRow } from "../ui";
 import s from "./MapPanel.module.css";

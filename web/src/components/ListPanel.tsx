@@ -6,13 +6,13 @@
 import { type OnChangeFn, type SortingState, useTable } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import type { RadarState } from "../connection";
+import type { RadarState } from "../stream/connection";
 import { type TabDef, TABS, features } from "../list/columns";
 import { DEFAULT_FILTERS, type RowBase, type TabFilter, type TabRows, isTabFiltered, selectionKey, tabOf, withDistances } from "../list/rows";
 import { RowStyles } from "../list/RowStyles";
 import type { Style } from "../rules/rules";
 import type { ListPrefs, ListRows } from "../list/useListRows";
-import type { Selection } from "../pick";
+import type { Selection } from "../draw/pick";
 import { Button, Chip, cx, selectableRow } from "../ui";
 import s from "./ListPanel.module.css";
 

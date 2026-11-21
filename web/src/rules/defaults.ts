@@ -3,10 +3,10 @@
 // store (rules/store.ts) starts from these; each can be changed, moved, duplicated and removed there,
 // and reset by category to (or restored from) its default.
 
-import { VALUE_TIERS, formatPrice } from "../items";
+import { VALUE_TIERS, formatPrice } from "../model/items";
 import type { SubjectKind } from "../list/rows";
-import { COLORS } from "../style";
-import { ui } from "../theme";
+import { COLORS } from "../draw/style";
+import { ui } from "../draw/theme";
 import type { Emphasis, Rule, StyleProps } from "./rules";
 
 /**

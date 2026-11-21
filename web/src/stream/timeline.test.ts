@@ -1,5 +1,5 @@
 import { LiveTimeline } from "./liveTimeline";
-import { JOINT_COUNT, type LootEntry, type Message, type Player, type RecordedMessage, type StatusData } from "./protocol";
+import { JOINT_COUNT, type LootEntry, type Message, type Player, type RecordedMessage, type StatusData } from "../model/protocol";
 import { ingestLines } from "./recordings";
 import { Skeletons, Timeline, diffLoot } from "./timeline";
 

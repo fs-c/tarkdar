@@ -2,9 +2,9 @@
 // extra ones on top).
 
 import { allRows } from "../highlight/match";
-import { type ItemCatalog, emptyCatalog } from "../items";
+import { type ItemCatalog, emptyCatalog } from "../model/items";
 import { buildRows } from "../list/rows";
-import type { Exfil, ExplosivesData, LootEntry, Player } from "../protocol";
+import type { Exfil, ExplosivesData, LootEntry, Player } from "../model/protocol";
 import type { Category } from "./defaults";
 import { SHOW_LEVELS } from "./defaults";
 import { type Rule, type Style, applyRules } from "./rules";

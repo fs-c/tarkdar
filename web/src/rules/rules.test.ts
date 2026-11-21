@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyCatalog } from "../items";
+import { emptyCatalog } from "../model/items";
 import type { AnyRow } from "../list/rows";
 import { HIGHLIGHT_COLORS } from "../highlight/match";
 import { highlightRules } from "./useRules";

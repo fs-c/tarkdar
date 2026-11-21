@@ -16,7 +16,7 @@ import {
   type StatusData,
   isSentinelPos,
   parseMessage,
-} from "./protocol";
+} from "../model/protocol";
 
 /** The backend's WebSocket, on the host that served the page. */
 export const wsUrl = (): string => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;

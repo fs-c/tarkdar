@@ -1,6 +1,6 @@
 import { contentsDelta, describeEvent, eventConcerns, eventGroup, playerName } from "./events";
-import { type ItemCatalog, type ItemInfo, emptyCatalog } from "./items";
-import type { LootEntry, Player, RecordedMessage } from "./protocol";
+import { type ItemCatalog, type ItemInfo, emptyCatalog } from "../model/items";
+import type { LootEntry, Player, RecordedMessage } from "../model/protocol";
 import { Timeline, isJump } from "./timeline";
 
 const catalog: ItemCatalog = {

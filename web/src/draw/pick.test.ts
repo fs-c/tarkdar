@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { pick, selectedPosition } from "./pick";
-import { type Exfil, JOINT_COUNT, Joint, type LootEntry, type Player, type WorldPos } from "./protocol";
+import { type Exfil, JOINT_COUNT, Joint, type LootEntry, type Player, type WorldPos } from "../model/protocol";
 import { topDownProjector } from "./projector.fixture";
-import { highlightRule } from "./rules/rules";
-import { type LegacyPrefs, type Things, storeFrom, stylesFor } from "./rules/rules.fixture";
+import { highlightRule } from "../rules/rules";
+import { type LegacyPrefs, type Things, storeFrom, stylesFor } from "../rules/rules.fixture";
 
 // 2 px/m, north up, 200×200 centred on the origin: world (x, z) lands at screen (100 + 2x, 100 − 2z).
 const view = topDownProjector(200, 200, 2);

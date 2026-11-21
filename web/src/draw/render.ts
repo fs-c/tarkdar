@@ -1,14 +1,15 @@
 // Draws the radar's markers (players, loot, exfils, ...) over the map, through its camera (projector.ts).
 
 import { LabelPlacer, type Rect, candidatesAround } from "./labels";
-import { type ItemCatalog, containerName, exfilStatus, formatHeightDiff, formatPrice, slotValue } from "./items";
-import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type Vehicle, type WorldPos } from "./protocol";
-import { type PlayerTypeInfo, bossGroups, playerType } from "./roles";
+import { type ItemCatalog, containerName, formatHeightDiff, formatPrice, slotValue } from "../model/items";
+import { exfilStatus } from "../model/exfils";
+import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type Vehicle, type WorldPos } from "../model/protocol";
+import { type PlayerTypeInfo, bossGroups, playerType } from "../model/roles";
 import { COLORS, DEFAULT_COLOR, EMPHASIS_SCALE, MARKER_SIZE, type PlayerLook, exfilColor, playerLook } from "./style";
 import { EXFIL_STATUS_DETAIL, LABEL_RANK } from "./declutter";
-import { BASE, type Style, isShown, labelAt } from "./rules/rules";
-import type { SubjectKind } from "./list/rows";
-import { type Timeline, isJump } from "./timeline";
+import { BASE, type Style, isShown, labelAt } from "../rules/rules";
+import type { SubjectKind } from "../list/rows";
+import { type Timeline, isJump } from "../stream/timeline";
 import type { Projector } from "./projector";
 import { midpoint } from "./pick";
 

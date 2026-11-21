@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { type ItemCatalog, type ItemInfo, emptyCatalog } from "../items";
+import { type ItemCatalog, type ItemInfo, emptyCatalog } from "../model/items";
 import { buildRows } from "../list/rows";
-import type { LootEntry, Player } from "../protocol";
+import type { LootEntry, Player } from "../model/protocol";
 import type { Style } from "../rules/rules";
 import { DEFAULT_OVERLAY_PREFS, OTHER_PLAYERS, hexColor, overlayData, overlayMarks } from "./marks";
 

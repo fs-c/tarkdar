@@ -3,7 +3,7 @@
 // search), then the more specific readings: a value threshold, kinds of players and things, examples of
 // the syntax, kinds of container, item categories, single items.
 
-import { type ItemCatalog, containerTypes, formatPrice } from "../items";
+import { type ItemCatalog, containerTypes, formatPrice } from "../model/items";
 import { QUERY_HELP, isStructured, parseQuery, quote } from "./query";
 
 export interface Suggestion {

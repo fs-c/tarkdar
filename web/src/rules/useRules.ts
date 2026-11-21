@@ -5,7 +5,7 @@
 import { useMemo } from "react";
 import type { Highlight } from "../highlight/match";
 import { nextColor } from "../highlight/match";
-import type { ItemCatalog } from "../items";
+import type { ItemCatalog } from "../model/items";
 import type { AnyRow, SubjectKind, TabRows } from "../list/rows";
 import { type Rule, type Style, applyRules, highlightRule } from "./rules";
 

@@ -1,7 +1,7 @@
 // World position -> screen position, through the map's current camera (map3d/Map3D). The markers
 // (render.ts) and the hit test (pick.ts) only know this.
 
-import type { WorldPos } from "./protocol";
+import type { WorldPos } from "../model/protocol";
 
 export interface Projector {
   /** Canvas size in CSS pixels. */

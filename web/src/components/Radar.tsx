@@ -7,13 +7,13 @@
 
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { type Ref, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
-import { isTyping } from "../hooks";
+import { isTyping } from "../ui";
 import { Map3D, type MapStats, type MapView } from "../map3d/Map3D";
 import type { MapSettings } from "../map3d/settings";
-import type { Projector } from "../projector";
-import type { WorldPos } from "../protocol";
-import { type Scene, renderMarkers } from "../render";
-import { ui } from "../theme";
+import type { Projector } from "../draw/projector";
+import type { WorldPos } from "../model/protocol";
+import { type Scene, renderMarkers } from "../draw/render";
+import { ui } from "../draw/theme";
 import s from "./Radar.module.css";
 
 /** Turned less than this (radians) from the map's usual orientation counts as not turned. */

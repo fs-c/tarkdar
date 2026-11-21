@@ -5,10 +5,10 @@
 // While scoped, the marks are drawn through the scope's view over the whole canvas (pov/projection.ts).
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Connection, type RadarState, wsUrl } from "../connection";
+import { Connection, type RadarState, wsUrl } from "../stream/connection";
 import { type ScopeView, mainView, project, scopeView, toPixels } from "../pov/projection";
-import type { CameraData, WorldPos } from "../protocol";
-import { ui } from "../theme";
+import type { CameraData, WorldPos } from "../model/protocol";
+import { ui } from "../draw/theme";
 import s from "./PovPage.module.css";
 
 /** Player height drawn (m). */

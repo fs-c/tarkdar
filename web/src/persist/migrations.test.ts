@@ -1,7 +1,7 @@
 // Every store's stored data of every version it can migrate from, migrated to the current one
 // (snapshots). Adding a version: add the version's data to fixtures/<key>.json.
 
-import "../prefs";
+import "./prefs";
 import "../list/useListRows";
 import "../rules/store";
 import { allStores, decode, oldestVersion } from "./store";

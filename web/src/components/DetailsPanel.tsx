@@ -1,15 +1,16 @@
 // Details panel for a selected player, loot entry or exfil.
 
-import { vehicleOf } from "../vehicles";
-import type { RadarState } from "../connection";
-import { describeEvent, eventConcerns } from "../events";
-import { type ItemCatalog, containerName, exfilStatus, equipmentValue, formatPrice } from "../items";
-import type { Selection } from "../pick";
-import type { ItemNode, WorldPos } from "../protocol";
-import { type QuestNeed, formatQuestNeed } from "../quests";
-import { WILD_SPAWN_TYPES, bossGroups, playerType } from "../roles";
-import type { Timeline, TimelineEvent } from "../timeline";
-import { formatDuration } from "../playback";
+import { vehicleOf } from "../model/vehicles";
+import type { RadarState } from "../stream/connection";
+import { describeEvent, eventConcerns } from "../stream/events";
+import { type ItemCatalog, containerName, equipmentValue, formatPrice } from "../model/items";
+import { exfilStatus } from "../model/exfils";
+import type { Selection } from "../draw/pick";
+import type { ItemNode, WorldPos } from "../model/protocol";
+import { type QuestNeed, formatQuestNeed } from "../model/quests";
+import { WILD_SPAWN_TYPES, bossGroups, playerType } from "../model/roles";
+import type { Timeline, TimelineEvent } from "../stream/timeline";
+import { formatDuration } from "../stream/playback";
 import type { Contribution, Style } from "../rules/rules";
 import { Price } from "../ui";
 import s from "./DetailsPanel.module.css";

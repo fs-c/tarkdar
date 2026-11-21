@@ -3,7 +3,7 @@
 // stream-only timeline meanwhile, then builds one from the recording, adds the live messages on
 // top (the timeline drops the ones the recording already had) and swaps it in.
 
-import type { Message, RecordedMessage, RecordingInfo } from "./protocol";
+import type { Message, RecordedMessage, RecordingInfo } from "../model/protocol";
 import { Timeline } from "./timeline";
 
 export interface Backfill {

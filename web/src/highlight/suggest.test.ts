@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SlimCatalog } from "../catalog";
+import { SlimCatalog } from "../model/catalog";
 import { parseValue, suggest } from "./suggest";
 
 const catalog = new SlimCatalog(

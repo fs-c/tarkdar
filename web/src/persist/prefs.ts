@@ -4,10 +4,10 @@
 // Version 1 of each is what was stored before there were versions, as it was; migrations[0] makes
 // the few changes older builds needed.
 
-import { DEFAULT_EVENT_GROUPS, type EventGroup } from "./events";
-import { DEFAULT_MAP_SETTINGS, type MapSettings, type MapStyle, type PlanPalette } from "./map3d/settings";
-import { DEFAULT_OVERLAY_PREFS, type OverlayPrefs } from "./overlay/marks";
-import { defineStore, flatNormalize, isHexColor, isObject, oneOf, usePersisted } from "./persist";
+import { DEFAULT_EVENT_GROUPS, type EventGroup } from "../stream/events";
+import { DEFAULT_MAP_SETTINGS, type MapSettings, type MapStyle, type PlanPalette } from "../map3d/settings";
+import { DEFAULT_OVERLAY_PREFS, type OverlayPrefs } from "../overlay/marks";
+import { defineStore, flatNormalize, isHexColor, isObject, oneOf, usePersisted } from "./";
 
 
 /** How the 3D map is shown, and the map debugging tools. */

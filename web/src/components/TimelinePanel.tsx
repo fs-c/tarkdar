@@ -5,12 +5,12 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronLeft } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
-import { EVENT_GROUPS, type EventGroup, describeEvent, eventConcerns, eventGroup } from "../events";
-import { useLogPrefs } from "../prefs";
-import type { ItemCatalog } from "../items";
-import { type Selection, selectionKey } from "../pick";
-import { type Playback, formatDuration } from "../playback";
-import type { Timeline, TimelineEvent } from "../timeline";
+import { EVENT_GROUPS, type EventGroup, describeEvent, eventConcerns, eventGroup } from "../stream/events";
+import { useLogPrefs } from "../persist/prefs";
+import type { ItemCatalog } from "../model/items";
+import { type Selection, selectionKey } from "../draw/pick";
+import { type Playback, formatDuration } from "../stream/playback";
+import type { Timeline, TimelineEvent } from "../stream/timeline";
 import { Button, Chip, cx, Note, selectableRow } from "../ui";
 import s from "./TimelinePanel.module.css";
 

@@ -7,7 +7,8 @@ import { type ItemCatalog, containerName, equipmentValue, formatPrice } from "..
 import { exfilStatus } from "../model/exfils";
 import type { Selection } from "../draw/pick";
 import type { ItemNode, WorldPos } from "../model/protocol";
-import { type QuestNeed, formatQuestNeed } from "../model/quests";
+import { type QuestNeed, carriedNeededItems, formatQuestNeed } from "../model/quests";
+import { carried } from "../list/rows";
 import { WILD_SPAWN_TYPES, bossGroups, playerType } from "../model/roles";
 import type { Timeline, TimelineEvent } from "../stream/timeline";
 import { formatDuration } from "../stream/playback";
@@ -102,6 +103,7 @@ function Details({ selection: sel, state, catalog, questNeeds }: Props) {
         <Line label="state" value={p.dead ? "dead" : p.absent ? (p.extracted ? "extracted" : "left the raid") : "alive"} />
         {vehicleOf(state.vehicles, p.id) && <Line label="riding" value="BTR" />}
         <Line label="position" value={formatPos(p.pos)} />
+        {!p.local && <NeededSection nodes={eq?.slots} catalog={catalog} questNeeds={questNeeds} />}
         <ItemSection heading="equipment" nodes={eq?.slots} empty="not read (yet)" catalog={catalog} />
       </>
     );
@@ -123,6 +125,7 @@ function Details({ selection: sel, state, catalog, questNeeds }: Props) {
         {l.tpl && <Line label="template" value={l.tpl} />}
         <Line label="object" value={l.obj} />
         <Line label="position" value={formatPos(l.pos)} />
+        {l.kind === "corpse" && <NeededSection nodes={l.contents} catalog={catalog} questNeeds={questNeeds} />}
         {l.kind === "corpse" && <ItemSection heading="equipment" nodes={l.contents} empty="none (or not readable)" catalog={catalog} />}
       </>
     );
@@ -204,6 +207,31 @@ function Line({ label, value }: { label: string; value: string }) {
       <span className={s.label}>{label}: </span>
       {value}
     </div>
+  );
+}
+
+/** What a player or corpse carries that a started quest needs (why "Carrying needed items" marks it). */
+function NeededSection(props: { nodes: ItemNode[] | undefined; catalog: ItemCatalog; questNeeds: Props["questNeeds"] }) {
+  const { nodes, catalog, questNeeds } = props;
+  if (!nodes?.length || !questNeeds.size) return null;
+  const items = carriedNeededItems(carried(nodes, catalog).tpls, questNeeds);
+  if (!items.length) return null;
+  return (
+    <>
+      <h4 className={s.heading}>carrying needed</h4>
+      <ul className={s.items}>
+        {items.map(({ tpl, count, needs }) => {
+          const info = catalog.lookup(tpl);
+          return (
+            <li key={tpl}>
+              <span title={info ? `${info.name}\n${tpl}` : tpl}>{info?.name ?? tpl}</span>
+              {count > 1 && <span className="muted"> ×{count}</span>}
+              <span className="muted">{` for ${needs.map(formatQuestNeed).join("; ")}`}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }
 

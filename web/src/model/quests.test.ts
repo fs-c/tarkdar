@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { LootEntry, QuestObjective, QuestState } from "./protocol";
 import {
   SPECIFIC_ITEMS,
+  carriedNeededItems,
   carriedNeeds,
   formatQuestNeed,
   isSpecific,
@@ -144,6 +145,15 @@ describe("carriedNeeds", () => {
     ])!.items;
     expect(carriedNeeds(["rig", "ushanka", "kolpak"], needs).map(formatQuestNeed)).toEqual(["Quest (×2, FIR, any of 2)"]);
     expect(carriedNeeds(["med0"], needs)).toEqual([]);
+  });
+
+  it("names the carried items behind them, with how many are carried", () => {
+    const needs = questNeeds([quest("a", [obj("o1", "handover", ["ushanka", "kolpak"], { count: 2, fir: true })])])!.items;
+    const got = carriedNeededItems(["kolpak", "rig", "ushanka", "kolpak"], needs);
+    expect(got.map((g) => [g.tpl, g.count, g.needs.map(formatQuestNeed)])).toEqual([
+      ["kolpak", 2, ["Quest (×2, FIR, any of 2)"]],
+      ["ushanka", 1, ["Quest (×2, FIR, any of 2)"]],
+    ]);
   });
 });
 

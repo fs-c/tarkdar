@@ -255,6 +255,28 @@ export function neededKinds(needs: readonly QuestNeed[] | undefined, questItem: 
 }
 
 /**
+ * The carried items behind carriedNeeds: each template a quest needs (in the order first carried),
+ * how many of it are carried, and the needs it's for.
+ */
+export function carriedNeededItems(
+  tpls: readonly string[],
+  needs: ReadonlyMap<string, readonly QuestNeed[]>,
+): { tpl: string; count: number; needs: QuestNeed[] }[] {
+  if (!needs.size) return [];
+  const out = new Map<string, { tpl: string; count: number; needs: QuestNeed[] }>();
+  for (const tpl of tpls) {
+    const hit = out.get(tpl);
+    if (hit) {
+      hit.count++;
+      continue;
+    }
+    const list = (needs.get(tpl) ?? []).filter((n) => isOpen(n) && isSpecific(n));
+    if (list.length) out.set(tpl, { tpl, count: 1, needs: list });
+  }
+  return [...out.values()];
+}
+
+/**
  * What a player or corpse carries that a started quest needs: the needs specific enough to highlight
  * (isSpecific), one per objective. Gear taken off a body is found in raid, so FIR objectives count.
  */

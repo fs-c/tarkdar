@@ -1,35 +1,25 @@
-- improve assets system
-    - frequently accidentally lose changes on pull, maybe do git style conflict resolution
-    - not started; findings from the 2026-11 review:
-        - root cause: `tools/assets.py` compares a local file only with the manifest, so "I edited it" and "the manifest moved on" both show as "modified" and `pull --force` becomes routine (it overwrites with no backup)
-        - `push` with a stale local file reverts a teammate's newer manifest entry
-        - `gc --delete` can remove blobs referenced only by a manifest that isn't in this machine's git history yet
-        - proposal: record the last-synced hash per file (three-way: fast-forward / local edit / real conflict, with `resolve --ours|--theirs`), and snapshot a file before any overwrite; optionally a git merge driver for `assets.json`
+- assets system: leftovers (sync base, `resolve` and `.assets-trash/` are in since 2026-11)
+    - try the new flow against the real store once (it is only covered by the tests' local remote)
+    - `gc --delete` can still remove blobs referenced only by a manifest that isn't in this machine's git history yet
+    - a conflict inside `assets.json` itself still needs resolving by hand (a git merge driver could do it per path)
 - minor improvements
     - player types are still code, not settings: the taxonomy in `model/roles.ts`, the `is:usec` / `is:bear` / `is:pmc` words and presets (visuals are all rule-driven since 2026-11: POV page, bold in the list, vehicles)
-    - POV page: applies the stored rules only (no pinned rules or highlights), and still shows BTR gunners, which the map filters out
 - backend/memory read optimization; there's noticeably more lag while the backend is running
     - also noticed that frontend seems to be very delayed at times (maybe already backend, hard to tell)
-    - candidates from the review (unmeasured): no per-client coalescing in the hub (a slow tab replays stale frames in order), Nagle is on (`websocket_tcp_nodelay`), two Crow IO threads that also do blocking file scans, `Players` publishes at ~100 Hz whether or not anything changed, tripwire types re-read every 20 ms
+    - candidates from a review (unmeasured): no per-client coalescing in the hub (a slow tab replays stale frames in order), Nagle is on (`websocket_tcp_nodelay`), two Crow IO threads that also do blocking file scans, `Players` publishes at ~100 Hz whether or not anything changed, tripwire types re-read every 20 ms
 - cleanup/review round: follow-ups (found 2026-11, not done)
-    - overlay (shelved, see `docs/design.md`): `WaylandWindow.cpp` frame scheduling is untestable as written; `Scene`/`Frames` test gaps (grid, stretched scope lens, fallback paths)
     - frontend
         - floating map controls are positioned by magic numbers spread over four CSS files; switch/input styling is copy-pasted instead of `ui/` primitives
+        - some switches incorrectly expand to fill the parent
         - `SlimItems` positional tuple in `model/catalog.ts`; player gear recomputed on every players tick
     - backend
-        - quest cache is keyed by object address and never pruned (a reused address would serve the wrong quest)
-        - `Scene::findByName` reads names of recycled GameObject addresses from cached memory
         - loot: quest "info" items are hidden in the backend by object-name prefix; the frontend can't override it
         - loot resolve reads whole corpse item trees serially on the scan thread
         - hub: a new client is replayed the latest messages in alphabetical type order, and the last raid's messages are never dropped; make the hub drop per-raid messages when a raid ends, then send status first
         - `/ws` origin check passes a DNS-rebinding page (low risk, read-only)
-        - `eft::resolveNativeTransform` has no production caller
     - tools
         - `t3d/unity.py` `extract_scene` is a 320-line closure forest; split it when the game files are at hand (verify with a byte-identical cache)
         - dataset fields `chunks[].level/error/cell` are written but nothing reads them
-- themes (`web/src/theme/themes.ts`, picker in Settings): play around with colors/fonts
-    - a theme covers the chrome, fonts and the canvas's label/halo/selection/outline colours; rule colours, highlight colours and the map's plan palettes are deliberately not themed
-    - in the light theme, labels drawn in a fixed marker colour (neutral exfils, `#e8eef2`) are low-contrast
 - quest text from the global locale table (`TODO(quest-locale)` in `game/eft/world/Quests.cpp`)
     - quests read their own English-only dictionaries; exfil names already use the game's text table in the player's language
     - check in a raid whether that table has `"<quest id> name"` and the condition ids; if so, drop the separate reader

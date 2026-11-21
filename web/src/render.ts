@@ -1,7 +1,7 @@
 // Draws the radar's markers (players, loot, exfils, ...) over the map, through its camera (projector.ts).
 
 import { LabelPlacer, type Rect, candidatesAround } from "./labels";
-import { type ItemCatalog, containerName, exfilStatus, formatPrice, slotValue } from "./items";
+import { type ItemCatalog, containerName, exfilStatus, formatHeightDiff, formatPrice, slotValue } from "./items";
 import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type Vehicle, type WorldPos } from "./protocol";
 import { type PlayerTypeInfo, bossGroups, playerType } from "./roles";
 import { COLORS, DEFAULT_COLOR, EMPHASIS_SCALE, MARKER_SIZE, type PlayerLook, exfilColor, playerLook } from "./style";
@@ -24,11 +24,11 @@ export interface Scene {
   /** Selection key → how it looks, whether and when it shows, its label (rules/: the display rules).
    *  Things without one get their kind's base style. */
   styles: ReadonlyMap<string, Style>;
-  selected: [number, number, number] | null;
+  selected: WorldPos | null;
   /** Hovered in the list view: drawn as a soft highlight. */
-  hovered: [number, number, number] | null;
+  hovered: WorldPos | null;
   /** World positions picked with the coordinate tool (3D map debugging), drawn numbered. */
-  debugPoints: [number, number, number][];
+  debugPoints: WorldPos[];
   /** Things a rule matches, marked while it's hovered in the Filters view. */
   marked?: readonly WorldPos[];
   trails: TrailScene | null;
@@ -243,9 +243,8 @@ function drawPlayer(
     ctx.lineTo(x - r, y + r);
     ctx.stroke();
   } else {
-    // Facing: yaw 0 = world +z, 90 = world +x (assumed Unity convention; see the verification
-    // playbook). A point one metre ahead goes through the projection, so rotated maps and a
-    // rotated 3D camera work too.
+    // Facing: yaw 0 = world +z, 90 = world +x (Unity convention). A point one metre ahead goes
+    // through the projection, so rotated maps and a rotated 3D camera work too.
     const yaw = (p.yaw * Math.PI) / 180;
     const [ax, ay] = pr.toScreen([p.pos[0] + Math.sin(yaw), p.pos[1], p.pos[2] + Math.cos(yaw)]);
     const du = Number.isFinite(ax) ? ax - x : 0, dv = Number.isFinite(ay) ? ay - y : 0;
@@ -421,15 +420,11 @@ interface LabelRequest {
   height?: number;
 }
 
-/** Things this far (m) above or below us or more get it said in their label. */
-const HEIGHT_TAG_MIN = 2;
-
 /** " ▲3" / " ▼12": how far above or below us, or "" when about level (or we're not on the map). */
 export function heightTag(height: number | undefined, localY: number | null): string {
   if (height === undefined || localY === null) return "";
-  const dy = height - localY;
-  if (Math.abs(dy) < HEIGHT_TAG_MIN) return "";
-  return dy > 0 ? ` ▲${Math.round(dy)}` : ` ▼${Math.round(-dy)}`;
+  const text = formatHeightDiff(height - localY);
+  return text && ` ${text}`;
 }
 
 const LOOT_FONT = "10px sans-serif";
@@ -458,7 +453,7 @@ function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene, la
     const [x, y] = pr.toScreen(l.pos);
     if (!onScreen(pr, x, y, 10)) continue;
     const color = style.color ?? DEFAULT_COLOR;
-    const size = (l.kind === "item" ? MARKER_SIZE.item : MARKER_SIZE[l.kind]) * EMPHASIS_SCALE[style.emphasis];
+    const size = MARKER_SIZE[l.kind] * EMPHASIS_SCALE[style.emphasis];
     switch (l.kind) {
       case "item":
         ctx.fillStyle = color;

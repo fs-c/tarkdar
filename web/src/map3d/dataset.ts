@@ -226,10 +226,9 @@ export class MapData {
   }
 
   /**
-   * Slots to draw: those of the given categories (ids), in instance order. `null` = all.
+   * Slots to draw: those of the given categories (ids), in instance order.
    */
-  slotsOf(categories: Set<number> | null): Uint32Array {
-    if (!categories) return Uint32Array.from({ length: this.slotCount }, (_, s) => s);
+  slotsOf(categories: Set<number>): Uint32Array {
     const out = new Uint32Array(this.slotCount);
     let count = 0;
     for (let s = 0; s < this.slotCount; s++) if (categories.has(this.slotCategory[s]!)) out[count++] = s;

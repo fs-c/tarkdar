@@ -46,23 +46,19 @@ export function parseLine(line: string): RecordedMessage | null {
   }
 }
 
+/** Ingests one recording line into a timeline (lines that aren't messages are skipped). */
+export function ingestLine(timeline: Timeline, line: string): void {
+  const msg = parseLine(line);
+  if (msg) timeline.ingest(msg);
+}
+
 /** Ingests recording lines into a timeline. */
 export function ingestLines(timeline: Timeline, lines: Iterable<string>): void {
-  for (const line of lines) {
-    const msg = parseLine(line);
-    if (msg) timeline.ingest(msg);
-  }
+  for (const line of lines) ingestLine(timeline, line);
 }
 
 export async function loadRecording(name: string, signal?: AbortSignal): Promise<Timeline> {
   const timeline = new Timeline();
-  await readRecording(
-    name,
-    (line) => {
-      const msg = parseLine(line);
-      if (msg) timeline.ingest(msg);
-    },
-    signal,
-  );
+  await readRecording(name, (line) => ingestLine(timeline, line), signal);
   return timeline;
 }

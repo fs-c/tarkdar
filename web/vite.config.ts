@@ -1,7 +1,7 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
-// Dev server: proxies the backend routes to a running radar-backend (live or --replay).
+// Dev server: proxies the backend routes to a running radar-backend (live or --offline).
 const backend = process.env.RADAR_BACKEND ?? "http://127.0.0.1:8080";
 
 export default defineConfig({

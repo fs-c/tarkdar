@@ -43,7 +43,7 @@ const LABEL_OPTIONS: SegmentedOption<LabelMode | undefined>[] = [
 ];
 
 /** Short text for what a rule sets, besides its colour: "ringed · strong · from mid zoom · no label". */
-export function summary(style: StyleProps): string {
+function summary(style: StyleProps): string {
   const parts: string[] = [];
   if (style.ring) parts.push("ringed");
   if (style.emphasis && style.emphasis !== "normal") parts.push(style.emphasis);
@@ -69,11 +69,9 @@ interface Props {
   onRemove: () => void;
   /** Pinned: keep it as a rule of its category. */
   onKeep?: () => void;
-  /** Its category can be picked (pinned rules: where it goes when kept). */
-  pickCategory?: boolean;
 }
 
-export function RuleRow({ rule, open, onOpen, onChange, count, errors, onHover, onMove, onDuplicate, onRemove, onKeep, pickCategory = true }: Props) {
+export function RuleRow({ rule, open, onOpen, onChange, count, errors, onHover, onMove, onDuplicate, onRemove, onKeep }: Props) {
   const { style } = rule;
   const setStyle = (patch: StyleProps) => {
     const next: StyleProps = { ...style, ...patch };
@@ -103,15 +101,13 @@ export function RuleRow({ rule, open, onOpen, onChange, count, errors, onHover, 
           <Field label="Name">
             <input className={s.text} value={rule.label} onChange={(e) => onChange({ label: e.target.value })} />
           </Field>
-          {pickCategory && (
-            <Field label={onKeep ? "Kept in" : "Category"}>
-              <select value={rule.category} title="Where it's listed (General wins over the others)" onChange={(e) => onChange({ category: e.target.value as StoredRule["category"] })}>
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </Field>
-          )}
+          <Field label={onKeep ? "Kept in" : "Category"}>
+            <select value={rule.category} title="Where it's listed (General wins over the others)" onChange={(e) => onChange({ category: e.target.value as StoredRule["category"] })}>
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </Field>
           <Field label="Matches">
             <input
               className={s.query}

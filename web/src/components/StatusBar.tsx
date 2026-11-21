@@ -10,32 +10,35 @@ const STATE_LABELS: Record<string, string> = {
   cooldown: "raid ended",
 };
 
-export function statusParts(
-  s: RadarState,
+type StatusPart = { text: string; alert?: boolean };
+
+function statusParts(
+  state: RadarState,
   /** The shown map's name (null: none for this location). */
   map: string | null,
   catalog: CatalogStatus,
   /** Replaying a recording: its name ("Customs · 10 Nov 19:03"). */
   replay: string | null = null,
-): string[] {
-  if (!s.connected) return ["⚠ disconnected from backend"];
-  if (s.protocolMismatch) return ["⚠ protocol version mismatch: rebuild the frontend"];
-  if (!s.status) return [s.live ? "connected" : "offline: no game, recorded raids only"];
-  const parts: string[] = [];
-  const { state } = s.status;
-  if (replay) parts.push(`replay: ${replay}`);
-  else if (state === "waitingForRaid") parts.push(s.status.raidPending ? "raid loading…" : "waiting for a raid");
-  else if (state === "inRaid") parts.push(`in raid: ${s.status.locationId ?? "?"}`);
-  else parts.push(STATE_LABELS[state] ?? state);
-  if (state === "inRaid") {
-    parts.push(map ?? "no map for this location");
-    const alive = s.players.filter((p) => !p.dead && !p.absent).length;
-    parts.push(`${alive} alive / ${s.players.length} players`);
-    if (s.loot.length) parts.push(`${s.loot.length} loot`);
+): StatusPart[] {
+  if (!state.connected) return [{ text: "⚠ disconnected from backend", alert: true }];
+  if (state.protocolMismatch) return [{ text: "⚠ protocol version mismatch: rebuild the frontend", alert: true }];
+  const { status } = state;
+  if (!status) return [{ text: state.live ? "connected" : "offline: no game, recorded raids only" }];
+  const parts: StatusPart[] = [];
+  const phase = status.state;
+  if (replay) parts.push({ text: `replay: ${replay}` });
+  else if (phase === "waitingForRaid") parts.push({ text: status.raidPending ? "raid loading…" : "waiting for a raid" });
+  else if (phase === "inRaid") parts.push({ text: `in raid: ${status.locationId ?? "?"}` });
+  else parts.push({ text: STATE_LABELS[phase] ?? phase });
+  if (phase === "inRaid") {
+    parts.push({ text: map ?? "no map for this location" });
+    const alive = state.players.filter((p) => !p.dead && !p.absent).length;
+    parts.push({ text: `${alive} alive / ${state.players.length} players` });
+    if (state.loot.length) parts.push({ text: `${state.loot.length} loot` });
   }
-  if (s.status.offsetsMismatch) parts.push("⚠ game build differs from the offsets' build");
-  if (catalog.state === "unavailable") parts.push("⚠ no item data");
-  else if (catalog.state === "stale") parts.push("item data stale");
+  if (status.offsetsMismatch) parts.push({ text: "⚠ game build differs from the offsets' build", alert: true });
+  if (catalog.state === "unavailable") parts.push({ text: "⚠ no item data", alert: true });
+  else if (catalog.state === "stale") parts.push({ text: "item data stale" });
   return parts;
 }
 
@@ -55,7 +58,7 @@ export function StatusBar({ state, map, catalog, replay = null, children }: Prop
   return (
     <footer className={s.bar} data-mode={warn ? "warn" : undefined}>
       {parts.map((p, i) => (
-        <StatusText key={i} alert={p.startsWith("⚠")}>{p}</StatusText>
+        <StatusText key={i} alert={p.alert}>{p.text}</StatusText>
       ))}
       <span className={s.spacer} />
       {children}
@@ -64,7 +67,7 @@ export function StatusBar({ state, map, catalog, replay = null, children }: Prop
 }
 
 /** A piece of status text; consecutive ones are separated by a rule. */
-export function StatusText({ alert = false, children }: { alert?: boolean; children: React.ReactNode }) {
+function StatusText({ alert = false, children }: { alert?: boolean; children: React.ReactNode }) {
   return <span className={cx(s.item, s.text, alert && s.alert)}>{children}</span>;
 }
 

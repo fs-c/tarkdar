@@ -4,7 +4,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { type CatalogStatus, loadCatalog } from "./catalog";
 import { Connection, type RadarState } from "./connection";
 import { type Backfill, LiveTimeline } from "./liveTimeline";
-import { fetchRecordings, parseLine, readRecording } from "./recordings";
+import { fetchRecordings, ingestLine, readRecording } from "./recordings";
 import { type ItemCatalog, emptyCatalog } from "./items";
 import { type MapEntry, fetchMapIndex } from "./maps";
 
@@ -20,10 +20,7 @@ export interface LiveState {
 
 const backfill: Backfill = {
   active: async () => (await fetchRecordings()).find((r) => r.active) ?? null,
-  read: (name, into, signal) => readRecording(name, (line) => {
-    const msg = parseLine(line);
-    if (msg) into.ingest(msg);
-  }, signal),
+  read: (name, into, signal) => readRecording(name, (line) => ingestLine(into, line), signal),
 };
 
 /** Connects on mount, disconnects on unmount; re-renders on every state change. */

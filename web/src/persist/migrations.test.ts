@@ -4,13 +4,13 @@
 import "../prefs";
 import "../list/useListRows";
 import "../rules/store";
-import { allStores, decode } from "./store";
+import { allStores, decode, oldestVersion } from "./store";
 
 const fixtures = import.meta.glob<Record<string, unknown>>("./fixtures/*.json", { eager: true, import: "default" });
 const byKey = new Map(Object.entries(fixtures).map(([path, f]) => [path.replace(/^.*\/(.*)\.json$/, "$1"), f]));
 
 describe.each(allStores().map((s) => [s.key, s] as const))("%s", (key, def) => {
-  const first = Math.min(def.version, ...Object.keys(def.migrations).map(Number));
+  const first = oldestVersion(def);
   const versions = Array.from({ length: def.version - first + 1 }, (_, i) => first + i);
 
   it.each(versions)("from version %i", (v) => {

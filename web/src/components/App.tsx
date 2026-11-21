@@ -58,7 +58,7 @@ export function App() {
   const playback = usePlayback(range, !review, review ? `rec:${review.info.name}` : `live:${timeline?.raid ?? "-"}`);
   // Vehicle gunners (the BTR's) are part of the vehicle, not shown as players anywhere.
   const unfiltered: RadarState = useMemo(() => {
-    // Live and at "now": the stream's state as is.
+    // No timeline yet: the stream's state.
     if (!timeline || !range) return withoutGunners(conn);
     // Live and at "now": the stream's state as is, but players come from the timeline (it knows who extracted).
     if (!review && playback.cursor === null) return withoutGunners({ ...conn, ...timeline.playersAtTime(range[1]) });
@@ -131,9 +131,13 @@ export function App() {
   // While following: the map turns with the local player's view direction.
   const [followHeading, setFollowHeading] = useState(false);
   const heading = follow && followHeading;
-  useEffect(() => {
-    if (!follow) setFollowHeading(false);
-  }, [follow]);
+  const followRef = useRef(follow);
+  followRef.current = follow;
+  /** Stops following (and turning with the view direction, which only goes with following). */
+  const stopFollowing = () => {
+    setFollow(false);
+    setFollowHeading(false);
+  };
   const [hovered, setHovered] = useState<Selection | null>(null);
   const [listPrefs, setListPrefs] = useListPrefs();
   const list = useListRows(state, catalog, questLabels, questNeeds, listPrefs.filters);
@@ -255,7 +259,7 @@ export function App() {
 
   const centerOn = (pos: [number, number, number] | null) => {
     if (!pos) return;
-    setFollow(false);
+    stopFollowing();
     radar.current?.centerOn(pos);
   };
 
@@ -310,9 +314,10 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.repeat && e.key !== "[" && e.key !== "]") return; // holding a toggle key toggles once; seeking repeats
       const pb = playbackRef.current, r = rangeRef.current;
       if (e.key === "Escape") setPicked((p) => ({ ...p, sel: null }));
-      else if (e.key === "f") setFollow((f) => !f);
+      else if (e.key === "f") followRef.current ? stopFollowing() : setFollow(true);
       else if (e.key === "l") {
         e.preventDefault(); // the search it focuses mustn't get the "l"
         toggleList();
@@ -328,6 +333,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // Safe with [] deps: the handler only reads refs (playbackRef, rangeRef, followRef, uiRef via toggleList) and stable setters.
   }, []);
 
   const trailScene = (): Scene["trails"] => {
@@ -480,7 +486,7 @@ export function App() {
               settings={mapPrefs}
               follow={follow}
               heading={heading}
-              onPan={() => setFollow(false)}
+              onPan={stopFollowing}
               onTurn={() => setFollowHeading(false)}
               onTap={onTap}
               onStats={ui.open && ui.section === "settings" ? onMapStats : undefined}

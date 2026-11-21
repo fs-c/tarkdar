@@ -35,5 +35,4 @@
   &:hover, &:active { background: var(--accent); transition: background 0.1s 0.15s; }
 }
 .header { display: flex; flex: none; align-items: center; gap: 8px; height: 35px; padding: 0 6px 0 14px; }
-.title { margin: 0; color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; }
-.aside { flex: 1; color: var(--faint); font-size: var(--fs-xs); }
+.title { flex: 1; margin: 0; color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; }

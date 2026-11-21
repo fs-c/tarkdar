@@ -27,8 +27,11 @@ export const HIDEABLE: Partial<Record<Category, SubjectKind[]>> = {
 
 /** Where a rule about these kinds of thing belongs. */
 export function categoryFor(kinds: readonly SubjectKind[]): Category {
-  const of = (k: SubjectKind): Category =>
-    k === "player" ? "Players" : ((Object.entries(HIDEABLE).find(([, ks]) => ks.includes(k))?.[0] as Category | undefined) ?? "General");
+  const of = (k: SubjectKind): Category => {
+    if (k === "player") return "Players";
+    for (const c of CATEGORIES) if (HIDEABLE[c]?.includes(k)) return c;
+    return "General";
+  };
   const cats = new Set(kinds.map(of));
   return cats.size === 1 ? [...cats][0]! : "General";
 }

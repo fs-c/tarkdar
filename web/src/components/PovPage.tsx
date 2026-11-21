@@ -64,10 +64,10 @@ export function PovPage() {
         <h3>Player's view (experimental)</h3>
         <Readout state={state} camera={camera} />
         <label>
-          <input type="checkbox" checked={layers.grid} onChange={() => setLayers({ ...layers, grid: !layers.grid })} /> Ground grid
+          <input type="checkbox" checked={layers.grid} onChange={() => setLayers((l) => ({ ...l, grid: !l.grid }))} /> Ground grid
         </label>
         <label>
-          <input type="checkbox" checked={layers.loot} onChange={() => setLayers({ ...layers, loot: !layers.loot })} /> Loot
+          <input type="checkbox" checked={layers.loot} onChange={() => setLayers((l) => ({ ...l, loot: !l.loot }))} /> Loot
         </label>
       </aside>
     </div>

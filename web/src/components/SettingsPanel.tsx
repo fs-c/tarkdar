@@ -3,10 +3,11 @@
 import type { OverlayPrefs } from "../overlay/marks";
 import { DebugSections, type DebugProps } from "./DebugPanel";
 import { PanelBody, Section, SliderRow, ToggleRow } from "../ui";
+import type { SetStored } from "../persist";
 
 interface Props {
   /** The overlay: whether the backend runs it, its settings, and how many things it's told to mark. */
-  overlay: { available: boolean; prefs: OverlayPrefs; onPrefs: (p: OverlayPrefs) => void; marks: number | null };
+  overlay: { available: boolean; prefs: OverlayPrefs; onPrefs: SetStored<OverlayPrefs>; marks: number | null };
   debug: DebugProps;
 }
 
@@ -21,7 +22,7 @@ export function SettingsPanel(p: Props) {
 
 /** The overlay's settings. They configure the backend's overlay window; the radar doesn't use them. */
 function OverlaySection({ available, prefs, onPrefs, marks }: Props["overlay"]) {
-  const set = <K extends keyof OverlayPrefs>(key: K, value: OverlayPrefs[K]) => onPrefs({ ...prefs, [key]: value });
+  const set = <K extends keyof OverlayPrefs>(key: K, value: OverlayPrefs[K]) => onPrefs((o) => ({ ...o, [key]: value }));
   return (
     <Section title="Overlay">
       <p className="muted">

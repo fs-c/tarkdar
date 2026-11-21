@@ -6,12 +6,13 @@ import { COLOR_SCHEMES, type ColorGrade, type ColorSchemeName, PLAN_PALETTES, ty
 import { Actions, Button, PanelBody, Section, Segmented, SliderRow, ToggleRow } from "../ui";
 import s from "./MapPanel.module.css";
 import { PALETTE_LABELS } from "./StyleSwitch";
+import type { SetStored } from "../persist";
 
 interface Props {
   prefs: MapPrefs;
-  onPrefs: (p: MapPrefs) => void;
+  onPrefs: SetStored<MapPrefs>;
   trails: TrailPrefs;
-  onTrails: (t: TrailPrefs) => void;
+  onTrails: SetStored<TrailPrefs>;
 }
 
 const SCHEMES: { value: ColorSchemeName; label: string; title: string }[] = [
@@ -52,7 +53,7 @@ const PALETTE_COLORS: { key: keyof PlanPalette; label: string; title?: string }[
 ];
 
 export function MapPanel(p: Props) {
-  const toggle = (key: keyof MapPrefs) => () => p.onPrefs({ ...p.prefs, [key]: !p.prefs[key] });
+  const toggle = (key: keyof MapPrefs) => () => p.onPrefs((m) => ({ ...m, [key]: !m[key] }));
   const wasd = p.prefs.controls === "wasd";
   const plan = p.prefs.style === "plan";
   // A stored palette may predate a colour added since.
@@ -69,7 +70,7 @@ export function MapPanel(p: Props) {
               { value: "plan" as const, label: "Plan", title: "Drawn like a map: buildings, cover and open ground in flat colours, with outlines" },
             ]}
             value={p.prefs.style}
-            onChange={(style) => p.onPrefs({ ...p.prefs, style })}
+            onChange={(style) => p.onPrefs((m) => ({ ...m, style }))}
           />
         </div>
         <p className="muted">
@@ -101,7 +102,7 @@ export function MapPanel(p: Props) {
               { value: true, label: "Orthographic", title: "Parallel projection: buildings never lean" },
             ]}
             value={p.prefs.orthographic}
-            onChange={(orthographic) => p.onPrefs({ ...p.prefs, orthographic })}
+            onChange={(orthographic) => p.onPrefs((m) => ({ ...m, orthographic }))}
           />
         </div>
         <div className={s.choice}>
@@ -113,7 +114,7 @@ export function MapPanel(p: Props) {
               { value: "wasd" as const, label: "WASD" },
             ]}
             value={p.prefs.controls}
-            onChange={(controls) => p.onPrefs({ ...p.prefs, controls })}
+            onChange={(controls) => p.onPrefs((m) => ({ ...m, controls }))}
           />
         </div>
         <p className="muted">
@@ -128,13 +129,13 @@ export function MapPanel(p: Props) {
           label="Selected player"
           hint="Where they've been this raid"
           checked={p.trails.selected}
-          onChange={() => p.onTrails({ ...p.trails, selected: !p.trails.selected })}
+          onChange={() => p.onTrails((t) => ({ ...t, selected: !t.selected }))}
         />
         <ToggleRow
           label="Everyone"
           hint="Recent paths of all players (those the list's filters let through)"
           checked={p.trails.all}
-          onChange={() => p.onTrails({ ...p.trails, all: !p.trails.all })}
+          onChange={() => p.onTrails((t) => ({ ...t, all: !t.all }))}
         />
         {p.trails.all && (
           <Segmented
@@ -142,7 +143,7 @@ export function MapPanel(p: Props) {
             title="How far back everyone's trails reach (the selected player's always shows the whole raid)"
             options={TRAIL_LENGTHS.map((m) => ({ value: m, label: m === null ? "Whole raid" : m < 1 ? `${m * 60} s` : `${m} min` }))}
             value={p.trails.minutes}
-            onChange={(m) => p.onTrails({ ...p.trails, minutes: m })}
+            onChange={(m) => p.onTrails((t) => ({ ...t, minutes: m }))}
           />
         )}
       </Section>
@@ -154,7 +155,7 @@ export function MapPanel(p: Props) {
             value={paletteOf(palette) ?? "custom"}
             onChange={(e) => {
               const picked = e.target.value === "custom" ? p.prefs.customPalette : PLAN_PALETTES[e.target.value as PlanPaletteName];
-              if (picked) p.onPrefs({ ...p.prefs, palette: picked });
+              if (picked) p.onPrefs((m) => ({ ...m, palette: picked }));
             }}
           >
             {PALETTES.map((o) => (
@@ -170,7 +171,7 @@ export function MapPanel(p: Props) {
             <label key={c.key} className={s.swatch} title={c.title}>
               <input type="color" value={palette[c.key]} onChange={(e) => {
                   const custom = { ...palette, [c.key]: e.target.value };
-                  p.onPrefs({ ...p.prefs, palette: custom, customPalette: custom });
+                  p.onPrefs((m) => ({ ...m, palette: custom, customPalette: custom }));
                 }} />
               <span>{c.label}</span>
             </label>
@@ -192,7 +193,7 @@ export function MapPanel(p: Props) {
             label="Colour scheme"
             options={SCHEMES}
             value={schemeOf(p.prefs)}
-            onChange={(name) => name && p.onPrefs({ ...p.prefs, ...COLOR_SCHEMES[name] })}
+            onChange={(name) => name && p.onPrefs((m) => ({ ...m, ...COLOR_SCHEMES[name] }))}
           />
         </div>
         {GRADE.map((g) => (
@@ -203,7 +204,7 @@ export function MapPanel(p: Props) {
             min={g.min}
             max={g.max}
             step={0.01}
-            onChange={(value) => p.onPrefs({ ...p.prefs, [g.key]: value })}
+            onChange={(value) => p.onPrefs((m) => ({ ...m, [g.key]: value }))}
           />
         ))}
         <p className="muted">

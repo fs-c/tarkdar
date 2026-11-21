@@ -14,12 +14,12 @@
 // as in protocol.ts). Internally z is negated (three.js is right-handed).
 
 import * as THREE from "three";
+import type { Projector } from "../projector";
+import type { WorldPos } from "../protocol";
 import { type Bounds, loadMapData, type MapData } from "./dataset";
 import { InstanceRenderer } from "./instances";
 import { DEFAULT_MAP_SETTINGS, type MapSettings, PLAN_PALETTES } from "./settings";
 import { Stage } from "./stage";
-
-export type WorldPos = [number, number, number];
 
 /** Where the camera is (map debugging). */
 export interface MapView {
@@ -43,16 +43,6 @@ export interface MapStats {
   frames: number;
   /** The last frame was drawn from tiles: the counts are the tiles', not the map's. */
   fromTiles: boolean;
-}
-
-/** What `Projector` in the app needs; kept structural so this module has no app imports. */
-export interface MapProjection {
-  width: number;
-  height: number;
-  toScreen(pos: WorldPos): [number, number];
-  pxPerMetre(pos: WorldPos): number;
-  detail: number;
-  depth(pos: WorldPos): number;
 }
 
 /** Screen pixels per metre that count as level of detail 1 (label thresholds, see Projector). */
@@ -589,7 +579,7 @@ export class Map3D {
    * A snapshot of the current camera for drawing markers. Valid until the next frame. It shows
    * positions where the last frame's picture has them: on whole pixels with it (Stage.snap).
    */
-  projector(): MapProjection {
+  projector(): Projector {
     const stage = this.stage;
     if (!stage) return { width: 0, height: 0, toScreen: () => [NaN, NaN], pxPerMetre: () => 0, detail: 0, depth: () => 0 };
     const { camera, width, height } = stage;

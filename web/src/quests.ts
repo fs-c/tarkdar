@@ -10,7 +10,7 @@ import type { LootEntry, QuestKind, QuestObjective, QuestState } from "./protoco
 /** EQuestStatus: started (and not yet ready to hand in). */
 export const QUEST_STARTED = 2;
 
-export const QUEST_KINDS: readonly QuestKind[] = ["story", "side", "daily", "weekly"];
+const QUEST_KINDS: readonly QuestKind[] = ["story", "side", "daily", "weekly"];
 
 /** Roubles, dollars, euros: handed over from the stash, not looked for in a raid. */
 const CURRENCIES = new Set(["5449016a4bdc2d6f028b456f", "5696686a4bdc2da3298b456a", "569668774bdc2da2298b4568"]);
@@ -33,7 +33,7 @@ const TRADERS: Record<string, string> = {
   "6617beeaa9cfa777ca915b7c": "Ref",
   "67f7af56c117b6140af2a607": "Story",
 };
-export const traderName = (id: string | undefined): string | undefined => (id ? TRADERS[id] : undefined);
+const traderName = (id: string | undefined): string | undefined => (id ? TRADERS[id] : undefined);
 
 /** What to call a quest: its name; else "Prapor daily", "Story", "Skier quest". */
 export function questLabel(q: QuestState): string {

@@ -30,8 +30,9 @@
   }
 }
 .floor:has(~ .north) { bottom: 114px; }
-.floorLevel {
-  font-size: var(--fs-xs, 11px); font-variant-numeric: tabular-nums;
-  border-block: 1px solid var(--border) !important; color: var(--accent) !important;
-  &:disabled { color: var(--muted) !important; }
+/* Beats `.floor button` (and its hover colour) by specificity. */
+.floor button.floorLevel {
+  font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
+  border-block: 1px solid var(--border); color: var(--muted);
+  &:not(:disabled) { color: var(--accent); }
 }

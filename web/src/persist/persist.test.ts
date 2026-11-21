@@ -49,8 +49,15 @@ describe("decode", () => {
     expect(decode(d, null)).toEqual({ value: defaults(), status: "empty", from: null });
     expect(decode(d, "{nope").status).toBe("failed");
     expect(decode(d, JSON.stringify({ $v: 4, data: {} })).status).toBe("newer");
-    const fresh = defineStore<Prefs>({ key: "fresh2", version: 2, scope: "user", defaults, migrations: { 1: (x) => x }, normalize: flatNormalize(defaults) });
+    const fresh = defineStore<Prefs>({ key: "fresh2", version: 3, scope: "user", defaults, migrations: { 2: (x) => x }, normalize: flatNormalize(defaults) });
     expect(decode(fresh, JSON.stringify({ size: 3 }))).toMatchObject({ value: defaults(), status: "failed", from: 0 });
+  });
+
+  it("takes a missing step 0 as the identity", () => {
+    const d = defineStore<Prefs>({ key: "nostep0", version: 2, scope: "user", defaults, migrations: { 1: (x: any) => ({ ...x, size: x.size + 1 }) }, normalize: flatNormalize(defaults) });
+    expect(decode(d, JSON.stringify({ size: 3 }))).toMatchObject({ value: { size: 4, name: "a", limit: 5 }, status: "migrated", from: 0 });
+    const v1 = defineStore<Prefs>({ key: "nomigrations", version: 1, scope: "user", defaults, normalize: flatNormalize(defaults) });
+    expect(decode(v1, JSON.stringify({ size: 3 }))).toMatchObject({ value: { size: 3, name: "a", limit: 5 }, status: "migrated", from: 0 });
   });
 });
 

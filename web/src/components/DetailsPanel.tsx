@@ -39,7 +39,12 @@ export interface HistoryProps {
   onPick: (e: TimelineEvent) => void;
 }
 
-export function DetailsPanel(props: Props & { history: HistoryProps | null; look: Look | null }) {
+interface DetailsPanelProps extends Props {
+  history: HistoryProps | null;
+  look: Look | null;
+}
+
+export function DetailsPanel(props: DetailsPanelProps) {
   return (
     <div className={s.details}>
       <Details {...props} />
@@ -104,6 +109,7 @@ function Details({ selection: sel, state, catalog, questNeeds }: Props) {
     if (!l) return <div>gone</div>;
     const info = l.kind === "container" ? undefined : catalog.lookup(l.tpl);
     const name = l.kind === "container" ? containerName(l.tpl) : info?.name;
+    const needs = l.kind === "item" || l.kind === "quest" ? questNeeds.get(l.tpl) : undefined;
     return (
       <>
         <h3 className={s.title}>{name ?? l.kind}</h3>
@@ -111,7 +117,7 @@ function Details({ selection: sel, state, catalog, questNeeds }: Props) {
         {!!info?.price && (
           <Line label="price" value={`${formatPrice(info.price)} ₽${info.priceSource === "base" ? " (base price)" : ""}`} />
         )}
-        {(l.kind === "item" || l.kind === "quest") && !!questNeeds.get(l.tpl)?.length && <Line label="needed for" value={questNeeds.get(l.tpl)!.map(formatQuestNeed).join("; ")} />}
+        {needs?.length ? <Line label="needed for" value={needs.map(formatQuestNeed).join("; ")} /> : null}
         {l.tpl && <Line label="template" value={l.tpl} />}
         <Line label="object" value={l.obj} />
         <Line label="position" value={formatPos(l.pos)} />

@@ -17,6 +17,7 @@ import {
 import { Button, PanelBody, Segmented, type SegmentedOption } from "../ui";
 import { RuleRow } from "./RuleRow";
 import s from "./FiltersPanel.module.css";
+import type { SetStored } from "../persist";
 
 interface Props {
   rules: RuleStore;
@@ -29,7 +30,7 @@ interface Props {
   /** The rule whose matches to mark on the map (null: none). */
   onHoverRule: (id: string | null) => void;
   loot: LootPrefs;
-  onLoot: (l: LootPrefs) => void;
+  onLoot: SetStored<LootPrefs>;
   /** What the quest item filter knows right now, e.g. "3 quests in progress". */
   questInfo: string;
   /** The query syntax shown (opened from here, or from the highlight search). */
@@ -156,7 +157,7 @@ export function FiltersPanel(p: Props) {
                   title="Quest items: only those a quest in progress still needs, or all of them"
                   options={QUEST_ITEM_OPTIONS}
                   value={p.loot.questItems === "all" ? "all" : "needed"}
-                  onChange={(v) => p.onLoot({ ...p.loot, questItems: v })}
+                  onChange={(v) => p.onLoot((l) => ({ ...l, questItems: v }))}
                 />
               </div>
             )}

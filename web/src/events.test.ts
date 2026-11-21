@@ -20,6 +20,16 @@ describe("events", () => {
     expect(playerName(undefined, 9)).toBe("#9");
   });
 
+  it("names a guard known only by its boss's group like the list does", () => {
+    const tl = new Timeline();
+    const boss: Player = { ...base, id: 1, role: 6, groupId: "g1" };
+    const guard: Player = { ...base, id: 12, voice: "Scav_3", groupId: "g1" };
+    tl.ingest({ type: "players", raid: 1, rev: 1, t: 1000, data: { players: [boss, guard] } } as RecordedMessage);
+    const seen = tl.events.find((e) => e.kind === "playerSeen" && e.player === 12)!;
+    expect(describeEvent(seen, tl, catalog).text).toBe("Killa guard #12 appeared");
+    expect(playerName(guard, 12)).toBe("Scav #12");
+  });
+
   it("contentsDelta counts by template, nested too", () => {
     const d = contentsDelta(
       [{ tpl: "b", items: [{ tpl: "a" }] }, { tpl: "c" }, { tpl: "c" }],

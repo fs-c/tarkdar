@@ -2,6 +2,8 @@
 // so no migrations: an entry of another version is just not there. In IndexedDB, which holds far more
 // than localStorage and doesn't share its quota with the settings.
 
+import { isObject } from "./persist/store";
+
 export interface CacheDef {
   key: string;
   /** Bumped when what's cached changes shape: older entries are ignored (and overwritten). */
@@ -19,8 +21,6 @@ export interface Cache {
   put(key: string, entry: unknown): Promise<void>;
   delete(key: string): Promise<void>;
 }
-
-const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** The entry if it's of this version and its data passes `check`. */
 export async function readCache<T>(cache: Cache, def: CacheDef, check: (data: unknown) => data is T): Promise<Cached<T> | null> {

@@ -149,7 +149,7 @@ export function bossGroups(players: readonly PlayerIdentity[]): Map<string, stri
   const out = new Map<string, string>();
   for (const p of players) {
     if (!p.groupId || p.local || !p.ai) continue;
-    const t = classify(p);
+    const t = playerType(p);
     if (t.type === "boss") out.set(p.groupId, t.label);
   }
   return out;
@@ -160,10 +160,6 @@ export function bossGroups(players: readonly PlayerIdentity[]): Map<string, stri
  * they share with their boss; without it, guards with a plain scav voice and no role read as ai-scav.
  */
 export function playerType(p: PlayerIdentity, groups?: ReadonlyMap<string, string>): PlayerTypeInfo {
-  return classify(p, groups);
-}
-
-function classify(p: PlayerIdentity, groups?: ReadonlyMap<string, string>): PlayerTypeInfo {
   if (p.local) return { type: "self", label: "You", reason: "our player" };
   if (!p.ai) {
     // Humans: the side says it all (their role field is a default).
@@ -175,15 +171,16 @@ function classify(p: PlayerIdentity, groups?: ReadonlyMap<string, string>): Play
     }
   }
 
-  const byRole = p.role !== undefined ? fromRole(p.role) : null;
+  const role = p.role;
+  const byRole = role !== undefined ? fromRole(role) : null;
   const byVoice = fromVoice(p);
   // Black Division has a role in the enum, but it may be unmapped or a default: the voice is exact.
   if (byVoice?.type === "bd" && (!byRole || byRole.type === "ai-scav" || byRole.type === "other")) return byVoice;
   if (byRole) {
     // An observed player's role comes from an unverified source that may hold a default (0,
     // marksman): when the voice clearly says otherwise, trust the voice.
-    if (p.kind === "observed" && byRole.type === "ai-scav" && byVoice && byVoice.type !== "ai-scav")
-      return { ...byVoice, reason: `${byVoice.reason}; ignored ${roleReason(p.role!)}` };
+    if (role !== undefined && p.kind === "observed" && byRole.type === "ai-scav" && byVoice && byVoice.type !== "ai-scav")
+      return { ...byVoice, reason: `${byVoice.reason}; ignored ${roleReason(role)}` };
     return byRole;
   }
 

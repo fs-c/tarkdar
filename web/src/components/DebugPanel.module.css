@@ -11,7 +11,7 @@
 .group > summary { cursor: pointer; font-weight: 600; padding: 2px 0; }
 .list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 3px; }
 .list > li { display: flex; gap: 6px; align-items: baseline; }
-.quest { display: block !important; }
+.list > .quest { display: block; }
 .quest summary { cursor: pointer; }
 .mark { flex: none; width: 1em; color: var(--faint); }
 .why { display: block; color: var(--faint); font-size: var(--fs-xs); }

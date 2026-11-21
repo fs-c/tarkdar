@@ -3,6 +3,7 @@
 // tested without React.
 
 import type { RadarState } from "../connection";
+import { isObject } from "../persist/store";
 import { type ItemCatalog, containerName, equipmentValue, exfilStatus, slotValue } from "../items";
 import { type Selection, midpoint, selectionKey } from "../pick";
 import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, QuestKind, WorldPos } from "../protocol";
@@ -270,11 +271,19 @@ export const isFiltered = (f: ListFilters): boolean => TAB_IDS.some((t) => isTab
 /** Stored filters from older versions (one set for all tabs) or garbage: the defaults. */
 export function normalizeFilters(stored: unknown): ListFilters {
   const out = { ...DEFAULT_FILTERS };
-  if (!stored || typeof stored !== "object") return out;
+  if (!isObject(stored)) return out;
   for (const t of TAB_IDS) {
-    const f = (stored as Record<string, unknown>)[t];
-    if (f && typeof f === "object" && typeof (f as TabFilter).text === "string") out[t] = { ...DEFAULT_FILTERS[t], ...(f as TabFilter) };
+    const f = stored[t];
+    if (isObject(f) && typeof f.text === "string") out[t] = cleanFilter(f, f.text, DEFAULT_FILTERS[t]);
   }
+  return out;
+}
+
+/** One tab's stored filter: its fields (those the tab has) when of the right type, else the default's. */
+function cleanFilter(f: Record<string, unknown>, text: string, def: TabFilter): TabFilter {
+  const out: TabFilter = { ...def, text };
+  for (const k of ["alive", "humans", "special"] as const) if (k in def && typeof f[k] === "boolean") out[k] = f[k];
+  if ("minValue" in def && typeof f.minValue === "number" && Number.isFinite(f.minValue) && f.minValue >= 0) out.minValue = f.minValue;
   return out;
 }
 
@@ -298,8 +307,10 @@ export function filterRows<T extends TabId>(tab: T, rows: TabRows[T], f: TabFilt
       case "players": {
         const p = r as PlayerRow;
         // humans + special: either kind (the two together mean "the ones that matter").
-        const kind = !f.humans && !f.special ? true : (!!f.humans && !p.ai) || (!!f.special && SPECIAL_TYPES.has(p.type));
-        return (!f.alive || p.state === "alive") && kind;
+        const isHuman = !p.ai;
+        const isSpecial = SPECIAL_TYPES.has(p.type);
+        const kindOk = (!f.humans && !f.special) || (!!f.humans && isHuman) || (!!f.special && isSpecial);
+        return (!f.alive || p.state === "alive") && kindOk;
       }
       case "items": {
         const min = f.minValue ?? 0;

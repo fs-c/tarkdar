@@ -257,6 +257,9 @@ export interface RecordingInfo {
   active: boolean;
 }
 
+/** The game sometimes parks some despawned/uninitialised entities at about -9999 on some axis; the backend sends it as is. */
+export const isSentinelPos = (pos: readonly number[] | null | undefined): boolean => !!pos && pos.some((c) => c <= -9000);
+
 export function parseMessage(text: string): Message | null {
   try {
     const m = JSON.parse(text) as { type?: unknown };
@@ -268,7 +271,8 @@ export function parseMessage(text: string): Message | null {
 }
 
 /** Container contents can't be read reliably; only corpses (equipment) keep `contents`. Older
- *  backends sent them for containers too, and recordings still have them. */
+ *  backends sent them for containers too, and recordings still have them. Changes `m` in place
+ *  (and returns it). */
 export function withoutContainerContents<M extends RecordedMessage>(m: M): M {
   const strip = (l: LootEntry): LootEntry => {
     if (l.kind === "corpse" || !l.contents) return l;

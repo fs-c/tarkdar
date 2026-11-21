@@ -7,8 +7,7 @@
 // older ones are dropped for the defaults.
 
 import { useEffect } from "react";
-import { defineStore } from "../persist";
-import { usePersisted } from "../persist/react";
+import { defineStore, isObject, usePersisted } from "../persist";
 import type { SubjectKind } from "../list/rows";
 import { CATEGORIES, type Category, DEFAULT_HIDDEN, DEFAULT_RULES, HIDEABLE } from "./defaults";
 import { EMPHASES, type Rule, type StyleProps } from "./rules";
@@ -145,8 +144,6 @@ export const missingDefaults = (rules: readonly StoredRule[]): number => DEFAULT
 
 // ---- Stored state: checked when read ----
 
-const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
-
 export function cleanStyle(v: unknown): StyleProps {
   if (!isObject(v)) return {};
   const out: StyleProps = {};
@@ -171,11 +168,11 @@ export function cleanRules(v: unknown): StoredRule[] {
   });
 }
 
-/** Stored rules as they are, minus anything malformed; garbage: the defaults. */
+/** Stored rules as they are, minus anything malformed; garbage, or no list of rules: the defaults. */
 export function normalizeStore(stored: unknown): RuleStore {
   if (!isObject(stored)) return defaultStore();
-  const hidden = Array.isArray(stored.hidden) ? stored.hidden.filter((g): g is Category => typeof g === "string" && g in HIDEABLE) : [...DEFAULT_HIDDEN];
-  return { rules: cleanRules(stored.rules), hidden };
+  const hidden = Array.isArray(stored.hidden) ? stored.hidden.filter((g): g is Category => typeof g === "string" && Object.hasOwn(HIDEABLE, g)) : [...DEFAULT_HIDDEN];
+  return { rules: Array.isArray(stored.rules) ? cleanRules(stored.rules) : defaultStore().rules, hidden };
 }
 
 export const ruleStore = defineStore<RuleStore>({
@@ -214,7 +211,6 @@ export const pinnedStore = defineStore<PinnedStore>({
   version: 1,
   scope: "user",
   defaults: () => ({ raid: null, rules: [] }),
-  migrations: { 0: (d) => d },
   normalize: (d) => ({ raid: isObject(d) && typeof d.raid === "string" ? d.raid : null, rules: isObject(d) ? cleanRules(d.rules) : [] }),
 });
 

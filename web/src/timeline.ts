@@ -5,7 +5,6 @@
 // messages with a revision already seen are dropped, so a recording and the live stream that
 // overlaps it can be fed in one after the other.
 
-import { isSentinelPos } from "./connection";
 import {
   type Exfil,
   type ExplosivesData,
@@ -13,6 +12,8 @@ import {
   type LootDiffData,
   type LootEntry,
   JOINT_COUNT,
+  RECORDING_FORMAT,
+  isSentinelPos,
   type Player,
   type PlayerEquipment,
   type QuestState,
@@ -317,6 +318,7 @@ export class Timeline {
     // Not kept (yet): only the live POV page uses it.
     if (msg.type === "camera") return false;
     if (msg.type === "recording") {
+      if (msg.data.format > RECORDING_FORMAT) console.warn(`recording: format ${msg.data.format} is newer than the ${RECORDING_FORMAT} this build reads; some of it may be missing`);
       this.locationId = msg.data.locationId;
       this.raid = msg.raid;
       this.stamp(msg.t);

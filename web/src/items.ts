@@ -61,6 +61,15 @@ export function equipmentValue(slots: { slot?: string; tpl: string; count?: numb
 }
 
 /** "1.2M", "45k", "800" (roubles). */
+/** Things this far (m) above or below us or more get their height said. */
+export const HEIGHT_DIFF_MIN = 2;
+
+/** "▲3" / "▼12": how far (m) above or below, or "" when about level (or unknown). */
+export function formatHeightDiff(dy: number | undefined): string {
+  if (dy === undefined || Math.abs(dy) < HEIGHT_DIFF_MIN) return "";
+  return dy > 0 ? `▲${Math.round(dy)}` : `▼${Math.round(-dy)}`;
+}
+
 export function formatPrice(roubles: number): string {
   if (roubles >= 1_000_000) return `${(roubles / 1_000_000).toFixed(roubles >= 10_000_000 ? 0 : 1)}M`;
   if (roubles >= 1_000) return `${Math.round(roubles / 1_000)}k`;

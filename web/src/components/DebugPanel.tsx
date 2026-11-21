@@ -5,10 +5,11 @@ import type { MapView } from "../map3d/Map3D";
 import { type QuestDebug, type QuestDebugQuest, questStatusName } from "../quests";
 import { Actions, Button, Section, ToggleRow, cx } from "../ui";
 import s from "./DebugPanel.module.css";
+import type { SetStored } from "../persist";
 
 export interface DebugProps {
   prefs: MapPrefs;
-  onPrefs: (p: MapPrefs) => void;
+  onPrefs: SetStored<MapPrefs>;
   /** A map is on screen (not just the grid of a location without one). */
   mapShown: boolean;
   /** Render statistics of the map, when it is shown. */
@@ -27,7 +28,7 @@ export interface DebugProps {
 
 /** Sections, not a view: shown at the bottom of SettingsPanel. */
 export function DebugSections(p: DebugProps) {
-  const toggle = (key: keyof MapPrefs) => () => p.onPrefs({ ...p.prefs, [key]: !p.prefs[key] });
+  const toggle = (key: keyof MapPrefs) => () => p.onPrefs((m) => ({ ...m, [key]: !m[key] }));
   return (
     <>
       <QuestSection report={p.quests} duplicates={p.duplicates} />

@@ -3,8 +3,7 @@
 
 import type { SortingState } from "@tanstack/react-table";
 import { useMemo } from "react";
-import { defineStore } from "../persist";
-import { usePersisted } from "../persist/react";
+import { defineStore, usePersisted } from "../persist";
 import type { RadarState } from "../connection";
 import type { ItemCatalog } from "../items";
 import type { QuestNeed } from "../quests";
@@ -60,7 +59,6 @@ export const listStore = defineStore<ListPrefs>({
   version: 1,
   scope: "user",
   defaults: () => DEFAULT_PREFS,
-  migrations: { 0: (d) => d },
   normalize: normalizeListPrefs,
 });
 

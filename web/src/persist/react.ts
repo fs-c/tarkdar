@@ -1,7 +1,7 @@
 // React glue: a store's value, shared by everything that uses it (and by other tabs).
 
 import { useCallback, useSyncExternalStore } from "react";
-import { settings } from ".";
+import { settings } from "./settings";
 import type { StoreDef } from "./store";
 
 export type SetStored<T> = (update: T | ((prev: T) => T)) => void;

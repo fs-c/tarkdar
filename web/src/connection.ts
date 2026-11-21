@@ -14,14 +14,12 @@ import {
   type PlayerEquipment,
   type QuestState,
   type StatusData,
+  isSentinelPos,
   parseMessage,
 } from "./protocol";
 
 /** The backend's WebSocket, on the host that served the page. */
 export const wsUrl = (): string => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
-
-/** The game sometimes parks some despawned/uninitialised entities at about -9999 on some axis; the backend sends it as is. */
-export const isSentinelPos = (pos: readonly number[] | null | undefined): boolean => !!pos && pos.some((c) => c <= -9000);
 
 export interface RadarState {
   connected: boolean;

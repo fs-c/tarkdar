@@ -7,7 +7,6 @@
     &:disabled { opacity: 0.4; }
     &[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-text); }
   }
-  .primary { padding: 5px 12px; }
   .icon {
     display: inline-grid; place-items: center; padding: 3px; border-color: transparent; background: none; color: var(--muted);
     &:hover:not(:disabled) { border-color: transparent; background: var(--hover); color: var(--text); }

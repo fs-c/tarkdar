@@ -52,7 +52,7 @@ export function TimelinePanel(props: Props) {
       (e) => groups[eventGroup(e.kind)] && (!prefs.selectedOnly || (selection !== null && eventConcerns(e, selection))),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- events only grow (count)
-  }, [timeline, count, JSON.stringify(groups), prefs.selectedOnly, selection]);
+  }, [timeline, count, groups, prefs.selectedOnly, selection]);
 
   // The "now" marker goes after the last event at or before the shown moment.
   const nowIndex = useMemo(() => {

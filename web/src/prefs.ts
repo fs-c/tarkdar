@@ -5,13 +5,10 @@
 // the few changes older builds needed.
 
 import { DEFAULT_EVENT_GROUPS, type EventGroup } from "./events";
-import { DEFAULT_MAP_SETTINGS, type MapSettings, type PlanPalette } from "./map3d/settings";
+import { DEFAULT_MAP_SETTINGS, type MapSettings, type MapStyle, type PlanPalette } from "./map3d/settings";
 import { DEFAULT_OVERLAY_PREFS, type OverlayPrefs } from "./overlay/marks";
-import { defineStore, flatNormalize } from "./persist";
-import { usePersisted } from "./persist/react";
+import { defineStore, flatNormalize, isHexColor, isObject, oneOf, usePersisted } from "./persist";
 
-const same = (d: unknown) => d;
-const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** How the 3D map is shown, and the map debugging tools. */
 export interface MapPrefs extends MapSettings {
@@ -23,19 +20,31 @@ export interface MapPrefs extends MapSettings {
   bodies: boolean;
 }
 
+const MAP_STYLES: readonly MapStyle[] = ["realistic", "plan"];
+const MAP_CONTROLS: readonly MapSettings["controls"][] = ["map", "wasd"];
+
 const mapDefaults = (): MapPrefs => ({ ...DEFAULT_MAP_SETTINGS, customPalette: null, coordinatePick: false, bodies: true });
-/** Palettes stored before a colour was added get the default's. */
-const fullPalette = (p: unknown): PlanPalette => ({ ...DEFAULT_MAP_SETTINGS.palette, ...(isObject(p) ? p : {}) });
+/** Palettes stored before a colour was added get the default's, and so does any colour that isn't "#rrggbb". */
+function fullPalette(p: unknown): PlanPalette {
+  const out = { ...DEFAULT_MAP_SETTINGS.palette };
+  if (isObject(p)) for (const k of Object.keys(out) as (keyof PlanPalette)[]) if (isHexColor(p[k])) out[k] = p[k];
+  return out;
+}
 
 export const mapStore = defineStore<MapPrefs>({
   key: "radar.map",
   version: 1,
   scope: "user",
   defaults: mapDefaults,
-  migrations: { 0: same },
   normalize: (data) => {
     const p = flatNormalize(mapDefaults)(data);
-    return { ...p, palette: fullPalette(p.palette), customPalette: p.customPalette && fullPalette(p.customPalette) };
+    return {
+      ...p,
+      style: oneOf(p.style, MAP_STYLES, DEFAULT_MAP_SETTINGS.style),
+      controls: oneOf(p.controls, MAP_CONTROLS, DEFAULT_MAP_SETTINGS.controls),
+      palette: fullPalette(p.palette),
+      customPalette: p.customPalette && fullPalette(p.customPalette),
+    };
   },
 });
 
@@ -57,7 +66,6 @@ export const trailStore = defineStore<TrailPrefs>({
   version: 1,
   scope: "user",
   defaults: trailDefaults,
-  migrations: { 0: same },
   normalize: flatNormalize(trailDefaults),
 });
 
@@ -76,7 +84,6 @@ export const lootStore = defineStore<LootPrefs>({
   scope: "user",
   defaults: lootDefaults,
   // (v0 also held the loot density and label threshold of older builds, now rules: dropped.)
-  migrations: { 0: same },
   normalize: (data) => {
     const p = flatNormalize(lootDefaults)(data);
     return p.questItems === "all" ? p : { questItems: "needed" };
@@ -98,7 +105,6 @@ export const logStore = defineStore<LogPrefs>({
   version: 1,
   scope: "user",
   defaults: logDefaults,
-  migrations: { 0: same },
   normalize: (data) => {
     const p = flatNormalize(logDefaults)(data);
     const groups = { ...DEFAULT_EVENT_GROUPS };
@@ -115,7 +121,6 @@ export const overlayStore = defineStore<OverlayPrefs>({
   version: 1,
   scope: "device",
   defaults: () => ({ ...DEFAULT_OVERLAY_PREFS }),
-  migrations: { 0: same },
   normalize: flatNormalize(() => ({ ...DEFAULT_OVERLAY_PREFS })),
 });
 
@@ -153,16 +158,19 @@ export const sidebarStore = defineStore<SidebarPrefs>({
     const p = flatNormalize(sidebarDefaults)(data);
     return {
       open: p.open,
-      section: SECTIONS.includes(p.section) ? p.section : "list",
-      raidsLevel: p.raidsLevel === "timeline" ? "timeline" : "list",
+      section: oneOf(p.section, SECTIONS, "list"),
+      raidsLevel: oneOf(p.raidsLevel, ["list", "timeline"], "list"),
     };
   },
 });
 
 export const useSidebarPrefs = () => usePersisted(sidebarStore);
 
-/** The side panel's width (px). */
+/** The side panel's width (px): its default, and the range a stored width is kept to (the narrowest
+ *  the sash allows; the widest is generous, the sash itself leaves room for the map). */
 export const DEFAULT_SIDEBAR_WIDTH = 420;
+export const MIN_SIDEBAR_WIDTH = 260;
+export const MAX_SIDEBAR_WIDTH = 2000;
 
 const sidebarSizeDefaults = () => ({ width: DEFAULT_SIDEBAR_WIDTH });
 
@@ -171,8 +179,10 @@ export const sidebarSizeStore = defineStore<{ width: number }>({
   version: 1,
   scope: "device",
   defaults: sidebarSizeDefaults,
-  migrations: { 0: same },
-  normalize: flatNormalize(sidebarSizeDefaults),
+  normalize: (data) => {
+    const { width } = flatNormalize(sidebarSizeDefaults)(data);
+    return { width: Number.isFinite(width) ? Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width)) : DEFAULT_SIDEBAR_WIDTH };
+  },
 });
 
 export const useSidebarSize = () => usePersisted(sidebarSizeStore);

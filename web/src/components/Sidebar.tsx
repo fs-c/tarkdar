@@ -3,7 +3,7 @@
 
 import { Archive, DoorOpen, Funnel, History, type LucideIcon, Map as MapIcon, Package, PanelLeftClose, Settings, Users } from "lucide-react";
 import { type PointerEvent, type ReactNode, useRef } from "react";
-import { DEFAULT_SIDEBAR_WIDTH, useSidebarSize } from "../prefs";
+import { DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, useSidebarSize } from "../prefs";
 import { TABS } from "../list/columns";
 import type { TabId } from "../list/rows";
 import { Button, cx } from "../ui";
@@ -12,7 +12,7 @@ import s from "./Sidebar.module.css";
 /** The panel's views: one per list tab, plus the display rules, map options, raid recordings, and settings (with debugging). */
 export type ViewId = TabId | "filters" | "map" | "raids" | "settings";
 
-export const LIST_ICONS: Record<TabId, LucideIcon> = {
+const LIST_ICONS: Record<TabId, LucideIcon> = {
   players: Users,
   items: Package,
   containers: Archive,
@@ -72,18 +72,16 @@ function compact(n: number): string {
 
 interface SidePanelProps {
   view: ViewId;
-  /** Shown right of the title (e.g. a row count). */
-  aside?: ReactNode;
   onClose: () => void;
   children: ReactNode;
 }
 
 /** Panel width in px: the same for every view, dragged with the sash on its right edge. */
-const MIN_WIDTH = 260;
+const MIN_WIDTH = MIN_SIDEBAR_WIDTH;
 /** Room always left for the map. */
 const MAP_MIN = 160;
 
-export function SidePanel({ view, aside, onClose, children }: SidePanelProps) {
+export function SidePanel({ view, onClose, children }: SidePanelProps) {
   const [{ width }, setSize] = useSidebarSize();
   const drag = useRef<{ x: number; width: number } | null>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -115,7 +113,6 @@ export function SidePanel({ view, aside, onClose, children }: SidePanelProps) {
       />
       <header className={s.header}>
         <h2 className={s.title}>{VIEW_TITLES[view]}</h2>
-        <span className={s.aside}>{aside}</span>
         <Button variant="icon" title="Collapse (L)" onClick={onClose}>
           <PanelLeftClose size={16} />
         </Button>

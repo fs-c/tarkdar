@@ -246,7 +246,7 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
   useEffect(() => {
     if (!interior) return;
     const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e) || (e.key !== "PageUp" && e.key !== "PageDown")) return;
+      if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey || (e.key !== "PageUp" && e.key !== "PageDown")) return;
       e.preventDefault();
       stepFloor(e.key === "PageUp" ? 1 : -1);
     };
@@ -257,7 +257,7 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e)) return;
+      if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === "+" || e.key === "=") mapRef.current?.zoomBy(1.25);
       else if (e.key === "-") mapRef.current?.zoomBy(0.8);
       else if (e.key === "0") mapRef.current?.resetView();

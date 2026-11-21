@@ -2,8 +2,9 @@
 // opens a row of the styles to its left, each a preview drawn in its own colours, the same size as
 // the button. Names are only in the tooltips.
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { PLAN_PALETTES, type MapStyle, type PlanPalette, type PlanPaletteName, paletteOf } from "../map3d/settings";
+import { useDismiss } from "../ui";
 import s from "./StyleSwitch.module.css";
 
 interface Props {
@@ -53,17 +54,7 @@ export function StyleSwitch({ style, palette, custom, onChange }: Props) {
   const plan = style === "plan";
   const current = plan ? paletteOf(palette) : null;
 
-  useEffect(() => {
-    if (!open) return;
-    const outside = (e: PointerEvent) => !root.current?.contains(e.target as Node) && setOpen(false);
-    const escape = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    window.addEventListener("pointerdown", outside);
-    window.addEventListener("keydown", escape);
-    return () => {
-      window.removeEventListener("pointerdown", outside);
-      window.removeEventListener("keydown", escape);
-    };
-  }, [open]);
+  useDismiss(root, open, () => setOpen(false));
 
   const option = (key: string, label: string, colors: PlanPalette, selected: boolean, pick: () => void, lines = true) => (
     <button

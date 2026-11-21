@@ -8,9 +8,6 @@ import type { Emphasis } from "./rules/rules";
 import { ui } from "./theme";
 
 export const COLORS = {
-  background: ui.bg,
-  /** The grid shown where there is no map. */
-  grid: "#1f2a33",
   local: ui.accent,
   dead: "#6b6b6b",
   label: "#e8eef2",

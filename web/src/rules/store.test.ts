@@ -97,4 +97,14 @@ describe("stored rules", () => {
     expect(decode(ruleStore, JSON.stringify({ version: 3, rules: [], hidden: ["Loot"] }))).toMatchObject({ value: { rules: [], hidden: ["Loot"] }, status: "migrated" });
     expect(defaultStore().rules).toHaveLength(DEFAULT_RULES.length);
   });
+
+  it("use the default rules when there's no list of them (an empty one stays empty)", () => {
+    expect(normalizeStore({ hidden: ["Loot"] })).toEqual({ ...defaultStore(), hidden: ["Loot"] });
+    expect(normalizeStore({ rules: "x", hidden: [] }).rules).toEqual(defaultStore().rules);
+    expect(normalizeStore({ rules: [], hidden: [] }).rules).toEqual([]);
+  });
+
+  it("don't take inherited names for categories", () => {
+    expect(normalizeStore({ rules: [], hidden: ["toString", "constructor", "Loot"] }).hidden).toEqual(["Loot"]);
+  });
 });

@@ -11,9 +11,9 @@ import {
   tableFeatures,
 } from "@tanstack/react-table";
 import { useContext } from "react";
-import { formatPrice } from "../items";
+import { formatHeightDiff, formatPrice } from "../items";
 import { COLORS, DEFAULT_COLOR } from "../style";
-import { RowStyles } from "./styles";
+import { RowStyles } from "./RowStyles";
 import { PLAYER_TYPES } from "../roles";
 import { Price } from "../ui";
 import s from "./columns.module.css";
@@ -51,15 +51,10 @@ function distanceColumns<R extends RowBase>() {
     h.accessor((r) => r.dh, {
       id: "dh",
       header: "Δh",
-      cell: (c) => heightText(c.getValue()),
+      cell: (c) => formatHeightDiff(c.getValue()),
       sortUndefined: "last",
     }),
   ];
-}
-
-export function heightText(dh: number | undefined): string {
-  if (dh === undefined || Math.abs(dh) < 2) return "";
-  return dh > 0 ? `▲${Math.round(dh)}` : `▼${Math.round(-dh)}`;
 }
 
 /** A player's colour, as on the map: from the rules; ours; grey when dead (`dead`). */
@@ -213,4 +208,3 @@ export function columnIds(def: TabDef<any>): Set<string> {
     return col.id ?? col.accessorKey ?? "";
   }));
 }
-export const TAB_ORDER: TabId[] = ["players", "items", "containers", "exfils"];

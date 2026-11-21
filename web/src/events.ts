@@ -3,7 +3,7 @@
 import { type ItemCatalog, containerName, exfilStatus } from "./items";
 import type { Selection } from "./pick";
 import type { ItemNode, LootEntry, WorldPos } from "./protocol";
-import { type PlayerIdentity, playerType } from "./roles";
+import { type PlayerIdentity, bossGroups, playerType } from "./roles";
 import type { EventKind, Timeline, TimelineEvent } from "./timeline";
 
 /** Filter groups of the log, in display order. */
@@ -29,10 +29,11 @@ export function eventGroup(kind: EventKind): EventGroup {
   return "spawns";
 }
 
-export function playerName(p: PlayerIdentity | undefined, id: number): string {
+/** `groups`: from bossGroups, to name a boss's guards as such (as the list and the map do). */
+export function playerName(p: PlayerIdentity | undefined, id: number, groups?: ReadonlyMap<string, string>): string {
   if (!p) return `#${id}`;
   if (p.local) return "You";
-  const t = playerType(p);
+  const t = playerType(p, groups);
   return t.label === "?" ? `#${id}` : `${t.label} #${id}`;
 }
 
@@ -79,8 +80,20 @@ export interface EventView {
   showAt: number;
 }
 
+/** The log describes every event on each render: the boss groups are worked out once per timeline
+ *  state (it changes when something is ingested, and `end` with it). */
+const groupsCache = new WeakMap<Timeline, { end: number; size: number; groups: Map<string, string> }>();
+
+function timelineGroups(timeline: Timeline): Map<string, string> {
+  const hit = groupsCache.get(timeline);
+  if (hit && Object.is(hit.end, timeline.end) && hit.size === timeline.tracks.size) return hit.groups;
+  const groups = bossGroups([...timeline.tracks.values()].map((t) => t.meta));
+  groupsCache.set(timeline, { end: timeline.end, size: timeline.tracks.size, groups });
+  return groups;
+}
+
 export function describeEvent(e: TimelineEvent, timeline: Timeline, catalog: ItemCatalog): EventView {
-  const player = (id: number) => playerName(timeline.tracks.get(id)?.meta, id);
+  const player = (id: number) => playerName(timeline.tracks.get(id)?.meta, id, timelineGroups(timeline));
   switch (e.kind) {
     case "playerSeen":
       return { text: `${player(e.player)} appeared`, tone: "spawn", sel: { kind: "player", id: e.player },

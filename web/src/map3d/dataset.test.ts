@@ -180,7 +180,7 @@ describe("MapData", () => {
   });
 
   it("selects slots by category", () => {
-    expect([...data.slotsOf(null)]).toEqual([0, 1, 2, 3, 4]);
+    expect([...data.slotsOf(new Set(data.index.categories.map((_, id) => id)))]).toEqual([0, 1, 2, 3, 4]);
     expect([...data.slotsOf(new Set([data.categoryId("structure"), data.categoryId("foliage")]))]).toEqual([0, 2, 4]);
     expect([...data.slotsOf(new Set([data.categoryId("decal")]))]).toEqual([1, 3]);
     expect(data.categoryId("nope")).toBe(-1);

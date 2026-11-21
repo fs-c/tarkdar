@@ -49,7 +49,7 @@ const subject = (...s: SubjectKind[]): RowTest => (r) => s.includes(r.subject);
 const player = (test: (p: PlayerRow) => boolean): RowTest => (r) => r.subject === "player" && test(r as PlayerRow);
 const types = (...t: PlayerType[]): RowTest => player((p) => t.includes(p.type));
 
-export const IS_VALUES: Record<string, RowTest> = {
+const IS_VALUES: Record<string, RowTest> = {
   player: subject("player"),
   item: subject("item"),
   quest: subject("quest"),
@@ -324,14 +324,6 @@ export function compileQuery(query: string, catalog: ItemCatalog): Compiled {
   if (cache.size > 500) cache.clear(); // typed queries: don't keep every prefix forever
   cache.set(query, out);
   return out;
-}
-
-export const matchesQuery = (row: RowBase, query: string, catalog: ItemCatalog): boolean => compileQuery(query, catalog).test(row);
-
-/** Whether a query says anything at all. */
-export function isEmptyQuery(q: string): boolean {
-  const p = parseQuery(q);
-  return !p.terms.length && !p.errors.length;
 }
 
 /** Whether a query uses the syntax (fields), not just free text. */

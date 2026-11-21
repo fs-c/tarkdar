@@ -992,6 +992,7 @@ export class Stage {
     this.tileScene?.target.dispose();
     this.outline.dispose();
     this.copy.dispose();
+    this.renderer.forceContextLoss(); // a renderer is made on every map load: free its GL context now
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

@@ -3,12 +3,12 @@
 // Live and at "now" it shrinks to a chip; clicking that opens the controls to go back in time.
 
 import { Pause, Play, Radio, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { eventConcerns } from "../events";
 import type { Selection } from "../pick";
 import { type Playback, SPEEDS, formatDuration } from "../playback";
 import type { TimelineEvent } from "../timeline";
-import { cx } from "../ui";
+import { cx, useDismiss } from "../ui";
 import s from "./PlaybackBar.module.css";
 
 /** The shown moment as text: raid time when live, how far behind live, or position / length. */
@@ -86,20 +86,7 @@ function SpeedMenu({ speed, onChange }: { speed: number; onChange: (speed: numbe
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Closes on a click elsewhere, or Escape.
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("pointerdown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  useDismiss(ref, open, () => setOpen(false));
 
   return (
     <div ref={ref} className={s.speedBox}>

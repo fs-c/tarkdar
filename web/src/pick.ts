@@ -3,6 +3,7 @@
 import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type WorldPos } from "./protocol";
 import { BASE, type Style } from "./rules/rules";
 import type { Projector } from "./projector";
+import type { SubjectKind } from "./list/rows";
 
 export type Selection =
   | { kind: "player"; id: number }
@@ -26,14 +27,17 @@ export interface Pickable {
  * out can still be clicked).
  */
 export function pick(pr: Projector, src: Pickable, styles: ReadonlyMap<string, Style>, x: number, y: number): Selection | null {
-  let best: { sel: Selection; d: number } | null = null;
+  const best: { sel: Selection | null; d: number } = { sel: null, d: Infinity };
   const consider = (sel: Selection, pos: WorldPos | null | undefined, radius: number) => {
     if (!pos) return;
     const [sx, sy] = pr.toScreen(pos);
     const d = Math.hypot(sx - x, sy - y);
-    if (d <= radius && (!best || d < best.d)) best = { sel, d };
+    if (d <= radius && d < best.d) {
+      best.sel = sel;
+      best.d = d;
+    }
   };
-  const hidden = (sel: Selection, kind: keyof typeof BASE) => (styles.get(selectionKey(sel)) ?? BASE[kind]).show === null;
+  const hidden = (sel: Selection, kind: SubjectKind) => (styles.get(selectionKey(sel)) ?? BASE[kind]).show === null;
   for (const p of src.players) {
     const sel: Selection = { kind: "player", id: p.id };
     if (!p.local && hidden(sel, "player")) continue;
@@ -61,7 +65,7 @@ export function pick(pr: Projector, src: Pickable, styles: ReadonlyMap<string, S
     const sel: Selection = { kind: "loot", id: l.id };
     if (!hidden(sel, l.kind)) consider(sel, l.pos, 8);
   }
-  return (best as { sel: Selection } | null)?.sel ?? null;
+  return best.sel;
 }
 
 /** World position of the selected thing, or null when it's gone. */

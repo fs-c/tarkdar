@@ -90,32 +90,49 @@ export interface Styled {
   matched: Map<string, AnyRow[]>;
 }
 
+const NO_KINDS: ReadonlySet<SubjectKind> = new Set();
+
+function setProps(s: Style, props: StyleProps): void {
+  const target: Partial<Record<keyof Style, unknown>> = s; // the same object, seen as writable by any key
+  for (const k of Object.keys(props) as (keyof Style)[]) {
+    const v = props[k];
+    if (v !== undefined) target[k] = v;
+  }
+}
+
+interface Compiled {
+  rule: Rule;
+  test: (row: RowBase) => boolean;
+}
+
+const compileRules = (rules: readonly Rule[], catalog: ItemCatalog): Compiled[] => rules.map((rule) => ({ rule, test: compileQuery(rule.query, catalog).test }));
+
+/** The cascade for one thing: its kind's base style, each matching rule that's on setting its properties
+ *  over it, bottom to top; then hidden if its group is off, unless ringed. `onMatch` sees every rule that
+ *  matches (on or off), in order. */
+function cascade(row: RowBase, compiled: readonly Compiled[], hidden: ReadonlySet<SubjectKind>, onMatch?: (c: Compiled, on: boolean) => void): { style: Style; hiddenByGroup: boolean } {
+  const style: Style = { ...BASE[row.subject] };
+  for (const c of compiled) {
+    if (!c.test(row)) continue;
+    const on = c.rule.on !== false;
+    onMatch?.(c, on);
+    if (on) setProps(style, c.rule.style);
+  }
+  const hiddenByGroup = hidden.has(row.subject) && !style.ring;
+  if (hiddenByGroup) style.show = null;
+  return { style, hiddenByGroup };
+}
+
 /** Applies the rules (bottom to top) to every row; then hides the `hidden` kinds, unless ringed. */
 export function applyRules(rows: readonly AnyRow[], rules: readonly Rule[], catalog: ItemCatalog, hidden: ReadonlySet<SubjectKind> = NO_KINDS): Styled {
   const styles = new Map<string, Style>();
   const matched = new Map<string, AnyRow[]>();
-  const compiled = rules.map((r) => ({ rule: r, test: compileQuery(r.query, catalog).test, on: r.on !== false, hits: [] as AnyRow[] }));
-  for (const c of compiled) matched.set(c.rule.id, c.hits);
+  const compiled = compileRules(rules, catalog);
+  for (const c of compiled) matched.set(c.rule.id, []);
   for (const row of rows) {
-    const s: Style = { ...BASE[row.subject] };
-    for (const c of compiled) {
-      if (!c.test(row)) continue;
-      c.hits.push(row);
-      if (c.on) setProps(s, c.rule.style);
-    }
-    if (hidden.has(row.subject) && !s.ring) s.show = null;
-    styles.set(row.key, s);
+    styles.set(row.key, cascade(row, compiled, hidden, (c) => matched.get(c.rule.id)!.push(row)).style);
   }
   return { styles, matched };
-}
-
-const NO_KINDS: ReadonlySet<SubjectKind> = new Set();
-
-function setProps(s: Style, props: StyleProps): void {
-  for (const k of Object.keys(props) as (keyof Style)[]) {
-    const v = props[k];
-    if (v !== undefined) (s as unknown as Record<string, unknown>)[k] = v;
-  }
 }
 
 /** One rule's part in a thing's look: the properties it set, and which of them later ones overrode. */
@@ -129,24 +146,19 @@ export interface Contribution {
  *  being off hid it. */
 export function explainStyle(row: RowBase, rules: readonly Rule[], catalog: ItemCatalog, hidden: ReadonlySet<SubjectKind> = NO_KINDS): { parts: Contribution[]; style: Style; hiddenByGroup: boolean } {
   const parts: Contribution[] = [];
-  const s: Style = { ...BASE[row.subject] };
   const setBy = new Map<keyof Style, Contribution>();
-  for (const rule of rules) {
-    if (rule.on === false || !compileQuery(rule.query, catalog).test(row)) continue;
+  const { style, hiddenByGroup } = cascade(row, compileRules(rules, catalog), hidden, ({ rule }, on) => {
+    if (!on) return;
     const c: Contribution = { rule, set: [], overridden: [] };
     for (const k of Object.keys(rule.style) as (keyof Style)[]) {
       if (rule.style[k] === undefined) continue;
-      const before = setBy.get(k);
-      if (before) before.overridden.push(k);
+      setBy.get(k)?.overridden.push(k);
       setBy.set(k, c);
       c.set.push(k);
     }
-    setProps(s, rule.style);
     parts.push(c);
-  }
-  const hiddenByGroup = hidden.has(row.subject) && !s.ring;
-  if (hiddenByGroup) s.show = null;
-  return { parts, style: s, hiddenByGroup };
+  });
+  return { parts, style, hiddenByGroup };
 }
 
 /** A highlight (the global search): its matches ringed in its colour and shown at every zoom, whatever

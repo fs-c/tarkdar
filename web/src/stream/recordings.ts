@@ -18,19 +18,45 @@ export async function readRecording(name: string, onLine: (line: string) => void
   await splitLines(stream.pipeThrough(new TextDecoderStream()), onLine);
 }
 
+/** Lines are handled for at most this long (ms) before the page gets a turn. */
+const SLICE_MS = 8;
+
+/** A turn for whatever waits (live messages, rendering): a task, not a microtask, and unthrottled. */
+const yieldToPage = (): Promise<void> =>
+  typeof MessageChannel === "function"
+    ? new Promise((resolve) => {
+        const ch = new MessageChannel();
+        ch.port1.onmessage = () => {
+          ch.port1.close();
+          resolve();
+        };
+        ch.port2.postMessage(null);
+      })
+    : new Promise((resolve) => setTimeout(resolve, 0));
+
+/**
+ * Feeds each line to `onLine`. A raid's recording so far is tens of MB, and a decompressed chunk holds
+ * thousands of lines: taken in one go, live messages waited seconds behind it (2026-11: up to 18 s
+ * when joining a raid). So it yields every SLICE_MS.
+ */
 export async function splitLines(stream: ReadableStream<string>, onLine: (line: string) => void): Promise<void> {
   const reader = stream.getReader();
   let rest = "";
+  let sliceStart = performance.now();
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
-    rest += value;
-    let nl: number;
-    while ((nl = rest.indexOf("\n")) >= 0) {
-      const line = rest.slice(0, nl);
-      rest = rest.slice(nl + 1);
-      if (line) onLine(line);
+    const text = rest + value;
+    let from = 0, nl: number;
+    while ((nl = text.indexOf("\n", from)) >= 0) {
+      if (nl > from) onLine(text.slice(from, nl));
+      from = nl + 1;
+      if (performance.now() - sliceStart > SLICE_MS) {
+        await yieldToPage();
+        sliceStart = performance.now();
+      }
     }
+    rest = text.slice(from);
   }
   if (rest) onLine(rest); // a last line without newline (possibly cut off: ingest skips it then)
 }

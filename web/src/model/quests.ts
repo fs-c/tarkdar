@@ -6,6 +6,7 @@
 // downloaded. Older recordings have no objectives: then nothing is known, and every quest item shows.
 
 import type { LootEntry, QuestKind, QuestObjective, QuestState } from "./protocol";
+import type { Owned } from "./owned";
 import type { ImportedQuest } from "./taskFeed";
 
 /** EQuestStatus: started (and not yet ready to hand in). */
@@ -65,15 +66,23 @@ export interface QuestNeed {
   fir: boolean;
   /** How many different items count for the objective (any of them). */
   of: number;
+  /** Owned units set aside for it (allocateOwned): found-in-raid ones only, for FIR objectives. */
+  have?: number;
+  /** What's owned covers what's left: the items aren't needed any more (not `is:needed`). */
+  covered?: boolean;
 }
+
+/** Still to be found: not covered by what's owned. */
+export const isOpen = (n: QuestNeed): boolean => !n.covered;
 
 /** At most SPECIFIC_ITEMS items count for the objective: worth highlighting. */
 export const isSpecific = (n: QuestNeed): boolean => n.of <= SPECIFIC_ITEMS;
 
-/** "Shooter Born in Heaven (×3, FIR)", "Charity (2/5, FIR)", "First in Line (×3, any of 60)". */
+/** "Shooter Born in Heaven (×3, FIR)", "Charity (2/5, FIR, have 1)", "First in Line (×3, any of 60, have all)". */
 export function formatQuestNeed(n: QuestNeed): string {
   const amount = n.progress ? `${n.progress}/${n.count}` : n.count > 1 ? `×${n.count}` : "";
-  const extra = [amount, n.fir ? "FIR" : "", n.of > 1 ? `any of ${n.of}` : ""].filter(Boolean).join(", ");
+  const have = n.covered ? "have all" : n.have ? `have ${n.have}` : "";
+  const extra = [amount, n.fir ? "FIR" : "", n.of > 1 ? `any of ${n.of}` : "", have].filter(Boolean).join(", ");
   return extra ? `${n.quest} (${extra})` : n.quest;
 }
 
@@ -105,8 +114,11 @@ export function openObjectives(q: QuestState): { objective: QuestObjective; item
 
 /** What the local player's quests still need. */
 export interface QuestNeeds {
-  /** Template id → the open objectives that need it (one entry per objective). */
+  /** Template id → the open objectives that need it (one entry per objective), also those covered by
+   *  what's owned (QuestNeed.covered; isOpen). */
   items: Map<string, QuestNeed[]>;
+  /** `${quest id}/${objective id}` → its need (the Quests view). */
+  objectives: Map<string, QuestNeed>;
   /** Every started quest's objectives are known, so nothing else is needed. False when a template
    *  couldn't be read (or an older recording): then quest items can't be judged. */
   complete: boolean;
@@ -135,22 +147,20 @@ export const counts = (id: string, kind: NeedKind, c: Counting): boolean => !(c.
  * imported quests. Quests that don't count (`counting`) need nothing, as if not started; an imported
  * quest that's in the game's list (started, or done in this raid) counts as that instead.
  */
-export function questNeeds(quests: readonly QuestState[] | null, counting: Counting = {}): QuestNeeds | null {
+export function questNeeds(quests: readonly QuestState[] | null, counting: Counting = {}, owned: Owned | null = null): QuestNeeds | null {
   if (!quests) return null;
-  const needs: QuestNeeds = { items: new Map(), complete: true, started: 0 };
-  const add = (tpl: string, need: QuestNeed) => {
-    let list = needs.items.get(tpl);
-    if (!list) needs.items.set(tpl, (list = []));
-    list.push(need);
-  };
-  const live = new Set(quests.map((q) => q.id));
-  for (const q of counting.imported ?? []) {
-    if (live.has(q.id) || !counts(q.id, "imported", counting)) continue;
-    for (const { objective: o, items } of openObjectives({ id: q.id, status: QUEST_STARTED, done: [], objectives: q.objectives })) {
-      const need: QuestNeed = { quest: q.name, kind: "imported", count: o.count, fir: !!o.fir, of: items.length };
-      for (const tpl of items) add(tpl, need);
+  const needs: QuestNeeds = { items: new Map(), objectives: new Map(), complete: true, started: 0 };
+  const claims: Claim[] = [];
+  const add = (questId: string, objectiveId: string, items: string[], need: QuestNeed) => {
+    needs.objectives.set(`${questId}/${objectiveId}`, need);
+    claims.push({ need, items });
+    for (const tpl of items) {
+      let list = needs.items.get(tpl);
+      if (!list) needs.items.set(tpl, (list = []));
+      list.push(need);
     }
-  }
+  };
+  // Started quests first: what's owned goes to them before imported ones.
   for (const q of quests) {
     if (q.status !== QUEST_STARTED || !counts(q.id, q.kind ?? "side", counting)) continue;
     needs.started++;
@@ -159,21 +169,73 @@ export function questNeeds(quests: readonly QuestState[] | null, counting: Count
       continue;
     }
     const kind = q.kind ?? "side";
-    for (const { objective: o, items, progress } of openObjectives(q)) {
-      const need: QuestNeed = { quest: objectiveLabel(q, o), kind, count: o.count, fir: !!o.fir, of: items.length, ...(progress ? { progress } : {}) };
-      for (const tpl of items) add(tpl, need);
-    }
+    for (const { objective: o, items, progress } of openObjectives(q))
+      add(q.id, o.id, items, { quest: objectiveLabel(q, o), kind, count: o.count, fir: !!o.fir, of: items.length, ...(progress ? { progress } : {}) });
   }
+  const live = new Set(quests.map((q) => q.id));
+  for (const q of counting.imported ?? []) {
+    if (live.has(q.id) || !counts(q.id, "imported", counting)) continue;
+    for (const { objective: o, items } of openObjectives({ id: q.id, status: QUEST_STARTED, done: [], objectives: q.objectives }))
+      add(q.id, o.id, items, { quest: q.name, kind: "imported", count: o.count, fir: !!o.fir, of: items.length });
+  }
+  if (owned) allocateOwned(claims, owned);
   return needs;
 }
 
+/** An objective's claim on owned items: any of `items` counts. */
+export interface Claim {
+  need: QuestNeed;
+  items: readonly string[];
+}
+
 /**
- * Drops the quest items nobody needs; everything else stays. Unless every started quest's objectives
+ * Sets each need's `have` and `covered` from what's owned, every unit counted once. Found-in-raid
+ * objectives can only use FIR units, so they go first and take those; the others take non-FIR units
+ * first, then FIR ones left over. Within that, in order (started quests before imported ones), and
+ * objectives few items count for (isSpecific) before broad ones ("any of 60"), which would otherwise
+ * use up items a specific one needs.
+ */
+export function allocateOwned(claims: readonly Claim[], owned: Owned): void {
+  const left = new Map<string, { plain: number; fir: number }>();
+  const pool = (tpl: string) => {
+    let p = left.get(tpl);
+    if (!p) {
+      const o = owned.get(tpl);
+      left.set(tpl, (p = { plain: o ? o.count - o.fir : 0, fir: o?.fir ?? 0 }));
+    }
+    return p;
+  };
+  const rank = (c: Claim) => (c.need.fir ? 0 : 2) + (isSpecific(c.need) ? 0 : 1);
+  const ordered = claims.map((c, i) => ({ c, i })).sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i);
+  for (const { c } of ordered) {
+    let wanted = c.need.count - (c.need.progress ?? 0);
+    let have = 0;
+    for (const tpl of c.items) {
+      if (wanted <= 0) break;
+      const p = pool(tpl);
+      if (!c.need.fir) {
+        const n = Math.min(wanted, p.plain);
+        p.plain -= n;
+        wanted -= n;
+        have += n;
+      }
+      const n = Math.min(wanted, p.fir);
+      p.fir -= n;
+      wanted -= n;
+      have += n;
+    }
+    if (have > 0) c.need.have = have;
+    if (wanted <= 0) c.need.covered = true;
+  }
+}
+
+/**
+ * Drops the quest items nobody needs (also those covered by what's owned); everything else stays. Unless every started quest's objectives
  * are known, nothing is dropped. Returns the same array if nothing goes.
  */
 export function withoutUnneededQuestItems(loot: LootEntry[], needs: QuestNeeds | null): LootEntry[] {
   if (!needs?.complete) return loot;
-  const keep = (l: LootEntry) => l.kind !== "quest" || needs.items.has(l.tpl);
+  const keep = (l: LootEntry) => l.kind !== "quest" || !!needs.items.get(l.tpl)?.some(isOpen);
   return loot.every(keep) ? loot : loot.filter(keep);
 }
 
@@ -188,7 +250,7 @@ export function questItemLabels(needs: QuestNeeds | null): Map<string, string> {
  *  highlight count (the "Needed for quests" rule). */
 export function neededKinds(needs: readonly QuestNeed[] | undefined, questItem: boolean): NeedKind[] {
   const kinds = new Set<NeedKind>();
-  for (const n of needs ?? []) if (questItem || isSpecific(n)) kinds.add(n.kind);
+  for (const n of needs ?? []) if (isOpen(n) && (questItem || isSpecific(n))) kinds.add(n.kind);
   return NEED_KINDS.filter((k) => kinds.has(k));
 }
 
@@ -199,6 +261,6 @@ export function neededKinds(needs: readonly QuestNeed[] | undefined, questItem: 
 export function carriedNeeds(tpls: readonly string[], needs: ReadonlyMap<string, readonly QuestNeed[]>): QuestNeed[] {
   if (!needs.size) return [];
   const out = new Set<QuestNeed>();
-  for (const tpl of tpls) for (const n of needs.get(tpl) ?? []) if (isSpecific(n)) out.add(n);
+  for (const tpl of tpls) for (const n of needs.get(tpl) ?? []) if (isOpen(n) && isSpecific(n)) out.add(n);
   return [...out];
 }

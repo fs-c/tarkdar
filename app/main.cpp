@@ -24,6 +24,7 @@
 #include "game/eft/camera/CameraTracker.hpp"
 #include "game/eft/world/Explosives.hpp"
 #include "game/eft/world/Quests.hpp"
+#include "game/eft/world/Stash.hpp"
 #include "game/eft/world/Vehicles.hpp"
 #include "game/eft/world/Loot.hpp"
 #include "overlay/Frames.hpp"
@@ -152,6 +153,7 @@ int main(int argc, char** argv) {
         subsystems.push_back(std::move(vehicles));
         subsystems.push_back(std::make_unique<eft::Loot>(session, world));
         subsystems.push_back(std::make_unique<eft::Quests>(session, world));
+        subsystems.push_back(std::make_unique<eft::Stash>(session, world));
         subsystems.push_back(std::make_unique<eft::CameraTracker>(session, world));
         return subsystems;
     });

@@ -4,6 +4,7 @@
 #include "game/eft/model/Camera.hpp"
 #include "game/eft/model/Players.hpp"
 #include "game/eft/model/Quests.hpp"
+#include "game/eft/model/Stash.hpp"
 #include "game/eft/model/World.hpp"
 
 namespace radar::eft {
@@ -19,6 +20,7 @@ struct WorldState {
     sched::Published<LootSnapshot> loot;
     sched::Published<EquipmentSnapshot> equipment;
     sched::Published<QuestsSnapshot> quests;
+    sched::Published<StashSnapshot> stash;
     sched::Published<CameraSnapshot> camera;
     // Not a snapshot: a way to read the cameras on demand (see CameraReader).
     sched::Published<CameraReaderRef> cameraReader;

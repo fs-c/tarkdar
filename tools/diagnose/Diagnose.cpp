@@ -12,15 +12,18 @@
 #include "game/eft/world/Exfils.hpp"
 #include "game/eft/Layouts.hpp"
 #include "game/eft/camera/CameraTracker.hpp"
+#include "game/eft/items/ItemTree.hpp"
 #include "game/eft/world/Explosives.hpp"
 #include "game/eft/world/Loot.hpp"
 #include "game/eft/world/Quests.hpp"
+#include "game/eft/world/Stash.hpp"
 #include "game/eft/world/Vehicles.hpp"
 
 #include <eft_offsets.hpp>
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <format>
 #include <map>
@@ -569,6 +572,273 @@ void checkQuests(Report& r, const std::shared_ptr<const eft::RaidSession>& sessi
     }
 }
 
+// ---- Stash probe (owned items for quest/hideout needs; see TODO.md "quests tab") ----------------
+//
+// Answers, before building a stash reader:
+//  - is the in-raid profile's stash (Player.Profile.Inventory.Stash) filled in, or stripped?
+//  - can the menu-side profile be reached (TarkovApplication → MainMenuShowOperation → session/profile),
+//    in a raid and outside one, and is it the same object as Player.Profile?
+//  - how big is a stash read (items, templates, time), and does the FIR flag look right?
+//  - hideout area levels (Profile.Hideout.Areas).
+
+struct TreeStats {
+    std::size_t top = 0, nodes = 0, fir = 0, attached = 0, units = 0;
+    std::map<std::string, std::pair<std::int64_t, std::int64_t>> perTpl;  // tpl → (units, FIR units)
+};
+
+void tally(const std::vector<eft::ItemNode>& nodes, TreeStats& s) {
+    for (const auto& n : nodes) {
+        ++s.nodes;
+        s.units += n.count;
+        s.fir += n.fir;
+        s.attached += !n.slot.empty();
+        auto& t = s.perTpl[n.tpl];
+        t.first += n.count;
+        if (n.fir) t.second += n.count;
+        tally(n.children, s);
+    }
+}
+
+void reportTree(Report& r, std::string_view what, const std::vector<eft::ItemNode>& nodes, bool truncated,
+                std::chrono::milliseconds took, bool details) {
+    TreeStats s;
+    s.top = nodes.size();
+    tally(nodes, s);
+    r.ok(std::format("{}: {} top-level, {} items ({} units), {} FIR, {} attached (in slots), {} templates, read in {} ms{}",
+                     what, s.top, s.nodes, s.units, s.fir, s.attached, s.perTpl.size(), took.count(),
+                     truncated ? " — TRUNCATED at the node cap" : ""));
+    if (!details || s.perTpl.empty()) return;
+    std::vector<std::pair<std::string, std::pair<std::int64_t, std::int64_t>>> top(s.perTpl.begin(), s.perTpl.end());
+    std::sort(top.begin(), top.end(), [](const auto& a, const auto& b) { return a.second.first > b.second.first; });
+    for (std::size_t i = 0; i < std::min<std::size_t>(8, top.size()); ++i)
+        r.info(std::format("  tpl {} ×{} ({} FIR)", top[i].first, top[i].second.first, top[i].second.second));
+    // A few FIR and non-FIR examples to check against the game's inventory screen.
+    std::vector<std::string> firs, nonFirs;
+    for (const auto& n : nodes) {
+        if (n.fir && firs.size() < 4) firs.push_back(n.tpl);
+        if (!n.fir && nonFirs.size() < 4) nonFirs.push_back(n.tpl);
+    }
+    auto join = [](const std::vector<std::string>& v) {
+        std::string out;
+        for (const auto& x : v) out += (out.empty() ? "" : ", ") + x;
+        return out.empty() ? std::string("none") : out;
+    };
+    r.info("  top-level FIR e.g.: " + join(firs));
+    r.info("  top-level not FIR e.g.: " + join(nonFirs));
+}
+
+constexpr eft::ItemTreeLimits kStashLimits{.maxDepth = 12, .maxNodes = 60000, .maxSlots = 64, .maxGridItems = 8192};
+
+void probeContainer(Report& r, const eft::Game& game, std::string_view what, Address item, bool details) {
+    if (!item) {
+        r.info(std::format("{}: null", what));
+        return;
+    }
+    eft::ItemTreeReader reader(game, kStashLimits);
+    const auto t0 = std::chrono::steady_clock::now();
+    const auto contents = reader.readContents(item);
+    const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0);
+    reportTree(r, std::format("{} ({}, {})", what, hex(item), classOf(game, item)), contents, reader.truncated(), took, details);
+}
+
+void probeProfile(Report& r, const eft::Game& game, std::string_view who, Address profile) {
+    const auto id = game.managed.readStringField(profile + off::Profile::Id, 64).value_or("?");
+    const Address info = eft::readPointer(game, profile + off::Profile::Info);
+    const auto nick = info ? game.managed.readStringField(info + off::PlayerInfo::Nickname, 64).value_or("?") : "?";
+    r.info(std::format("{} profile {} ({}): id {}, nickname '{}'", who, hex(profile), classOf(game, profile), id, nick));
+
+    const Address inventory = eft::readPointer(game, profile + off::Profile::Inventory, mem::Freshness::Fresh);
+    if (!inventory) {
+        r.fail(std::format("{}: Profile.Inventory is null", who), "Profile.Inventory");
+        return;
+    }
+    r.info(std::format("{}: inventory {} ({})", who, hex(inventory), classOf(game, inventory)));
+    const auto field = [&](std::uint32_t offset) { return eft::readPointer(game, inventory + offset, mem::Freshness::Fresh); };
+
+    if (const Address equipment = field(off::Inventory::Equipment)) {
+        eft::ItemTreeReader reader(game, kStashLimits);
+        const auto t0 = std::chrono::steady_clock::now();
+        const auto slots = reader.readSlots(eft::readPointer(game, equipment + off::InventoryEquipment::_cachedSlots));
+        const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0);
+        reportTree(r, std::format("{}: equipment", who), slots, reader.truncated(), took, false);
+    } else {
+        r.info(std::format("{}: equipment null", who));
+    }
+    const Address stash = field(off::Inventory::Stash);
+    if (!stash) r.info(std::format("{}: Inventory.Stash is null (stripped in this profile)", who));
+    probeContainer(r, game, std::format("{}: stash", who), stash, true);
+    probeContainer(r, game, std::format("{}: sorting table", who), field(off::Inventory::SortingTable), false);
+    probeContainer(r, game, std::format("{}: quest raid items", who), field(off::Inventory::QuestRaidItems), true);
+    probeContainer(r, game, std::format("{}: quest stash items", who), field(off::Inventory::QuestStashItems), false);
+    probeContainer(r, game, std::format("{}: hideout customization stash", who),
+                   field(off::Inventory::HideoutCustomizationStash), false);
+
+    // Dictionary<?, stash>: the key is an enum (area type) or a string; either way the value sits at
+    // the same entry offset, so it reads as <u64, Address>.
+    if (const Address dict = field(off::Inventory::HideoutAreaStashes)) {
+        const auto entries = game.managed.readDictionary<std::uint64_t, Address>(dict, 256, mem::Freshness::Fresh);
+        if (!entries) {
+            r.info(std::format("{}: hideout area stashes {} ({}) unreadable as a dictionary", who, hex(dict), classOf(game, dict)));
+        } else {
+            r.info(std::format("{}: {} hideout area stashes ({})", who, entries->size(), classOf(game, dict)));
+            for (const auto& [key, value] : *entries)
+                probeContainer(r, game, std::format("{}: area stash key {:#x}", who, key), value, false);
+        }
+    } else {
+        r.info(std::format("{}: hideout area stashes null", who));
+    }
+
+    const Address hideout = eft::readPointer(game, profile + off::Profile::Hideout, mem::Freshness::Fresh);
+    const Address areasArray = hideout ? eft::readPointer(game, hideout + off::HideoutInfo::Areas, mem::Freshness::Fresh) : 0;
+    const auto areas = areasArray ? game.managed.readArray<Address>(areasArray, 128, mem::Freshness::Fresh) : std::nullopt;
+    if (!areas) {
+        r.info(std::format("{}: hideout areas unreadable (Hideout {}, Areas {})", who, hex(hideout), hex(areasArray)));
+    } else {
+        std::string list;
+        for (Address a : *areas) {
+            const auto type = game.mem.read<std::int32_t>(a + off::AreaInfo::Type);
+            const auto level = game.mem.read<std::int32_t>(a + off::AreaInfo::Level);
+            list += std::format("{}{}:{}", list.empty() ? "" : " ", type, level);
+        }
+        r.info(std::format("{}: {} hideout areas (type:level): {}", who, areas->size(), list));
+    }
+}
+
+// Pointer fields of `root` (and of the objects they point at, up to `depth` levels) that hold an
+// instance of `className`: "+0x18 (ClientBackEnd) → +0x40 (EFT.EftClientBackendSession)". For the
+// session in a raid, where _menuOperation is gone and ClientApplication<T>'s own fields (generic, so
+// without offsets in the dump) are the remaining way in.
+struct PathHit {
+    std::string path;
+    Address object;
+};
+
+void searchFields(const eft::Game& game, Address root, std::string_view className, int depth, std::string path,
+                  std::vector<Address>& seen, std::vector<PathHit>& hits) {
+    static constexpr std::uint32_t kSpan = 0x300;
+    std::vector<Address> fields(kSpan / 8);
+    if (!game.mem.readBytes(root, std::as_writable_bytes(std::span{fields}), mem::Freshness::Fresh)) return;
+    for (std::size_t i = 2; i < fields.size(); ++i) {  // skip klass and monitor
+        const Address p = fields[i];
+        if (!mem::MemoryView::isUserPointer(p) || std::find(seen.begin(), seen.end(), p) != seen.end()) continue;
+        seen.push_back(p);
+        const auto klass = game.managed.klassOf(p);
+        if (!klass) continue;
+        const auto name = game.managed.fullClassName(*klass);
+        if (name.empty()) continue;
+        const auto step = std::format("{}{}+{:#x} ({})", path, path.empty() ? "" : " → ", i * 8, name);
+        if (game.managed.classIsA(*klass, className)) hits.push_back({step, p});
+        else if (depth > 1 && hits.size() < 8) searchFields(game, p, className, depth - 1, step, seen, hits);
+    }
+}
+
+void checkStash(Report& r, const eft::Game& game, Address localPlayer) {
+    r.section("Stash (probe)");
+    std::vector<std::pair<std::string, Address>> profiles;
+    const auto addProfile = [&](std::string who, Address p) {
+        if (!mem::MemoryView::isUserPointer(p)) return;
+        for (const auto& [w, q] : profiles)
+            if (q == p) {
+                r.info(std::format("{} profile is the same object as the {} profile ({})", who, w, hex(p)));
+                return;
+            }
+        profiles.emplace_back(std::move(who), p);
+    };
+
+    if (localPlayer) {
+        const Address p = eft::readPointer(game, localPlayer + off::Player::Profile, mem::Freshness::Fresh);
+        if (p) addProfile("in-raid (Player.Profile)", p);
+        else r.fail("local player's profile unreadable", "Player.Profile");
+    } else {
+        r.info("not in a raid: only the menu-side profile is probed");
+    }
+
+    const auto t0 = std::chrono::steady_clock::now();
+    std::size_t checked = 0;
+    const auto found = eft::Stash::findApplication(game, &checked);
+    const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0);
+    if (!found) {
+        r.fail(std::format("TarkovApplication not found among the active objects ({} ms)", took.count()),
+               "class name EFT.TarkovApplication; Scene components / Component.ManagedObject");
+    } else {
+        const Address application = *found;
+        r.ok(std::format("TarkovApplication {} (found after {} objects, {} ms)", hex(application), checked, took.count()));
+        const Address menu = eft::readPointer(game, application + off::TarkovApplication::MenuOperation, mem::Freshness::Fresh);
+        if (!menu) {
+            r.info("TarkovApplication._menuOperation is null");
+        } else {
+            r.info(std::format("_menuOperation {} ({})", hex(menu), classOf(game, menu)));
+            const Address session = eft::readPointer(game, menu + off::MainMenuShowOperation::Session, mem::Freshness::Fresh);
+            const Address menuProfile = eft::readPointer(game, menu + off::MainMenuShowOperation::Profile, mem::Freshness::Fresh);
+            r.info(std::format("MainMenuShowOperation._session {} ({}), _profile {}", hex(session),
+                               session ? classOf(game, session) : "-", hex(menuProfile)));
+            if (session && game.managed.isInstanceOf(session, "EFT.ClientBackendSession")) {
+                const Address sp = eft::readPointer(game, session + off::ClientBackendSession::Profile, mem::Freshness::Fresh);
+                const auto all = game.managed.readArray<Address>(
+                    eft::readPointer(game, session + off::ClientBackendSession::AllProfiles, mem::Freshness::Fresh), 16);
+                r.info(std::format("ClientBackendSession._profile {}, AllProfiles: {}", hex(sp),
+                                   all ? std::to_string(all->size()) : "unreadable"));
+                addProfile("session (ClientBackendSession._profile)", sp);
+                if (all)
+                    for (std::size_t i = 0; i < all->size(); ++i) addProfile(std::format("session AllProfiles[{}]", i), (*all)[i]);
+            } else if (session) {
+                r.info("session isn't an EFT.ClientBackendSession: " + game.managed.describeAncestry(*game.managed.klassOf(session)));
+            }
+            addProfile("menu (MainMenuShowOperation._profile)", menuProfile);
+        }
+        // The direct path (literals; works in a raid and in the menu).
+        const Address backEnd = eft::readPointer(game, application + off::ClientApplication::ClientBackEnd, mem::Freshness::Fresh);
+        const Address direct = backEnd ? eft::readPointer(game, backEnd + off::ClientBackend::Session, mem::Freshness::Fresh) : 0;
+        if (direct && game.managed.isInstanceOf(direct, "EFT.ClientBackendSession"))
+            r.ok(std::format("TarkovApplication.ClientBackEnd ({}) → Session = {} ({})", classOf(game, backEnd), hex(direct),
+                             classOf(game, direct)));
+        else
+            r.fail(std::format("TarkovApplication.ClientBackEnd {} → Session {} isn't a ClientBackendSession", hex(backEnd),
+                               hex(direct)),
+                   "literals ClientApplication.ClientBackEnd, ClientBackend.Session (see the field search below)");
+
+        // Paths to the session that don't go through _menuOperation (gone in a raid), to re-find the
+        // literals above after a game update.
+        std::vector<Address> seen{application};
+        std::vector<PathHit> hits;
+        const auto s0 = std::chrono::steady_clock::now();
+        searchFields(game, application, "EFT.ClientBackendSession", 3, "", seen, hits);
+        const auto searchMs =
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - s0).count();
+        if (hits.empty()) {
+            r.fail(std::format("no ClientBackendSession within 3 pointer hops of TarkovApplication ({} objects, {} ms)",
+                               seen.size(), searchMs));
+        } else {
+            r.ok(std::format("{} path(s) from TarkovApplication to a ClientBackendSession ({} objects, {} ms):", hits.size(),
+                             seen.size(), searchMs));
+            for (const auto& h : hits) r.info(std::format("  {} = {}", h.path, hex(h.object)));
+            const Address session = hits.front().object;
+            addProfile("session via field path", eft::readPointer(game, session + off::ClientBackendSession::Profile,
+                                                                  mem::Freshness::Fresh));
+        }
+    }
+
+    if (profiles.empty()) {
+        r.fail("no profile to probe");
+        return;
+    }
+    for (const auto& [who, p] : profiles) probeProfile(r, game, who, p);
+
+    // What the backend's Stash subsystem publishes (the `stash` message).
+    const Address sessionProfile = found ? eft::Stash::sessionProfile(game, *found) : 0;
+    const auto contents = sessionProfile ? eft::Stash::readContents(game, sessionProfile) : std::nullopt;
+    if (!contents) {
+        r.fail("Stash subsystem: session profile or its stash unreadable",
+               "literals ClientApplication.ClientBackEnd, ClientBackend.Session; ClientBackendSession.Profile; Inventory.Stash");
+    } else {
+        std::int64_t units = 0, fir = 0;
+        for (const auto& o : contents->stash) units += o.count, fir += o.fir;
+        r.ok(std::format("Stash subsystem: profile {}: {} templates in the stash ({} units, {} FIR), {} in the equipment{}",
+                         contents->profileId, contents->stash.size(), units, fir, contents->equipment.size(),
+                         contents->truncated ? " — TRUNCATED" : ""));
+    }
+}
+
 }  // namespace
 
 int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out, const std::atomic<bool>* stop) {
@@ -615,8 +885,10 @@ int runDiagnose(mem::Target& target, int timeoutSeconds, std::FILE* out, const s
         checkLoot(r, session);
         checkQuests(r, session);
         checkCamera(r, session);
+        checkStash(r, game, raid->localPlayer);
     } else {
         r.info("skipping players, exfils, explosives, vehicles, loot, quests and camera: they need a raid");
+        checkStash(r, game, 0);
     }
 
     r.section("Summary");

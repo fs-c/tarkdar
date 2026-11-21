@@ -44,6 +44,8 @@ interface Props {
   // Quests
   questPrefs: QuestsProps["prefs"];
   setQuestPrefs: QuestsProps["onPrefs"];
+  questNeeds: QuestsProps["needs"];
+  owned: QuestsProps["owned"];
   // Filters
   ruleStore: FiltersProps["rules"];
   setRuleStore: FiltersProps["setRules"];
@@ -109,7 +111,17 @@ export function SidePanelContent(p: Props) {
         />
       );
     case "quests":
-      return <QuestsPanel quests={p.unfilteredState.quests} catalog={p.catalog} prefs={p.questPrefs} onPrefs={p.setQuestPrefs} questInfo={p.questInfo} />;
+      return (
+        <QuestsPanel
+          quests={p.unfilteredState.quests}
+          catalog={p.catalog}
+          prefs={p.questPrefs}
+          onPrefs={p.setQuestPrefs}
+          questInfo={p.questInfo}
+          needs={p.questNeeds}
+          owned={p.owned}
+        />
+      );
     case "filters":
       return (
         <FiltersPanel

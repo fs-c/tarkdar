@@ -18,6 +18,7 @@ add_library(radar_eft STATIC
     eft/world/Explosives.cpp
     eft/world/Vehicles.cpp
     eft/world/Quests.cpp
+    eft/world/Stash.cpp
     eft/world/Loot.cpp
 )
 target_link_libraries(radar_eft PUBLIC radar_core radar_offsets PRIVATE radar_warnings)

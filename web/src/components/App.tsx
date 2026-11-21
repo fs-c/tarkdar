@@ -32,6 +32,7 @@ import s from "./App.module.css";
 import f from "./Floating.module.css";
 import { StatusBar, StatusButton } from "./StatusBar";
 import { useMapDebug } from "./useMapDebug";
+import { useOwned } from "./useOwned";
 import { useQuestState } from "./useQuestState";
 import { useReplay } from "./useReplay";
 import { useSelection } from "./useSelection";
@@ -67,7 +68,8 @@ export function App() {
 
   const filterQuest = lootPrefs.questItems !== "all";
   const [questPrefs, setQuestPrefs] = useQuestPrefs();
-  const { state, deduped, questLabels, questNeeds, questInfo } = useQuestState(unfiltered, filterQuest, questPrefs);
+  const ownedState = useOwned(unfiltered, conn.stash, questPrefs.ignoreOwned);
+  const { state, deduped, needs, questLabels, questNeeds, questInfo } = useQuestState(unfiltered, filterQuest, questPrefs, ownedState.owned);
 
   /** Out of a replay: the Raids view back to its list. */
   const backToLive = () => {
@@ -298,6 +300,8 @@ export function App() {
               onHover={setHovered}
               questPrefs={questPrefs}
               setQuestPrefs={setQuestPrefs}
+              questNeeds={needs}
+              owned={ownedState}
               ruleStore={ruleStore}
               setRuleStore={setRuleStore}
               pinned={pinned}

@@ -12,6 +12,7 @@ struct ItemNode {
     std::string tpl;         // template id
     std::string slot{};      // slot id when the item sits in a slot (e.g. "FirstPrimaryWeapon"); empty in grids
     std::int32_t count = 1;  // stack size
+    bool fir = false;        // found in raid (Item.SpawnedInSession)
     std::vector<ItemNode> children{};
 
     friend bool operator==(const ItemNode&, const ItemNode&) = default;

@@ -167,6 +167,24 @@ The local player's quests in progress (`Profile.QuestsData`); `null` until they'
     handed over so far (hand-over objectives the profile has a counter for). `text`: English text.
 - Sent when something changes (read every 2 s; templates once per quest).
 
+### `stash`
+```json
+{ "profile": "6a70cdb209bbcad9180d7eb4",
+  "stash": [ { "tpl": "5449016a4bdc2d6f028b456f", "count": 6293201 },
+             { "tpl": "5c10c8fd86f7743d7d706df3", "count": 4, "fir": 3 } ],
+  "equipment": [ { "tpl": "5c0e655586f774045612eeb2", "count": 1 } ] }
+```
+What the PMC owns, per template id; `null` until it's been read. From the menu-side profile
+(`ClientBackendSession._profile`; the in-raid `Player.Profile` has no stash), so it's the stash as it
+was when the raid started.
+- **`profile`:** the profile's id (to keep a copy per profile).
+- **`stash`:** everything in the stash, sorting table, quest stash and hideout area stashes, nested
+  items included (contents of cases, attached mods). **`count`:** stack units in total; **`fir`:** how
+  many of them are found in raid (missing: 0).
+- **`equipment`:** the same for the profile's equipment: in a raid, what the character took in (the
+  current gear is the local player's `equipment`).
+- Read every 30 s; sent when something changes.
+
 ### `camera`
 ```json
 { "fps": { "vp": [ 16 numbers ], "pos": [ 120.4, 3.1, -88.2 ], "fov": 75, "aspect": 1.7778 },
@@ -217,8 +235,8 @@ Equipment per player id (players without readable equipment are omitted). Player
 few seconds; the message is sent when something changed.
 
 ### Item nodes
-`{ "tpl": template id, "slot": slot id (if in a slot), "count": stack size (if > 1), "items": [child
-nodes] (if any) }`. Children are slot attachments (weapon mods, magazine cartridges, armour plates),
+`{ "tpl": template id, "slot": slot id (if in a slot), "count": stack size (if > 1), "fir": true (if
+found in raid), "items": [child nodes] (if any) }`. Children are slot attachments (weapon mods, magazine cartridges, armour plates),
 plus grid contents (backpack, rig), slot items first. Names and prices come
 from item data, keyed by `tpl`.
 

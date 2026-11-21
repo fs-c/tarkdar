@@ -3,17 +3,20 @@
 // them already). A switch per quest and per kind says whether it counts. A quest that doesn't count
 // needs nothing: its quest items are left out (with Quest items: Needed), and its items aren't
 // `is:needed`. For quests left in progress for good, whose markers would only clutter the map.
+// What's owned (the stash, the gear on the character) covers objectives: shown per objective ("have
+// 2"), and covered ones need nothing more (a switch turns that off).
 
 import { X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { ItemCatalog } from "../model/items";
 import type { QuestObjective, QuestState } from "../model/protocol";
-import { type NeedKind, QUEST_READY, QUEST_STARTED, counts, openObjectives, questLabel, traderName } from "../model/quests";
+import { type NeedKind, type QuestNeeds, QUEST_READY, QUEST_STARTED, counts, openObjectives, questLabel, traderName } from "../model/quests";
 import { type ImportedQuest, type TaskFeed, loadTaskFeed } from "../model/taskFeed";
 import type { QuestPrefs } from "../persist/prefs";
 import type { SetStored } from "../persist";
 import { Actions, Button, Note, PanelBody, Section, Switch, TextInput } from "../ui";
 import s from "./QuestsPanel.module.css";
+import type { OwnedState } from "./useOwned";
 
 interface Props {
   /** The raid's quests (before any filtering); null when they weren't read. */
@@ -23,6 +26,9 @@ interface Props {
   onPrefs: SetStored<QuestPrefs>;
   /** What the quest item filter knows right now, e.g. "3 quests started, 5 items needed". */
   questInfo: string;
+  /** What the counting quests need, with what's owned set aside for each objective. */
+  needs: QuestNeeds | null;
+  owned: OwnedState;
 }
 
 /** Sections, top to bottom. */
@@ -36,7 +42,7 @@ const MAX_RESULTS = 15;
 
 const toggled = <T,>(list: readonly T[], x: T): T[] => (list.includes(x) ? list.filter((y) => y !== x) : [...list, x]);
 
-export function QuestsPanel({ quests, catalog, prefs, onPrefs, questInfo }: Props) {
+export function QuestsPanel({ quests, catalog, prefs, onPrefs, questInfo, needs, owned }: Props) {
   const counting = { ignored: new Set(prefs.ignored), ignoredKinds: new Set(prefs.ignoredKinds) };
   const toggleQuest = (id: string) => onPrefs((p) => ({ ...p, ignored: toggled(p.ignored, id) }));
   const toggleKind = (k: NeedKind) => onPrefs((p) => ({ ...p, ignoredKinds: toggled(p.ignoredKinds, k) }));
@@ -73,6 +79,19 @@ export function QuestsPanel({ quests, catalog, prefs, onPrefs, questInfo }: Prop
           </Actions>
         )}
       </Section>
+      <Section
+        title="Owned items"
+        aside={
+          <Switch
+            size="sm"
+            checked={!prefs.ignoreOwned}
+            onChange={() => onPrefs((p) => ({ ...p, ignoreOwned: !p.ignoreOwned }))}
+            title={prefs.ignoreOwned ? "Owned items are ignored: everything still to hand in is needed (click: count them)" : "Owned items count: what you have isn't needed (click: ignore them)"}
+          />
+        }
+      >
+        <p className="muted">{ownedInfo(owned)}</p>
+      </Section>
       {ORDER.filter((k) => k !== "imported" && byKind.has(k)).map((kind) => {
         const list = [...byKind.get(kind)!].sort((a, b) => questLabel(a).localeCompare(questLabel(b)));
         const kindOn = !counting.ignoredKinds.has(kind);
@@ -81,12 +100,13 @@ export function QuestsPanel({ quests, catalog, prefs, onPrefs, questInfo }: Prop
             <ul className={s.quests} data-on={kindOn}>
               {list.map((q) => {
                 const ready = q.status === QUEST_READY;
+                const open = q.objectives && !ready ? openObjectives(q) : [];
                 return (
                   <QuestRow
                     key={q.id}
                     id={q.id}
                     label={questLabel(q)}
-                    meta={[q.kind !== "story" && q.name ? traderName(q.trader) : undefined, q.hidden ? "hidden step" : undefined]}
+                    meta={[q.kind !== "story" && q.name ? traderName(q.trader) : undefined, q.hidden ? "hidden step" : undefined, allOwned(q.id, open, needs) ? "all owned" : undefined]}
                     counts={!counting.ignored.has(q.id)}
                     kindOn={kindOn}
                     ready={ready}
@@ -97,7 +117,7 @@ export function QuestsPanel({ quests, catalog, prefs, onPrefs, questInfo }: Prop
                     ) : !q.objectives ? (
                       <div className={s.note}>objectives unknown: all its quest items show</div>
                     ) : (
-                      <Objectives open={openObjectives(q)} itemName={itemName} />
+                      <Objectives questId={q.id} open={open} needs={needs} itemName={itemName} />
                     )}
                   </QuestRow>
                 );
@@ -106,7 +126,16 @@ export function QuestsPanel({ quests, catalog, prefs, onPrefs, questInfo }: Prop
           </Section>
         );
       })}
-      <ImportedSection prefs={prefs} onPrefs={onPrefs} live={live} kindSwitch={kindSwitch("imported")} kindOn={!counting.ignoredKinds.has("imported")} toggleQuest={toggleQuest} itemName={itemName} />
+      <ImportedSection
+        prefs={prefs}
+        onPrefs={onPrefs}
+        live={live}
+        kindSwitch={kindSwitch("imported")}
+        kindOn={!counting.ignoredKinds.has("imported")}
+        toggleQuest={toggleQuest}
+        itemName={itemName}
+        needs={needs}
+      />
     </PanelBody>
   );
 }
@@ -159,17 +188,57 @@ function QuestRow({ id, label, meta, counts: on, kindOn, ready, onToggle, onRemo
   );
 }
 
-function Objectives({ open, itemName, names }: { open: ReturnType<typeof openObjectives>; itemName: (tpl: string, names?: Record<string, string>) => string; names?: Record<string, string> }) {
+type Open = ReturnType<typeof openObjectives>;
+
+/** Every open objective is covered by what's owned (and it counts, so there are needs). */
+const allOwned = (questId: string, open: Open, needs: QuestNeeds | null) =>
+  open.length > 0 && open.every(({ objective: o }) => needs?.objectives.get(`${questId}/${o.id}`)?.covered);
+
+function ownedInfo({ owned, stash, keptAt }: OwnedState): string {
+  if (!owned && !stash) return "Stash not read yet: it's read in a raid (then kept). Gear on the character counts in a raid.";
+  if (!stash) return "Stash not read yet; the gear on the character counts.";
+  const items = stash.stash.length;
+  const when = keptAt === null ? "as of this raid's start" : `kept from ${new Date(keptAt).toLocaleString()}`;
+  return `Stash ${when}: ${items} different items, plus the gear on the character. Objectives they cover need nothing more.`;
+}
+
+function Objectives({
+  questId,
+  open,
+  needs,
+  itemName,
+  names,
+}: {
+  questId: string;
+  open: Open;
+  needs: QuestNeeds | null;
+  itemName: (tpl: string, names?: Record<string, string>) => string;
+  names?: Record<string, string>;
+}) {
   if (!open.length) return <div className={s.note}>no items left to find</div>;
   return (
     <ul className={s.objectives}>
-      {open.map(({ objective: o, items, progress }) => (
-        <li key={o.id} title={o.text}>
-          {VERBS[o.type]} {o.count > 1 ? `${progress ? `${progress}/` : ""}${o.count}× ` : ""}
-          {items.length <= LISTED_ITEMS ? items.map((t) => itemName(t, names)).join(" / ") : `any of ${items.length} items`}
-          {o.fir && <span className={s.fir}> FIR</span>}
-        </li>
-      ))}
+      {open.map(({ objective: o, items, progress }) => {
+        const need = needs?.objectives.get(`${questId}/${o.id}`);
+        return (
+          <li key={o.id} title={o.text} data-covered={!!need?.covered}>
+            {VERBS[o.type]} {o.count > 1 ? `${progress ? `${progress}/` : ""}${o.count}× ` : ""}
+            {items.length <= LISTED_ITEMS ? items.map((t) => itemName(t, names)).join(" / ") : `any of ${items.length} items`}
+            {o.fir && <span className={s.fir}> FIR</span>}
+            {need?.covered ? (
+              <span className={s.have} title="Owned (stash or on the character): needs nothing more">
+                {" "}
+                ✓ have
+              </span>
+            ) : need?.have ? (
+              <span className={s.have} title="Owned (stash or on the character)">
+                {" "}
+                have {need.have}
+              </span>
+            ) : null}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -188,9 +257,10 @@ interface ImportedProps {
   kindOn: boolean;
   toggleQuest: (id: string) => void;
   itemName: (tpl: string, names?: Record<string, string>) => string;
+  needs: QuestNeeds | null;
 }
 
-function ImportedSection({ prefs, onPrefs, live, kindSwitch, kindOn, toggleQuest, itemName }: ImportedProps) {
+function ImportedSection({ prefs, onPrefs, live, kindSwitch, kindOn, toggleQuest, itemName, needs }: ImportedProps) {
   const [importing, setImporting] = useState(false);
   const list = [...prefs.imported].sort((a, b) => a.name.localeCompare(b.name));
   const remove = (id: string) => onPrefs((p) => ({ ...p, imported: p.imported.filter((q) => q.id !== id), ignored: p.ignored.filter((x) => x !== id) }));
@@ -201,18 +271,19 @@ function ImportedSection({ prefs, onPrefs, live, kindSwitch, kindOn, toggleQuest
       <ul className={s.quests} data-on={kindOn}>
         {list.map((q) => {
           const started = live.has(q.id);
+          const open = importedOpen(q);
           return (
             <QuestRow
               key={q.id}
               id={q.id}
               label={q.name}
-              meta={[traderName(q.trader), started ? "started" : undefined]}
+              meta={[traderName(q.trader), started ? "started" : undefined, !started && allOwned(q.id, open, needs) ? "all owned" : undefined]}
               counts={!prefs.ignored.includes(q.id)}
               kindOn={kindOn}
               onToggle={() => toggleQuest(q.id)}
               onRemove={() => remove(q.id)}
             >
-              {started ? <div className={s.note}>started: counts with its kind above</div> : <Objectives open={importedOpen(q)} itemName={itemName} names={q.itemNames} />}
+              {started ? <div className={s.note}>started: counts with its kind above</div> : <Objectives questId={q.id} open={open} needs={needs} itemName={itemName} names={q.itemNames} />}
             </QuestRow>
           );
         })}

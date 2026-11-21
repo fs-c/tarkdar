@@ -3,6 +3,7 @@
 #include "server/Protocol.hpp"
 #include "server/Recorder.hpp"
 #include "server/Server.hpp"
+#include "game/eft/world/Stash.hpp"
 
 #include <doctest/doctest.h>
 #include <zlib.h>
@@ -196,6 +197,29 @@ TEST_CASE("protocol encoding: vehicles") {
     CHECK(contains(v, R"("seat":"gunner")"));
     CHECK(contains(v, R"("player":7)"));
     CHECK(contains(v, R"("seat":"passenger")"));
+}
+
+TEST_CASE("protocol encoding: stash") {
+    CHECK(contains(server::encodeStash(eft::StashSnapshot{}), R"("stash":null)"));
+    eft::StashSnapshot snap{.raidId = 2, .revision = 1, .known = true, .profileId = "p1",
+                            .stash = {{.tpl = "a", .count = 30, .fir = 10}, {.tpl = "b", .count = 1, .fir = 0}},
+                            .equipment = {{.tpl = "c", .count = 2, .fir = 2}}};
+    const auto m = server::encodeStash(snap);
+    CHECK(contains(m, R"("type":"stash")"));
+    CHECK(contains(m, R"("profile":"p1")"));
+    CHECK(contains(m, R"({"tpl":"a","count":30,"fir":10})"));
+    CHECK(contains(m, R"({"tpl":"b","count":1})"));
+    CHECK(contains(m, R"("equipment":[{"tpl":"c","count":2,"fir":2}])"));
+}
+
+TEST_CASE("stash tally: units per template, FIR counted apart, children included") {
+    const std::vector<eft::ItemNode> nodes{
+        {.tpl = "case", .children = {{.tpl = "a", .count = 20, .fir = true}, {.tpl = "a", .count = 5}}},
+        {.tpl = "a", .count = 3, .fir = true}};
+    const auto t = eft::Stash::tally(nodes);
+    REQUIRE(t.size() == 2);
+    CHECK(t[0] == eft::OwnedItem{.tpl = "a", .count = 28, .fir = 23});
+    CHECK(t[1] == eft::OwnedItem{.tpl = "case", .count = 1, .fir = 0});
 }
 
 TEST_CASE("protocol encoding: quests") {

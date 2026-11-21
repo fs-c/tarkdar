@@ -14,9 +14,11 @@ import {
   type Player,
   type PlayerEquipment,
   type QuestState,
+  type StashData,
   type StatusData,
   isSentinelPos,
   parseMessage,
+  stashData,
 } from "../model/protocol";
 import { notifyOnFrame } from "./frame";
 import { StreamStats } from "./stats";
@@ -42,6 +44,8 @@ export interface RadarState {
   equipment: Map<number, PlayerEquipment>;
   /** The local player's quests in progress; null when unknown (not sent yet, or an old backend). */
   quests: QuestState[] | null;
+  /** The PMC's stash as of the raid's start; null when unknown (not sent yet, or an old backend). */
+  stash: StashData | null;
 }
 
 const emptyExplosives = (): ExplosivesData => ({ grenades: [], tripwires: [] });
@@ -61,6 +65,7 @@ export const initialRadarState = (): RadarState => ({
   loot: [],
   equipment: new Map(),
   quests: null,
+  stash: null,
 });
 
 export class Connection {
@@ -193,6 +198,8 @@ export class Connection {
         return this.update({ equipment: new Map(msg.data.players.map((p) => [p.id, p])) });
       case "quests":
         return this.update({ quests: msg.data.quests });
+      case "stash":
+        return this.update({ stash: stashData(msg.data) });
       case "camera":
         // The camera's last (empty) snapshot of a raid can come after the status that ended it.
         if (msg.raid === null || this.state.status?.state !== "inRaid") return;

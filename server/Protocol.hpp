@@ -4,6 +4,7 @@
 #include "game/eft/model/Camera.hpp"
 #include "game/eft/model/Players.hpp"
 #include "game/eft/model/Quests.hpp"
+#include "game/eft/model/Stash.hpp"
 #include "game/eft/model/World.hpp"
 #include "overlay/Config.hpp"
 
@@ -36,6 +37,7 @@ inline constexpr int kRecordingFormat = 1;
 [[nodiscard]] std::string encodeCamera(const eft::CameraSnapshot& camera);
 [[nodiscard]] std::string encodeEquipment(const eft::EquipmentSnapshot& equipment);
 [[nodiscard]] std::string encodeQuests(const eft::QuestsSnapshot& quests);
+[[nodiscard]] std::string encodeStash(const eft::StashSnapshot& stash);
 // Recordings only: the first line of a raid recording.
 [[nodiscard]] std::string encodeRecordingHeader(const eft::Status& status);
 // Recordings only: the loot changes since the previous loot (or lootDiff) line. `revision` is the

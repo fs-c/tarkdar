@@ -19,8 +19,10 @@ import {
   type QuestState,
   type RecordedMessage,
   type SkeletonsData,
+  type StashData,
   type StatusData,
   type WorldPos,
+  stashData,
 } from "../model/protocol";
 
 /** The parts of RadarState a timeline provides for a moment. */
@@ -35,6 +37,7 @@ export interface TimelineState {
   loot: LootEntry[];
   equipment: Map<number, PlayerEquipment>;
   quests: QuestState[] | null;
+  stash: StashData | null;
 }
 
 export type TimelineEvent =
@@ -318,6 +321,7 @@ export class Timeline {
   private readonly vehicles: Stamped<Vehicle[]>[] = [];
   private readonly equipment: Stamped<Map<number, PlayerEquipment>>[] = [];
   private readonly quests: Stamped<QuestState[] | null>[] = [];
+  private readonly stash: Stamped<StashData | null>[] = [];
   private readonly loot: LootVersion[] = [];
   /** The loot as of the last version. */
   private lootHead = new Map<number, LootEntry>();
@@ -381,6 +385,9 @@ export class Timeline {
         break;
       case "quests":
         this.quests.push({ t, value: msg.data.quests });
+        break;
+      case "stash":
+        this.stash.push({ t, value: stashData(msg.data) });
         break;
       case "loot":
         this.ingestLoot(t, msg.data.loot);
@@ -545,6 +552,7 @@ export class Timeline {
       loot: this.lootAt(t),
       equipment: latest(this.equipment, t) ?? EMPTY_EQUIPMENT,
       quests: latest(this.quests, t),
+      stash: latest(this.stash, t),
     };
   }
 

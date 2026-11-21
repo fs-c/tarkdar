@@ -3,8 +3,9 @@
 //   ledx                      free text, as in the list's search (every word must appear)
 //   "red rebel"               a phrase
 //   is:boss  is:pmc,pscav     kinds of player and thing; a list means any of them
-//   is:needed                 a loose item a started quest still needs, or a quest item one needs;
-//                             players (but you) and corpses carrying such an item
+//   is:needed                 a loose item a started quest still needs, or a quest item one needs
+//                             (not if what you own covers it: stash, gear on you; FIR for FIR
+//                             objectives); players (but you) and corpses carrying such an item
 //   quest:story,side          ... needed by that kind of quest: story side daily weekly (repeatable:
 //                             daily and weekly), imported (future: one imported in the Quests view)
 //   item:LEDX  item:"Red Rebel ice pick"   items (short or full name) and kinds of container
@@ -336,7 +337,7 @@ export const isStructured = (q: string): boolean => parseQuery(q).terms.some((t)
 export const QUERY_HELP: { example: string; text: string; words: string }[] = [
   { example: "is:boss", text: "kinds of player: pmc usec bear pscav scav boss guard raider rogue cultist bd infected special human", words: "is players kinds" },
   { example: "is:item", text: "kinds of thing: item quest container airdrop corpse exfil explosive", words: "is things kinds" },
-  { example: "is:needed", text: "items a started quest still needs (quest items too), and players and corpses carrying one", words: "needed quest carrying" },
+  { example: "is:needed", text: "items a started quest still needs and you don't own yet (quest items too), and players and corpses carrying one", words: "needed quest carrying owned stash" },
   { example: "quest:story", text: "needed by a kind of quest: story side daily weekly repeatable, or an imported one", words: "quest story side daily weekly repeatable imported future task" },
   { example: "item:LEDX", text: "an item (short or full name), or a kind of container", words: "item" },
   { example: "cat:Electronics", text: "a handbook category", words: "cat category" },

@@ -1,7 +1,7 @@
 // The quest debug view's report: the local player's quests and why each quest item shows or not.
 
 import type { LootEntry, QuestKind, QuestObjective, QuestState } from "./protocol";
-import { QUEST_KINDS, QUEST_STARTED, isSpecific, openObjectives, questItemLabels, questLabel, questNeeds, traderName } from "./quests";
+import { QUEST_KINDS, QUEST_STARTED, isOpen, isSpecific, openObjectives, questItemLabels, questLabel, questNeeds, traderName } from "./quests";
 
 /** One objective of a quest in progress. */
 export interface QuestDebugObjective {
@@ -116,16 +116,18 @@ export function questDebugReport(input: {
     else byTpl.set(l.tpl, { obj: l.obj, count: 1 });
   }
   const questItems = [...byTpl].map(([tpl, { obj, count }]): QuestDebugItem => {
-    const needed = !!needs?.items.has(tpl);
+    const list = needs?.items.get(tpl);
+    const needed = !!list?.some(isOpen);
     let shown = true;
     let why: string;
     if (!filterOn) why = "filter off: all quest items show";
     else if (!needs) why = "quests not read: all show";
     else if (needed) why = "a started quest needs it";
+    else if (list?.length && !needs.complete) why = "owned already (some started quests' objectives unknown: kept)";
     else if (!needs.complete) why = "some started quests' objectives unknown: kept";
     else {
       shown = false;
-      why = "no started quest needs it";
+      why = list?.length ? "owned already" : "no started quest needs it";
     }
     return { tpl, label: labels.get(tpl) ?? null, obj, count, needed, shown, why };
   });
@@ -134,9 +136,9 @@ export function questDebugReport(input: {
   let all = 0, specific = 0;
   for (const l of loot) {
     const n = l.kind === "item" ? needs?.items.get(l.tpl) : undefined;
-    if (!n?.length) continue;
+    if (!n?.some(isOpen)) continue;
     all++;
-    if (n.some(isSpecific)) specific++;
+    if (n.some((x) => isOpen(x) && isSpecific(x))) specific++;
   }
 
   const unknown = (quests ?? []).filter((q) => q.status === QUEST_STARTED && !q.objectives).map((q) => q.id);

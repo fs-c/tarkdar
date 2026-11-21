@@ -1,6 +1,6 @@
 - minor improvements
-    - identify boss guards
-    - only highlight found-in-raid-required items
+    - only highlight found-in-raid-required items (also consider this for equipment)
+    - (some) radio groups expand to fill the parent which looks odd
 - backend/memory read optimization; there's noticeably more lag while the backend is running
     - still open: cache transform hierarchy/index lookups (2 of the 3 read rounds per positions tick), move builds/bone resolves off the live thread, publish players only on change, slower tripwire scan
 - cleanup/review round: follow-ups (found 2026-11, not done)
@@ -15,3 +15,8 @@
 - quest text from the global locale table (`TODO(quest-locale)` in `game/eft/world/Quests.cpp`)
     - quests read their own English-only dictionaries; exfil names already use the game's text table in the player's language
     - check in a raid whether that table has `"<quest id> name"` and the condition ids; if so, drop the separate reader
+- more versatile highlighting; right now if you want something be always visible the only option is "ring"
+- quests tab
+    - allow selecting quests which "count" for things like "is this a quest item" (some quests are left in progress "forever", don't want their markers cluttering up everything)
+    - evaluate if it's possible to show future quests there (e.g. to already start collecting for a future collection quest)
+    - potential quest related bug: a quest required a certain equipment piece that several scavs had on, but with the default "highlight quest items" (but on the maximum visibility setting with "ring") the scavs (scav bodies at that point) didn't get special highlighting, only once manually typed into the highlight field 

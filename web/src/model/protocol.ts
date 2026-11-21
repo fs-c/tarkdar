@@ -115,6 +115,8 @@ export interface ItemNode {
   slot?: string;
   /** Stack size, when more than 1. */
   count?: number;
+  /** Found in raid. */
+  fir?: boolean;
   items?: ItemNode[];
 }
 
@@ -157,6 +159,21 @@ export interface QuestState {
   hidden?: boolean;
   /** Item objectives; null (or missing, in older recordings) when the template couldn't be read. */
   objectives?: QuestObjective[] | null;
+}
+
+/** How many of an item the player owns (docs/protocol.md, `stash`): stack units, `fir` of them found in raid. */
+export interface OwnedItem {
+  tpl: string;
+  count: number;
+  fir?: number;
+}
+
+/** The PMC's items as of the raid's start: the stash (and its other containers), and the profile's
+ *  equipment (what the character took in). */
+export interface StashData {
+  profile: string;
+  stash: OwnedItem[];
+  equipment: OwnedItem[];
 }
 
 export type LootKind = "item" | "quest" | "container" | "airdrop" | "corpse";
@@ -226,6 +243,8 @@ export type Message =
   | Envelope<"equipment", { players: PlayerEquipment[] }>
   /** `quests` null: not read yet. */
   | Envelope<"quests", { quests: QuestState[] | null }>
+  /** `stash` null: not read yet. */
+  | Envelope<"stash", { stash: OwnedItem[] | null; profile?: string; equipment?: OwnedItem[] }>
   | Envelope<"camera", CameraData>;
 
 // ---- raid recordings (docs/protocol.md, "Raid recordings") ----
@@ -262,6 +281,11 @@ export interface RecordingInfo {
 
 /** The game sometimes parks some despawned/uninitialised entities at about -9999 on some axis; the backend sends it as is. */
 export const isSentinelPos = (pos: readonly number[] | null | undefined): boolean => !!pos && pos.some((c) => c <= -9000);
+
+/** A `stash` message's data as StashData; null when not read yet. */
+export function stashData(d: { stash: OwnedItem[] | null; profile?: string; equipment?: OwnedItem[] }): StashData | null {
+  return Array.isArray(d.stash) ? { profile: d.profile ?? "", stash: d.stash, equipment: d.equipment ?? [] } : null;
+}
 
 export function parseMessage(text: string): Message | null {
   try {

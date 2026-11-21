@@ -91,6 +91,7 @@ int LiveFeed::pollWorld() {
     }
     sent += forwardPlain("equipment", takeChange(w.equipment, lastEquipment_), encodeEquipment);
     sent += forwardPlain("quests", takeChange(w.quests, lastQuests_), encodeQuests);
+    sent += forwardPlain("stash", takeChange(w.stash, lastStash_), encodeStash);
     if (const auto camera = takeChange(w.camera, lastCamera_)) {
         const auto message = encodeCamera(*camera);
         send("camera", message);

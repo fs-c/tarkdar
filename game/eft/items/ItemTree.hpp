@@ -6,7 +6,7 @@
 #include <optional>
 #include <vector>
 
-// Reading item trees: an item's template id and stack count, then recursively its slots (for
+// Reading item trees: an item's template id, stack count and found-in-raid flag, then recursively its slots (for
 // compound items: weapons, mods, armour, equipment) and grids (containers, backpacks, rigs).
 namespace radar::eft {
 

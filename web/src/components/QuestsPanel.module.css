@@ -12,6 +12,8 @@
 .meta { flex: none; color: var(--muted); font-size: var(--fs-xs); }
 .objectives { padding: 2px 0 2px 34px; color: var(--muted); font-size: var(--fs-xs); }
 .objectives > li { padding: 1px 0; }
+.objectives > li[data-covered="true"] { color: var(--faint); }
+.have { color: var(--accent-text); }
 .fir { color: var(--warn); }
 .note { padding: 2px 0 2px 34px; color: var(--faint); font-size: var(--fs-xs); }
 .import { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; }

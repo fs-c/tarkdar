@@ -38,6 +38,7 @@ std::optional<ItemNode> ItemTreeReader::readNode(Address item, std::string slot,
     node.slot = std::move(slot);
     const auto count = game_.mem.read<std::int32_t>(item + off::Item::StackObjectsCount);
     node.count = count > 0 ? count : 1;
+    node.fir = game_.mem.read<std::uint8_t>(item + off::Item::SpawnedInSession) != 0;
     if (depth + 1 < limits_.maxDepth) readChildren(item, depth + 1, node.children);
     return node;
 }

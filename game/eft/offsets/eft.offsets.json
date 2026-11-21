@@ -702,6 +702,60 @@
       "value": "0x18"
     },
     {
+      "group": "Inventory",
+      "name": "Stash",
+      "class": "EFT.InventoryLogic.Inventory",
+      "field": "Stash",
+      "static": false,
+      "required": false,
+      "value": "0x20"
+    },
+    {
+      "group": "Inventory",
+      "name": "QuestRaidItems",
+      "class": "EFT.InventoryLogic.Inventory",
+      "field": "QuestRaidItems",
+      "static": false,
+      "required": false,
+      "value": "0x28"
+    },
+    {
+      "group": "Inventory",
+      "name": "QuestStashItems",
+      "class": "EFT.InventoryLogic.Inventory",
+      "field": "QuestStashItems",
+      "static": false,
+      "required": false,
+      "value": "0x30"
+    },
+    {
+      "group": "Inventory",
+      "name": "HideoutAreaStashes",
+      "class": "EFT.InventoryLogic.Inventory",
+      "field": "HideoutAreaStashes",
+      "static": false,
+      "required": false,
+      "value": "0x38"
+    },
+    {
+      "group": "Inventory",
+      "name": "HideoutCustomizationStash",
+      "class": "EFT.InventoryLogic.Inventory",
+      "field": "HideoutCustomizationStash",
+      "static": false,
+      "required": false,
+      "value": "0x40"
+    },
+    {
+      "group": "Inventory",
+      "name": "SortingTable",
+      "class": "EFT.InventoryLogic.Inventory",
+      "field": "SortingTable",
+      "static": false,
+      "required": false,
+      "value": "0x48"
+    },
+    {
       "group": "InventoryEquipment",
       "name": "_cachedSlots",
       "class": "EFT.InventoryLogic.InventoryEquipment",
@@ -781,6 +835,15 @@
       "static": false,
       "required": true,
       "value": "0x60"
+    },
+    {
+      "group": "Item",
+      "name": "SpawnedInSession",
+      "class": "EFT.InventoryLogic.Item",
+      "field": "<SpawnedInSession>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x68"
     },
     {
       "group": "StackSlot",
@@ -988,6 +1051,24 @@
       "static": false,
       "required": false,
       "value": "0x90"
+    },
+    {
+      "group": "Profile",
+      "name": "Inventory",
+      "class": "EFT.Profile",
+      "field": "Inventory",
+      "static": false,
+      "required": false,
+      "value": "0x70"
+    },
+    {
+      "group": "Profile",
+      "name": "Hideout",
+      "class": "EFT.Profile",
+      "field": "Hideout",
+      "static": false,
+      "required": false,
+      "value": "0x120"
     },
     {
       "group": "TaskConditionCounter",
@@ -1327,6 +1408,78 @@
       "static": false,
       "required": false,
       "value": "0x70"
+    },
+    {
+      "group": "HideoutInfo",
+      "name": "Areas",
+      "class": "EFT.HideoutInfo",
+      "field": "Areas",
+      "static": false,
+      "required": false,
+      "value": "0x20"
+    },
+    {
+      "group": "AreaInfo",
+      "name": "Type",
+      "class": "EFT.AreaInfo",
+      "field": "Type",
+      "static": false,
+      "required": false,
+      "value": "0x14"
+    },
+    {
+      "group": "AreaInfo",
+      "name": "Level",
+      "class": "EFT.AreaInfo",
+      "field": "Level",
+      "static": false,
+      "required": false,
+      "value": "0x18"
+    },
+    {
+      "group": "TarkovApplication",
+      "name": "MenuOperation",
+      "class": "EFT.TarkovApplication",
+      "field": "_menuOperation",
+      "static": false,
+      "required": false,
+      "value": "0x138"
+    },
+    {
+      "group": "MainMenuShowOperation",
+      "name": "Session",
+      "class": "EFT.MainMenuShowOperation",
+      "field": "_session",
+      "static": false,
+      "required": false,
+      "value": "0x40"
+    },
+    {
+      "group": "MainMenuShowOperation",
+      "name": "Profile",
+      "class": "EFT.MainMenuShowOperation",
+      "field": "_profile",
+      "static": false,
+      "required": false,
+      "value": "0x48"
+    },
+    {
+      "group": "ClientBackendSession",
+      "name": "AllProfiles",
+      "class": "EFT.ClientBackendSession",
+      "field": "<AllProfiles>k__BackingField",
+      "static": false,
+      "required": false,
+      "value": "0x138"
+    },
+    {
+      "group": "ClientBackendSession",
+      "name": "Profile",
+      "class": "EFT.ClientBackendSession",
+      "field": "_profile",
+      "static": false,
+      "required": false,
+      "value": "0x140"
     }
   ],
   "literals": [
@@ -1359,6 +1512,18 @@
       "name": "List",
       "value": "0x58",
       "note": "Diz.Binding.BindableList`1 → List<T> (generic class: the dump has no offset; from the field order, confirmed on SPT 2026-11-20)"
+    },
+    {
+      "group": "ClientApplication",
+      "name": "ClientBackEnd",
+      "value": "0x30",
+      "note": "EFT.ClientApplication`1 → ClientBackEnd (EFT.EftClientBackend; generic class: the dump has no offset; found by the radar-diagnose stash probe on SPT 2026-11-21)"
+    },
+    {
+      "group": "ClientBackend",
+      "name": "Session",
+      "value": "0x60",
+      "note": "EFT.ClientBackend`1 → <Session>k__BackingField (EFT.EftClientBackendSession; generic class: the dump has no offset; found by the radar-diagnose stash probe on SPT 2026-11-21)"
     }
   ]
 }

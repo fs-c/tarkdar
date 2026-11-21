@@ -105,9 +105,12 @@ export interface QuestPrefs {
   ignoredKinds: NeedKind[];
   /** Quests not started yet whose items count too (e.g. to collect for a later quest). */
   imported: ImportedQuest[];
+  /** Owned items (stash, gear on the character) don't cover what quests need: everything still to
+   *  hand in counts as needed. */
+  ignoreOwned: boolean;
 }
 
-const questDefaults = (): QuestPrefs => ({ ignored: [], ignoredKinds: [], imported: [] });
+const questDefaults = (): QuestPrefs => ({ ignored: [], ignoredKinds: [], imported: [], ignoreOwned: false });
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string"))] : []);
 
@@ -142,6 +145,7 @@ export const questStore = defineStore<QuestPrefs>({
       ignored: strings(d.ignored),
       ignoredKinds: strings(d.ignoredKinds).filter((k): k is NeedKind => NEED_KINDS.includes(k as NeedKind)),
       imported: cleanImported(d.imported),
+      ignoreOwned: d.ignoreOwned === true,
     };
   },
 });

@@ -65,6 +65,7 @@ private:
     std::shared_ptr<const eft::LootSnapshot> lastLoot_;
     std::shared_ptr<const eft::EquipmentSnapshot> lastEquipment_;
     std::shared_ptr<const eft::QuestsSnapshot> lastQuests_;
+    std::shared_ptr<const eft::StashSnapshot> lastStash_;
     std::shared_ptr<const eft::CameraSnapshot> lastCamera_;
 };
 

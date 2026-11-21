@@ -73,6 +73,7 @@ crow::json::wvalue itemNode(const eft::ItemNode& n) {
     v["tpl"] = n.tpl;
     if (!n.slot.empty()) v["slot"] = n.slot;
     if (n.count > 1) v["count"] = n.count;
+    if (n.fir) v["fir"] = true;
     if (!n.children.empty()) {
         std::vector<crow::json::wvalue> children;
         for (const auto& c : n.children) children.push_back(itemNode(c));
@@ -388,6 +389,33 @@ std::string encodeEquipment(const eft::EquipmentSnapshot& snap) {
     crow::json::wvalue data;
     data["players"] = std::move(list);
     return envelope("equipment", snap.raidId, snap.revision, std::move(data));
+}
+
+namespace {
+crow::json::wvalue ownedList(const std::vector<eft::OwnedItem>& items) {
+    std::vector<crow::json::wvalue> list;
+    list.reserve(items.size());
+    for (const auto& o : items) {
+        crow::json::wvalue v;
+        v["tpl"] = o.tpl;
+        v["count"] = o.count;
+        if (o.fir) v["fir"] = o.fir;
+        list.push_back(std::move(v));
+    }
+    return list;
+}
+}  // namespace
+
+std::string encodeStash(const eft::StashSnapshot& snap) {
+    crow::json::wvalue data;
+    if (!snap.known) {
+        data["stash"] = nullptr;
+        return envelope("stash", snap.raidId, snap.revision, std::move(data));
+    }
+    data["profile"] = snap.profileId;
+    data["stash"] = ownedList(snap.stash);
+    data["equipment"] = ownedList(snap.equipment);
+    return envelope("stash", snap.raidId, snap.revision, std::move(data));
 }
 
 std::optional<std::string> messageType(std::string_view message) {

@@ -13,6 +13,7 @@ import type { useConnection } from "../stream/useConnection";
 import { FiltersPanel } from "./FiltersPanel";
 import { ListPanel } from "./ListPanel";
 import { MapPanel } from "./MapPanel";
+import { QuestsPanel } from "./QuestsPanel";
 import { RaidsPanel } from "./RaidsPanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { TimelinePanel } from "./TimelinePanel";
@@ -23,6 +24,7 @@ type FiltersProps = ComponentProps<typeof FiltersPanel>;
 type MapProps = ComponentProps<typeof MapPanel>;
 type SettingsProps = ComponentProps<typeof SettingsPanel>;
 type RaidsProps = ComponentProps<typeof RaidsPanel>;
+type QuestsProps = ComponentProps<typeof QuestsPanel>;
 
 interface Props {
   section: SidebarPrefs["section"];
@@ -39,6 +41,9 @@ interface Props {
   focusListSearch: ListProps["focusRef"];
   onActivate: ListProps["onActivate"];
   onHover: ListProps["onHover"];
+  // Quests
+  questPrefs: QuestsProps["prefs"];
+  setQuestPrefs: QuestsProps["onPrefs"];
   // Filters
   ruleStore: FiltersProps["rules"];
   setRuleStore: FiltersProps["setRules"];
@@ -103,6 +108,8 @@ export function SidePanelContent(p: Props) {
           focusRef={p.focusListSearch}
         />
       );
+    case "quests":
+      return <QuestsPanel quests={p.unfilteredState.quests} catalog={p.catalog} prefs={p.questPrefs} onPrefs={p.setQuestPrefs} questInfo={p.questInfo} />;
     case "filters":
       return (
         <FiltersPanel

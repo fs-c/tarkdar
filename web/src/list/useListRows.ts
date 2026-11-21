@@ -82,7 +82,7 @@ export function useListRows(
   questNeeds: ReadonlyMap<string, readonly QuestNeed[]>,
   filters: ListFilters,
 ): ListRows {
-  const players = useMemo(() => playerRows(state.players, state.equipment, catalog), [state.players, state.equipment, catalog]);
+  const players = useMemo(() => playerRows(state.players, state.equipment, catalog, questNeeds), [state.players, state.equipment, catalog, questNeeds]);
   const loot = useMemo(() => lootRows(state.loot, catalog, questLabels, questNeeds), [state.loot, catalog, questLabels, questNeeds]);
   const exfils = useMemo(() => exfilRows(state.exfils), [state.exfils]);
   const explosives = useMemo(() => explosiveRows(state.explosives), [state.explosives]);

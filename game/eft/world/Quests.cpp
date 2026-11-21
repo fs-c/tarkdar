@@ -8,6 +8,8 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <format>
+#include <map>
 
 namespace radar::eft {
 
@@ -95,6 +97,38 @@ std::optional<std::vector<QuestState>> Quests::read() {
         out.push_back(std::move(q));
     }
     std::sort(out.begin(), out.end(), [](const auto& a, const auto& b) { return a.id < b.id; });
+    return out;
+}
+
+std::optional<std::vector<Quests::StatusSurvey>> Quests::surveyStatuses(std::size_t samplePerStatus) {
+    const Address profile = readPointer(game_, session_->start.localPlayer + off::Player::Profile);
+    const Address list = profile ? readPointer(game_, profile + off::Profile::QuestsData, Freshness::Fresh) : 0;
+    if (!list) return std::nullopt;
+    const auto entries = game_.managed.readList<Address>(list, kMaxQuests, Freshness::Fresh);
+    if (!entries) return std::nullopt;
+    const auto statuses = mem::readEach<std::int32_t>(game_.mem, *entries, off::QuestsData::Status, Freshness::Fresh);
+
+    std::map<std::int32_t, StatusSurvey> by;
+    for (std::size_t i = 0; i < entries->size(); ++i) {
+        const Address address = (*entries)[i];
+        if (!mem::MemoryView::isUserPointer(address) || !statuses[i]) continue;
+        StatusSurvey& s = by[*statuses[i]];
+        s.status = *statuses[i];
+        ++s.entries;
+        if (s.sampled >= samplePerStatus) continue;
+        ++s.sampled;
+        const auto id = game_.managed.readStringField(address + off::QuestsData::Id, 64).value_or("?");
+        const auto t = readTemplate(address, id);
+        if (!t) {
+            s.examples.push_back(std::format("{}: no template", id));
+            continue;
+        }
+        ++s.withTemplate;
+        s.withItems += !t->objectives.empty();
+        s.examples.push_back(std::format("{} {}: {} item objectives", id, t->name.empty() ? "(unnamed)" : t->name, t->objectives.size()));
+    }
+    std::vector<StatusSurvey> out;
+    for (auto& [_, s] : by) out.push_back(std::move(s));
     return out;
 }
 

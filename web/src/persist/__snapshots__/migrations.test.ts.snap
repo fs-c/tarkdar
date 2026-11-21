@@ -267,6 +267,48 @@ exports[`radar.pinned > from version 1 1`] = `
 }
 `;
 
+exports[`radar.quests > from version 0 1`] = `
+{
+  "ignored": [
+    "5ac23c6186f7741247042bad",
+  ],
+  "ignoredKinds": [],
+  "imported": [],
+}
+`;
+
+exports[`radar.quests > from version 1 1`] = `
+{
+  "ignored": [
+    "5ac23c6186f7741247042bad",
+  ],
+  "ignoredKinds": [
+    "daily",
+  ],
+  "imported": [
+    {
+      "id": "5c51aac186f77432ea65c552",
+      "itemNames": {
+        "qi": "Folder",
+      },
+      "name": "Collector",
+      "objectives": [
+        {
+          "count": 1,
+          "fir": true,
+          "id": "o1",
+          "items": [
+            "egg",
+          ],
+          "type": "handover",
+        },
+      ],
+      "trader": "5935c25fb3acc3127c3d8cd9",
+    },
+  ],
+}
+`;
+
 exports[`radar.rules > from version 0 1`] = `
 {
   "hidden": [
@@ -307,6 +349,17 @@ exports[`radar.rules > from version 0 1`] = `
         "show": 0,
       },
     },
+    {
+      "category": "General",
+      "id": "gear.quest-needed",
+      "label": "Carrying needed items",
+      "on": true,
+      "origin": "gear.quest-needed",
+      "query": "is:player,corpse is:needed",
+      "style": {
+        "ring": "#ffd84d",
+      },
+    },
   ],
 }
 `;
@@ -339,6 +392,17 @@ exports[`radar.rules > from version 1 1`] = `
         "show": 0,
       },
     },
+    {
+      "category": "General",
+      "id": "gear.quest-needed",
+      "label": "Carrying needed items",
+      "on": true,
+      "origin": "gear.quest-needed",
+      "query": "is:player,corpse is:needed",
+      "style": {
+        "ring": "#ffd84d",
+      },
+    },
   ],
 }
 `;
@@ -369,6 +433,62 @@ exports[`radar.rules > from version 2 1`] = `
       "style": {
         "color": "#f2c14e",
         "show": 0,
+      },
+    },
+    {
+      "category": "General",
+      "id": "gear.quest-needed",
+      "label": "Carrying needed items",
+      "on": true,
+      "origin": "gear.quest-needed",
+      "query": "is:player,corpse is:needed",
+      "style": {
+        "ring": "#ffd84d",
+      },
+    },
+  ],
+}
+`;
+
+exports[`radar.rules > from version 3 1`] = `
+{
+  "hidden": [
+    "Containers",
+  ],
+  "rules": [
+    {
+      "category": "Loot",
+      "id": "r:abc1",
+      "label": "GPUs",
+      "on": true,
+      "query": "gpu",
+      "style": {
+        "label": "always",
+        "labelFrom": 2,
+        "show": null,
+      },
+    },
+    {
+      "category": "Vehicles",
+      "id": "vehicle",
+      "label": "Vehicles",
+      "on": true,
+      "origin": "vehicle",
+      "query": "is:vehicle",
+      "style": {
+        "color": "#f2c14e",
+        "show": 0,
+      },
+    },
+    {
+      "category": "General",
+      "id": "gear.quest-needed",
+      "label": "Carrying needed items",
+      "on": true,
+      "origin": "gear.quest-needed",
+      "query": "is:player,corpse is:needed",
+      "style": {
+        "ring": "#ff0000",
       },
     },
   ],

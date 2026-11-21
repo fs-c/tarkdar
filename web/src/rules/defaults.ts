@@ -83,6 +83,9 @@ export const DEFAULT_RULES: readonly DefaultRule[] = [
   rule("Exfils", "exfil", "Exfils", "is:exfil", { show: SHOW_LEVELS.always }),
   rule("Explosives", "explosive", "Grenades and tripwires", "is:explosive", { color: "#ff3b30", show: SHOW_LEVELS.always }),
   rule("Vehicles", "vehicle", "Vehicles", "is:vehicle", { color: "#f2c14e", show: SHOW_LEVELS.always }),
+  // Players and corpses carrying an item a started quest needs: ringed, so a corpse shows even with
+  // Containers off. Their own colour stays (a boss stays pink).
+  rule("General", "gear.quest-needed", "Carrying needed items", "is:player,corpse is:needed", { ring: "#ffd84d" }),
 ];
 
 /** Categories hidden out of the box (the map's loot and container layers were off by default). */

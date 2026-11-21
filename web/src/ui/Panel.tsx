@@ -9,11 +9,18 @@ export function PanelBody({ children }: { children: ReactNode }) {
   return <div className={s.body}>{children}</div>;
 }
 
-/** A titled section; consecutive sections are separated by a rule. */
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+/** A titled section; consecutive sections are separated by a rule. `aside`: controls right of the title. */
+export function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
   return (
     <section className={s.section}>
-      <h3 className={s.title}>{title}</h3>
+      {aside ? (
+        <div className={s.head}>
+          <h3 className={s.title}>{title}</h3>
+          {aside}
+        </div>
+      ) : (
+        <h3 className={s.title}>{title}</h3>
+      )}
       {children}
     </section>
   );

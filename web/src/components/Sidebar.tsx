@@ -1,7 +1,7 @@
 // VS Code-style navigation: an always-visible activity bar of icons on the left, and a collapsible
 // side panel showing the picked view. Clicking the active icon collapses the panel.
 
-import { Archive, DoorOpen, Funnel, History, type LucideIcon, Map as MapIcon, Package, PanelLeftClose, Settings, Users } from "lucide-react";
+import { Archive, DoorOpen, Funnel, History, type LucideIcon, Map as MapIcon, Package, PanelLeftClose, ScrollText, Settings, Users } from "lucide-react";
 import { type PointerEvent, type ReactNode, useRef } from "react";
 import { DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, useSidebarSize } from "../persist/prefs";
 import { TABS } from "../list/columns";
@@ -9,8 +9,8 @@ import type { TabId } from "../list/rows";
 import { Button, cx } from "../ui";
 import s from "./Sidebar.module.css";
 
-/** The panel's views: one per list tab, plus the display rules, map options, raid recordings, and settings (with debugging). */
-export type ViewId = TabId | "filters" | "map" | "raids" | "settings";
+/** The panel's views: one per list tab, plus quests, the display rules, map options, raid recordings, and settings (with debugging). */
+export type ViewId = TabId | "quests" | "filters" | "map" | "raids" | "settings";
 
 const LIST_ICONS: Record<TabId, LucideIcon> = {
   players: Users,
@@ -19,17 +19,18 @@ const LIST_ICONS: Record<TabId, LucideIcon> = {
   exfils: DoorOpen,
 };
 
-const TOP: ViewId[] = ["players", "items", "containers", "exfils", "filters", "map", "raids"];
+const TOP: ViewId[] = ["players", "items", "containers", "exfils", "quests", "filters", "map", "raids"];
 
 export const VIEW_TITLES: Record<ViewId, string> = {
   ...Object.fromEntries(Object.entries(TABS).map(([id, t]) => [id, t.label])),
+  quests: "Quests",
   filters: "Filters",
   map: "Map",
   raids: "Raids",
   settings: "Settings",
 } as Record<ViewId, string>;
 
-const ICONS: Record<ViewId, LucideIcon> = { ...LIST_ICONS, filters: Funnel, map: MapIcon, raids: History, settings: Settings };
+const ICONS: Record<ViewId, LucideIcon> = { ...LIST_ICONS, quests: ScrollText, filters: Funnel, map: MapIcon, raids: History, settings: Settings };
 
 interface ActivityBarProps {
   /** The view shown in the panel, or null when it's collapsed. */

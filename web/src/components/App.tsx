@@ -4,7 +4,7 @@ import { useCatalog } from "../model/useCatalog";
 import { useMapIndex } from "../model/useMapIndex";
 import { useConnection } from "../stream/useConnection";
 import { cx, useHotkeys } from "../ui";
-import { useLootPrefs, useMapPrefs, useOverlayPrefs, useSidebarPrefs, useTrailPrefs } from "../persist/prefs";
+import { useLootPrefs, useMapPrefs, useOverlayPrefs, useQuestPrefs, useSidebarPrefs, useTrailPrefs } from "../persist/prefs";
 import { overlayData, overlayMarks } from "../overlay/marks";
 import { useOverlaySync } from "../overlay/useOverlaySync";
 import { findMap, mapUrl } from "../model/maps";
@@ -66,7 +66,8 @@ export function App() {
   const [lootPrefs, setLootPrefs] = useLootPrefs();
 
   const filterQuest = lootPrefs.questItems !== "all";
-  const { state, deduped, questLabels, questNeeds, questInfo } = useQuestState(unfiltered, filterQuest);
+  const [questPrefs, setQuestPrefs] = useQuestPrefs();
+  const { state, deduped, questLabels, questNeeds, questInfo } = useQuestState(unfiltered, filterQuest, questPrefs);
 
   /** Out of a replay: the Raids view back to its list. */
   const backToLive = () => {
@@ -166,7 +167,7 @@ export function App() {
   }, [listShown]);
   const pickView = (v: ViewId) => {
     if (ui.open && v === view) return setUi((u) => ({ ...u, open: false }));
-    if (v === "filters" || v === "map" || v === "raids" || v === "settings") return setUi((u) => ({ ...u, open: true, section: v }));
+    if (v === "quests" || v === "filters" || v === "map" || v === "raids" || v === "settings") return setUi((u) => ({ ...u, open: true, section: v }));
     setListPrefs((p) => ({ ...p, tab: v }));
     setUi((u) => ({ ...u, open: true, section: "list" }));
   };
@@ -295,6 +296,8 @@ export function App() {
               focusListSearch={focusListSearch}
               onActivate={showOnMap}
               onHover={setHovered}
+              questPrefs={questPrefs}
+              setQuestPrefs={setQuestPrefs}
               ruleStore={ruleStore}
               setRuleStore={setRuleStore}
               pinned={pinned}

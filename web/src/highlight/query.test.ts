@@ -140,7 +140,7 @@ describe("matching", () => {
     expect(match("quest:side,story")).toEqual(["loot:12", "loot:13"]);
     expect(match("quest:repeatable")).toEqual(["loot:12", "loot:15"]);
     expect(match("is:item quest:daily")).toEqual(["loot:12"]);
-    expect(compileQuery("quest:kappa", catalog).errors).toEqual(["quest:kappa: unknown (story, side, daily, weekly, repeatable)"]);
+    expect(compileQuery("quest:kappa", catalog).errors).toEqual(["quest:kappa: unknown (story, side, daily, weekly, repeatable, imported)"]);
   });
   it("matches nothing with an empty query, or one with errors", () => {
     expect(keys("")).toEqual([]);

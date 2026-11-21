@@ -1,0 +1,15 @@
+{
+  "0": { "ignored": ["5ac23c6186f7741247042bad", 3] },
+  "1": {
+    "$v": 1,
+    "data": {
+      "ignored": ["5ac23c6186f7741247042bad", "5ac23c6186f7741247042bad"],
+      "ignoredKinds": ["daily", "bogus"],
+      "imported": [
+        { "id": "5c51aac186f77432ea65c552", "name": "Collector", "trader": "5935c25fb3acc3127c3d8cd9", "objectives": [{ "id": "o1", "type": "handover", "items": ["egg"], "count": 1, "fir": true }, { "id": "bad", "type": "shoot", "count": 1 }], "itemNames": { "qi": "Folder", "x": 1 } },
+        { "id": "5c51aac186f77432ea65c552", "name": "dupe", "objectives": [] },
+        { "name": "no id" }
+      ]
+    }
+  }
+}

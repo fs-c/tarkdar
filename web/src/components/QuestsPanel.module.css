@@ -1,0 +1,26 @@
+.quests, .objectives, .results { margin: 0; padding: 0; list-style: none; }
+.quests[data-on="false"] .name, .quests[data-on="false"] .objectives { color: var(--faint); }
+.quest {
+  padding: 4px 0;
+  &[data-counts="false"] .name, &[data-counts="false"] .objectives { color: var(--faint); }
+}
+.head { display: flex; align-items: center; gap: 4px; min-height: 24px; }
+.label { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; cursor: pointer; }
+.label > input { align-self: center; flex: none; }
+.ready { flex: none; width: 26px; color: var(--accent); text-align: center; }
+.name { min-width: 0; overflow-wrap: anywhere; }
+.meta { flex: none; color: var(--muted); font-size: var(--fs-xs); }
+.objectives { padding: 2px 0 2px 34px; color: var(--muted); font-size: var(--fs-xs); }
+.objectives > li { padding: 1px 0; }
+.fir { color: var(--warn); }
+.note { padding: 2px 0 2px 34px; color: var(--faint); font-size: var(--fs-xs); }
+.import { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; }
+.import .note { padding-left: 0; }
+.searchRow { display: flex; align-items: center; gap: 4px; }
+.searchRow > input { flex: 1; min-width: 0; }
+.result {
+  width: 100%; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 4px 6px;
+  border-radius: var(--radius); color: var(--text); text-align: left; cursor: pointer;
+  &:hover:not(:disabled) { background: var(--hover); }
+  &:disabled { color: var(--faint); cursor: default; }
+}

@@ -97,7 +97,7 @@ describe("stored rules", () => {
     expect(n.hidden).toEqual(["Loot"]);
     expect(normalizeStore("garbage")).toEqual(defaultStore());
     expect(decode(ruleStore, JSON.stringify({ edits: {}, hidden: [], mine: [] }))).toMatchObject({ value: defaultStore(), status: "failed" }); // an old format
-    expect(decode(ruleStore, JSON.stringify({ version: 3, rules: [], hidden: ["Loot"] }))).toMatchObject({ value: { rules: [expect.objectContaining({ id: "vehicle" })], hidden: ["Loot"] }, status: "migrated" });
+    expect(decode(ruleStore, JSON.stringify({ version: 3, rules: [], hidden: ["Loot"] }))).toMatchObject({ value: { rules: [expect.objectContaining({ id: "vehicle" }), expect.objectContaining({ id: "gear.quest-needed" })], hidden: ["Loot"] }, status: "migrated" });
     expect(defaultStore().rules).toHaveLength(DEFAULT_RULES.length);
   });
 
@@ -114,11 +114,27 @@ describe("stored rules", () => {
     const old = { $v: 1, data: { rules: [{ id: "r:1", category: "Loot", label: "GPUs", query: "gpu", style: {}, on: true }], hidden: ["Loot"] } };
     const d = decode(ruleStore, JSON.stringify(old));
     expect(d.status).toBe("migrated");
-    expect(d.value.rules.map((r) => r.id)).toEqual(["r:1", "vehicle"]);
+    expect(d.value.rules.map((r) => r.id)).toEqual(["r:1", "vehicle", "gear.quest-needed"]);
     expect(d.value.rules[1]).toEqual(defaultStore().rules.find((r) => r.id === "vehicle"));
     expect(d.value.hidden).toEqual(["Loot"]);
-    expect(missingDefaults(d.value.rules)).toBe(DEFAULT_RULES.length - 1); // the vehicle rule is no longer missing
-    expect(decode(ruleStore, JSON.stringify({ $v: 2, data: d.value })).value.rules.map((r) => r.id)).toEqual(["r:1", "vehicle"]);
+    expect(missingDefaults(d.value.rules)).toBe(DEFAULT_RULES.length - 2); // the vehicle and gear rules are no longer missing
+  });
+
+  it("ring corpses and players carrying what a quest needs, also with Containers off; a boss keeps its colour", () => {
+    const off = { ...defaultStore(), hidden: ["Containers" as const] };
+    const corpse = styleOf(off, row("loot:1", "corpse", { questNeeded: true }));
+    expect(corpse).toMatchObject({ ring: "#ffd84d", show: 0 });
+    expect(styleOf(off, row("loot:2", "corpse")).show).toBeNull();
+    const boss = styleOf(store(), row("player:1", "player", { questNeeded: true, type: "boss", ai: true, state: "alive" }));
+    expect(boss).toMatchObject({ ring: "#ffd84d", color: "#ff4fd8" });
+  });
+
+  it("add the rule for carried needed items to stored lists that predate it, once", () => {
+    const v2 = { $v: 2, data: { rules: [{ id: "r:1", category: "Loot", label: "GPUs", query: "gpu", style: {}, on: true }], hidden: [] } };
+    const d = decode(ruleStore, JSON.stringify(v2));
+    expect(d.value.rules.map((r) => r.id)).toEqual(["r:1", "gear.quest-needed"]);
+    expect(d.value.rules[1]).toEqual(defaultStore().rules.find((r) => r.id === "gear.quest-needed"));
+    expect(decode(ruleStore, JSON.stringify({ $v: 3, data: d.value })).value.rules.map((r) => r.id)).toEqual(["r:1", "gear.quest-needed"]);
   });
 
   it("use the default rules when there's no list of them (an empty one stays empty)", () => {

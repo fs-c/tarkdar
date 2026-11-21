@@ -8,6 +8,9 @@ import { DEFAULT_EVENT_GROUPS, type EventGroup } from "../stream/events";
 import { DEFAULT_MAP_SETTINGS, type MapSettings, type MapStyle, type PlanPalette } from "../map3d/settings";
 import { DEFAULT_OVERLAY_PREFS, type OverlayPrefs } from "../overlay/marks";
 import { DEFAULT_THEME_ID, THEME_IDS } from "../theme/themes";
+import { NEED_KINDS, type NeedKind } from "../model/quests";
+import type { QuestObjective } from "../model/protocol";
+import type { ImportedQuest } from "../model/taskFeed";
 import { defineStore, flatNormalize, isHexColor, isObject, oneOf, usePersisted } from "./";
 
 
@@ -93,6 +96,58 @@ export const lootStore = defineStore<LootPrefs>({
 
 export const useLootPrefs = () => usePersisted(lootStore);
 
+/** The Quests view: which quests count (their items are needed) and the quests imported from
+ *  tarkov.dev. Kept across raids. */
+export interface QuestPrefs {
+  /** Quest ids that don't count (left in progress for good, their markers would only clutter the map). */
+  ignored: string[];
+  /** Kinds that don't count at all. */
+  ignoredKinds: NeedKind[];
+  /** Quests not started yet whose items count too (e.g. to collect for a later quest). */
+  imported: ImportedQuest[];
+}
+
+const questDefaults = (): QuestPrefs => ({ ignored: [], ignoredKinds: [], imported: [] });
+
+const strings = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string"))] : []);
+
+function cleanImported(v: unknown): ImportedQuest[] {
+  if (!Array.isArray(v)) return [];
+  const ids = new Set<string>();
+  return v.flatMap((q): ImportedQuest[] => {
+    if (!isObject(q) || typeof q.id !== "string" || ids.has(q.id) || typeof q.name !== "string" || !Array.isArray(q.objectives)) return [];
+    ids.add(q.id);
+    const objectives = q.objectives.flatMap((o): QuestObjective[] => {
+      if (!isObject(o) || typeof o.id !== "string" || !["find", "handover", "plant"].includes(o.type as string) || typeof o.count !== "number") return [];
+      const out: QuestObjective = { id: o.id, type: o.type as QuestObjective["type"], items: strings(o.items), count: o.count };
+      if (o.fir === true) out.fir = true;
+      if (typeof o.text === "string") out.text = o.text;
+      return [out];
+    });
+    const out: ImportedQuest = { id: q.id, name: q.name, objectives };
+    if (typeof q.trader === "string") out.trader = q.trader;
+    if (isObject(q.itemNames)) out.itemNames = Object.fromEntries(Object.entries(q.itemNames).filter((e): e is [string, string] => typeof e[1] === "string"));
+    return [out];
+  });
+}
+
+export const questStore = defineStore<QuestPrefs>({
+  key: "radar.quests",
+  version: 1,
+  scope: "user",
+  defaults: questDefaults,
+  normalize: (data) => {
+    const d = isObject(data) ? data : {};
+    return {
+      ignored: strings(d.ignored),
+      ignoredKinds: strings(d.ignoredKinds).filter((k): k is NeedKind => NEED_KINDS.includes(k as NeedKind)),
+      imported: cleanImported(d.imported),
+    };
+  },
+});
+
+export const useQuestPrefs = () => usePersisted(questStore);
+
 /** The timeline's filters. */
 export interface LogPrefs {
   groups: Record<EventGroup, boolean>;
@@ -127,7 +182,7 @@ export const overlayStore = defineStore<OverlayPrefs>({
 
 export const useOverlayPrefs = () => usePersisted(overlayStore);
 
-export const SECTIONS = ["list", "filters", "map", "raids", "settings"] as const;
+export const SECTIONS = ["list", "quests", "filters", "map", "raids", "settings"] as const;
 export type Section = (typeof SECTIONS)[number];
 
 /** The side panel: open or collapsed, and which section it shows (for "list", the list tab in the

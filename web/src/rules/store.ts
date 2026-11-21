@@ -177,7 +177,7 @@ export function normalizeStore(stored: unknown): RuleStore {
 
 export const ruleStore = defineStore<RuleStore>({
   key: "radar.rules",
-  version: 2,
+  version: 3,
   scope: "user",
   defaults: defaultStore,
   migrations: {
@@ -192,6 +192,12 @@ export const ruleStore = defineStore<RuleStore>({
       if (!isObject(d) || !Array.isArray(d.rules)) return d;
       const vehicle = { id: "vehicle", origin: "vehicle", category: "Vehicles", label: "Vehicles", query: "is:vehicle", style: { color: "#f2c14e", show: 0 }, on: true };
       return { ...d, rules: [...d.rules, vehicle] };
+    },
+    // Players and corpses carrying what a quest needs: a new General rule.
+    2: (d) => {
+      if (!isObject(d) || !Array.isArray(d.rules) || d.rules.some((r) => isObject(r) && r.origin === "gear.quest-needed")) return d;
+      const gear = DEFAULT_RULES.find((r) => r.id === "gear.quest-needed")!;
+      return { ...d, rules: [...d.rules, fromDefault(gear)] };
     },
   },
   normalize: normalizeStore,

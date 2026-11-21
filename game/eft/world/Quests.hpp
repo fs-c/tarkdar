@@ -44,6 +44,17 @@ public:
 
     void update();
 
+    // For radar-diagnose: whether quests not started yet could be shown (TODO.md, future quests).
+    // Per status in QuestsData (EQuestStatus: 0 locked, 1 available to start, 2 started, 3 ready to
+    // hand in, 4 done, 5 failed, ...): how many entries, and for a sample of them whether the template
+    // reads and has item objectives. Unverified: whether locked quests are in QuestsData at all.
+    struct StatusSurvey {
+        std::int32_t status = 0;
+        std::size_t entries = 0, sampled = 0, withTemplate = 0, withItems = 0;
+        std::vector<std::string> examples{};  // "<id> <name>: N item objectives"
+    };
+    [[nodiscard]] std::optional<std::vector<StatusSurvey>> surveyStatuses(std::size_t samplePerStatus = 8);
+
 private:
     // What the template says (everything of QuestState but status, completed conditions and progress).
     struct Template {

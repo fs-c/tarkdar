@@ -7,8 +7,8 @@ import { isObject } from "../persist/store";
 import { type ItemCatalog, containerName, equipmentValue, slotValue } from "../model/items";
 import { exfilStatus } from "../model/exfils";
 import { type Selection, midpoint, selectionKey } from "../draw/pick";
-import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, QuestKind, Vehicle, WorldPos } from "../model/protocol";
-import { type QuestNeed, formatQuestNeed, neededKinds } from "../model/quests";
+import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, Vehicle, WorldPos } from "../model/protocol";
+import { type NeedKind, type QuestNeed, carriedNeeds, formatQuestNeed, neededKinds } from "../model/quests";
 import { type PlayerType, SPECIAL_TYPES, bossGroups, identityText, playerType } from "../model/roles";
 
 export type TabId = "players" | "items" | "containers" | "exfils";
@@ -37,13 +37,15 @@ export interface RowBase {
   price?: number;
   /** Lowercase text the search matches against: names, kinds, carried items' names. */
   search: string;
-  /** Loose items a started quest still needs: what for, e.g. "Shooter Born in Heaven (×3, FIR)". */
+  /** Loose items a started quest still needs, or what players and corpses carry that one does: what
+   *  for, e.g. "Shooter Born in Heaven (×3, FIR)". */
   questNeeds?: readonly string[];
   /** A started quest needs it: a quest item, or an ordinary item one of whose needs is specific (an
-   *  objective few items count for): `is:needed`, the "Needed for quests" rule. */
+   *  objective few items count for): `is:needed`, the "Needed for quests" rule. Players (but you) and
+   *  corpses: they carry such an item (the "Carrying needed items" rule). */
   questNeeded?: boolean;
   /** The kinds of quest those needs are for: `quest:story` etc. */
-  questKinds?: readonly QuestKind[];
+  questKinds?: readonly NeedKind[];
 }
 
 export interface PlayerRow extends RowBase {
@@ -172,6 +174,28 @@ function gearOf(nodes: ItemNode[] | undefined, catalog: ItemCatalog): Gear {
   return gear;
 }
 
+type NeedsMap = ReadonlyMap<string, readonly QuestNeed[]>;
+const NO_NEEDS: NeedsMap = new Map();
+
+/** What a player or corpse carries that quests need, as row fields; cached per needs map and gear. */
+type GearNeeds = Pick<RowBase, "questNeeds" | "questNeeded" | "questKinds">;
+const NOT_NEEDED: GearNeeds = {};
+const gearNeedsCache = new WeakMap<NeedsMap, WeakMap<Gear, GearNeeds>>();
+
+function gearNeeds(gear: Gear, needs: NeedsMap): GearNeeds {
+  if (!needs.size || !gear.tpls.length) return NOT_NEEDED;
+  let byGear = gearNeedsCache.get(needs);
+  if (!byGear) gearNeedsCache.set(needs, (byGear = new WeakMap()));
+  let out = byGear.get(gear);
+  if (!out) {
+    const list = carriedNeeds(gear.tpls, needs);
+    const kinds = neededKinds(list, true);
+    out = list.length ? { questNeeds: list.map(formatQuestNeed), questNeeded: true, questKinds: kinds } : NOT_NEEDED;
+    byGear.set(gear, out);
+  }
+  return out;
+}
+
 /** Rows without distances, for all tabs. The per-category builders below let callers memoize each
  *  on its own input (loot changes rarely, players many times a second). */
 export function buildRows(state: Pick<RadarState, "players" | "loot" | "exfils" | "explosives" | "vehicles" | "equipment">, catalog: ItemCatalog): TabRows {
@@ -184,7 +208,8 @@ export function buildRows(state: Pick<RadarState, "players" | "loot" | "exfils" 
   };
 }
 
-export function playerRows(players: Player[], equipment: Map<number, PlayerEquipment>, catalog: ItemCatalog): PlayerRow[] {
+/** `questNeeds`: template id → the started quests' objectives that still need it (quests.ts). */
+export function playerRows(players: Player[], equipment: Map<number, PlayerEquipment>, catalog: ItemCatalog, questNeeds: NeedsMap = NO_NEEDS): PlayerRow[] {
   const groups = bossGroups(players);
   return players.map((p): PlayerRow => {
     const name = p.local ? "You" : `#${p.id}`;
@@ -196,6 +221,7 @@ export function playerRows(players: Player[], equipment: Map<number, PlayerEquip
     return {
       ...base({ kind: "player", id: p.id }, "player", p.pos, search, gear.tpls),
       value: gear.value,
+      ...(p.local ? {} : gearNeeds(gear, questNeeds)),
       name, local: p.local, ai: p.ai, type: t.type, typeLabel: t.label, typeDetail: `${t.type}: ${t.reason}\n${raw}`,
       state: st,
     };
@@ -210,7 +236,7 @@ export function lootRows(
   loot: LootEntry[],
   catalog: ItemCatalog,
   questLabels: ReadonlyMap<string, string> = new Map(),
-  questNeeds: ReadonlyMap<string, readonly QuestNeed[]> = new Map(),
+  questNeeds: NeedsMap = NO_NEEDS,
 ): Pick<TabRows, "items" | "containers"> {
   const items: ItemRow[] = [];
   const containers: ContainerRow[] = [];
@@ -221,6 +247,7 @@ export function lootRows(
       containers.push({
         ...base(sel, "corpse", l.pos, text("corpse body", gear.text), gear.tpls),
         value: gear.value,
+        ...gearNeeds(gear, questNeeds),
         name: "corpse", kind: "corpse",
       });
     } else if (isContainerKind(l.kind)) {

@@ -7,6 +7,8 @@
     & p { margin: 0 0 10px; }
   }
   .title { margin: 0 0 8px; font-size: var(--fs-xs); font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .head > .title { margin: 0; }
   .actions { display: flex; gap: 6px; }
   .note { margin: 0; padding: 10px 14px; }
   .alert { color: var(--warn); }

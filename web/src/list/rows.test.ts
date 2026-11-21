@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { type ItemCatalog, type ItemInfo, emptyCatalog } from "../model/items";
 import type { LootEntry, Player } from "../model/protocol";
-import { DEFAULT_FILTERS, type TabFilter, buildRows, filterRows, playerRows, isFiltered, normalizeFilters, rowKeys, tabOf, withDistances } from "./rows";
+import { questNeeds } from "../model/quests";
+import { DEFAULT_FILTERS, type TabFilter, buildRows, filterRows, lootRows, playerRows, isFiltered, normalizeFilters, rowKeys, tabOf, withDistances } from "./rows";
 
 const info: Record<string, ItemInfo> = {
   ledx: { name: "LEDX Skin Transilluminator", shortName: "LEDX", price: 900_000, priceSource: "flea" },
@@ -171,5 +172,19 @@ describe("playerRows", () => {
     // a new equipment message (new trees) is worked out afresh
     playerRows(moved, new Map([[3, { id: 3, slots: [{ tpl: "helmet" }] }]]), counting);
     expect(lookups.slice(n)).toContain("helmet");
+  });
+});
+
+describe("carried quest items", () => {
+  const needs = questNeeds([{ id: "q", status: 2, done: [], kind: "side", name: "Gunsmith", objectives: [{ id: "o", type: "handover", items: ["helmet"], count: 1, fir: true }] }])!.items;
+
+  it("mark players (but you) and corpses that carry what a quest needs", () => {
+    const equipment = new Map([[1, { id: 1, slots: [{ tpl: "helmet" }] }], [3, { id: 3, slots: [{ tpl: "helmet" }] }]]);
+    const players = playerRows(state.players, equipment, catalog, needs);
+    expect(players[0]!.questNeeded).toBeUndefined(); // you
+    expect(players[2]).toMatchObject({ questNeeded: true, questKinds: ["side"], questNeeds: ["Gunsmith (FIR)"] });
+    const corpse = lootRows(state.loot, catalog, new Map(), needs).containers.find((r) => r.kind === "corpse")!;
+    expect(corpse).toMatchObject({ questNeeded: true, questNeeds: ["Gunsmith (FIR)"] });
+    expect(playerRows(state.players, state.equipment, catalog, needs)[2]!.questNeeded).toBeUndefined(); // only an m4
   });
 });

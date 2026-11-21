@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { LootEntry, QuestObjective, QuestState } from "./protocol";
 import {
   SPECIFIC_ITEMS,
+  carriedNeeds,
   formatQuestNeed,
   isSpecific,
   neededKinds,
@@ -102,6 +103,47 @@ describe("questNeeds", () => {
     expect(neededKinds(needs.items.get("med0"), false)).toEqual(["daily"]);
     expect(neededKinds(needs.items.get("med1"), false)).toEqual([]);
     expect(neededKinds(needs.items.get("med1"), true)).toEqual(["story"]);
+  });
+});
+
+describe("ignored quests", () => {
+  it("need nothing, and an ignored quest with unknown objectives doesn't make the needs unknown", () => {
+    const quests = [quest("a", [obj("o1", "find", ["x"])]), quest("b", [obj("o2", "find", ["y"])]), quest("c", null)];
+    const needs = questNeeds(quests, { ignored: new Set(["b", "c"]) })!;
+    expect([...needs.items.keys()]).toEqual(["x"]);
+    expect(needs.complete).toBe(true);
+    expect(needs.started).toBe(1);
+  });
+  it("need nothing when their whole kind is ignored", () => {
+    const quests = [quest("a", [obj("o1", "find", ["x"])]), quest("d", [obj("o2", "find", ["y"])], { kind: "daily" })];
+    expect([...questNeeds(quests, { ignoredKinds: new Set(["daily"]) })!.items.keys()]).toEqual(["x"]);
+  });
+});
+
+describe("imported quests", () => {
+  const collector = { id: "col", name: "Collector", objectives: [obj("c1", "handover", ["egg"], { fir: true }), obj("c2", "find", ["egg"], { fir: true })] };
+  it("need everything, under their own kind, without counting as started", () => {
+    const needs = questNeeds([quest("a", [obj("o1", "find", ["x"])])], { imported: [collector] })!;
+    expect(needs.items.get("egg")).toEqual([{ quest: "Collector", kind: "imported", count: 1, fir: true, of: 1 }]);
+    expect(needs.started).toBe(1);
+    expect(neededKinds(needs.items.get("egg"), false)).toEqual(["imported"]);
+  });
+  it("count as the started quest once it's in the game's list; ignored ones need nothing", () => {
+    expect(questNeeds([quest("col", [obj("c2", "find", ["egg"])], { name: "Collector" })], { imported: [collector] })!.items.get("egg")![0]!.kind).toBe("side");
+    expect(questNeeds([], { imported: [collector], ignored: new Set(["col"]) })!.items.size).toBe(0);
+    expect(questNeeds([], { imported: [collector], ignoredKinds: new Set(["imported"]) })!.items.size).toBe(0);
+  });
+});
+
+describe("carriedNeeds", () => {
+  it("finds what carried gear a quest needs: specific objectives only, each once", () => {
+    const broad = Array.from({ length: SPECIFIC_ITEMS + 1 }, (_, i) => `med${i}`);
+    const needs = questNeeds([
+      quest("a", [obj("o1", "handover", ["ushanka", "kolpak"], { count: 2, fir: true })]),
+      quest("b", [obj("o2", "find", broad)]),
+    ])!.items;
+    expect(carriedNeeds(["rig", "ushanka", "kolpak"], needs).map(formatQuestNeed)).toEqual(["Quest (×2, FIR, any of 2)"]);
+    expect(carriedNeeds(["med0"], needs)).toEqual([]);
   });
 });
 

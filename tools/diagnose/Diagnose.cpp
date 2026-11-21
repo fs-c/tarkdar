@@ -557,6 +557,16 @@ void checkQuests(Report& r, const std::shared_ptr<const eft::RaidSession>& sessi
         if (q.completedConditions && !q.completedConditions->empty()) done += " e.g. " + q.completedConditions->front();
         r.info(std::format("quest {} status {} (2 started, 3 ready to hand in), conditions done: {}", q.id, q.status, done));
     }
+    // Quests not started yet (TODO.md, "future quests"): are they in the list, with readable templates?
+    if (const auto survey = quests.surveyStatuses()) {
+        for (const auto& s : *survey) {
+            r.info(std::format("status {}: {} entries; of {} sampled, {} with a template, {} with item objectives",
+                               s.status, s.entries, s.sampled, s.withTemplate, s.withItems));
+            for (const auto& e : s.examples) r.info("  " + e);
+        }
+    } else {
+        r.info("quest status survey: quest list not readable");
+    }
 }
 
 }  // namespace

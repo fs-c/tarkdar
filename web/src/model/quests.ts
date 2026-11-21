@@ -6,11 +6,18 @@
 // downloaded. Older recordings have no objectives: then nothing is known, and every quest item shows.
 
 import type { LootEntry, QuestKind, QuestObjective, QuestState } from "./protocol";
+import type { ImportedQuest } from "./taskFeed";
 
 /** EQuestStatus: started (and not yet ready to hand in). */
 export const QUEST_STARTED = 2;
+/** EQuestStatus: ready to hand in (needs nothing more). */
+export const QUEST_READY = 3;
 
 export const QUEST_KINDS: readonly QuestKind[] = ["story", "side", "daily", "weekly"];
+
+/** What a need is for: a kind of started quest, or a quest imported from tarkov.dev (not started yet). */
+export type NeedKind = QuestKind | "imported";
+export const NEED_KINDS: readonly NeedKind[] = [...QUEST_KINDS, "imported"];
 
 /** Roubles, dollars, euros: handed over from the stash, not looked for in a raid. */
 const CURRENCIES = new Set(["5449016a4bdc2d6f028b456f", "5696686a4bdc2da3298b456a", "569668774bdc2da2298b4568"]);
@@ -51,7 +58,7 @@ export const objectiveLabel = (q: QuestState, o: QuestObjective): string => (q.k
 export interface QuestNeed {
   /** What it's for (objectiveLabel). */
   quest: string;
-  kind: QuestKind;
+  kind: NeedKind;
   count: number;
   /** How many are handed over already, if the game counts it. */
   progress?: number;
@@ -107,12 +114,45 @@ export interface QuestNeeds {
   started: number;
 }
 
-/** Null when it can't be told (the quests weren't read): then every quest item shows. */
-export function questNeeds(quests: readonly QuestState[] | null): QuestNeeds | null {
+/** Which quests count (the Quests view): all started ones but those ignored (one by one, or their
+ *  whole kind), plus the imported ones. */
+export interface Counting {
+  /** Quest ids that don't count. */
+  ignored?: ReadonlySet<string>;
+  /** Kinds that don't count at all. */
+  ignoredKinds?: ReadonlySet<NeedKind>;
+  /** Quests imported from tarkov.dev, not started yet: everything they need counts (unless ignored). */
+  imported?: readonly ImportedQuest[];
+}
+
+const NO_IDS: ReadonlySet<string> = new Set();
+
+/** Ignored quests (one by one, or by kind) need nothing. */
+export const counts = (id: string, kind: NeedKind, c: Counting): boolean => !(c.ignored ?? NO_IDS).has(id) && !c.ignoredKinds?.has(kind);
+
+/**
+ * Null when it can't be told (the quests weren't read): then every quest item shows, also those of
+ * imported quests. Quests that don't count (`counting`) need nothing, as if not started; an imported
+ * quest that's in the game's list (started, or done in this raid) counts as that instead.
+ */
+export function questNeeds(quests: readonly QuestState[] | null, counting: Counting = {}): QuestNeeds | null {
   if (!quests) return null;
   const needs: QuestNeeds = { items: new Map(), complete: true, started: 0 };
+  const add = (tpl: string, need: QuestNeed) => {
+    let list = needs.items.get(tpl);
+    if (!list) needs.items.set(tpl, (list = []));
+    list.push(need);
+  };
+  const live = new Set(quests.map((q) => q.id));
+  for (const q of counting.imported ?? []) {
+    if (live.has(q.id) || !counts(q.id, "imported", counting)) continue;
+    for (const { objective: o, items } of openObjectives({ id: q.id, status: QUEST_STARTED, done: [], objectives: q.objectives })) {
+      const need: QuestNeed = { quest: q.name, kind: "imported", count: o.count, fir: !!o.fir, of: items.length };
+      for (const tpl of items) add(tpl, need);
+    }
+  }
   for (const q of quests) {
-    if (q.status !== QUEST_STARTED) continue;
+    if (q.status !== QUEST_STARTED || !counts(q.id, q.kind ?? "side", counting)) continue;
     needs.started++;
     if (!q.objectives) {
       needs.complete = false;
@@ -121,11 +161,7 @@ export function questNeeds(quests: readonly QuestState[] | null): QuestNeeds | n
     const kind = q.kind ?? "side";
     for (const { objective: o, items, progress } of openObjectives(q)) {
       const need: QuestNeed = { quest: objectiveLabel(q, o), kind, count: o.count, fir: !!o.fir, of: items.length, ...(progress ? { progress } : {}) };
-      for (const tpl of items) {
-        let list = needs.items.get(tpl);
-        if (!list) needs.items.set(tpl, (list = []));
-        list.push(need);
-      }
+      for (const tpl of items) add(tpl, need);
     }
   }
   return needs;
@@ -150,8 +186,19 @@ export function questItemLabels(needs: QuestNeeds | null): Map<string, string> {
 
 /** The kinds of quest that need an item; for ordinary items only objectives specific enough to
  *  highlight count (the "Needed for quests" rule). */
-export function neededKinds(needs: readonly QuestNeed[] | undefined, questItem: boolean): QuestKind[] {
-  const kinds = new Set<QuestKind>();
+export function neededKinds(needs: readonly QuestNeed[] | undefined, questItem: boolean): NeedKind[] {
+  const kinds = new Set<NeedKind>();
   for (const n of needs ?? []) if (questItem || isSpecific(n)) kinds.add(n.kind);
-  return QUEST_KINDS.filter((k) => kinds.has(k));
+  return NEED_KINDS.filter((k) => kinds.has(k));
+}
+
+/**
+ * What a player or corpse carries that a started quest needs: the needs specific enough to highlight
+ * (isSpecific), one per objective. Gear taken off a body is found in raid, so FIR objectives count.
+ */
+export function carriedNeeds(tpls: readonly string[], needs: ReadonlyMap<string, readonly QuestNeed[]>): QuestNeed[] {
+  if (!needs.size) return [];
+  const out = new Set<QuestNeed>();
+  for (const tpl of tpls) for (const n of needs.get(tpl) ?? []) if (isSpecific(n)) out.add(n);
+  return [...out];
 }

@@ -3,9 +3,10 @@
 //   ledx                      free text, as in the list's search (every word must appear)
 //   "red rebel"               a phrase
 //   is:boss  is:pmc,pscav     kinds of player and thing; a list means any of them
-//   is:needed                 a loose item a started quest still needs, or a quest item one needs
+//   is:needed                 a loose item a started quest still needs, or a quest item one needs;
+//                             players (but you) and corpses carrying such an item
 //   quest:story,side          ... needed by that kind of quest: story side daily weekly (repeatable:
-//                             daily and weekly)
+//                             daily and weekly), imported (future: one imported in the Quests view)
 //   item:LEDX  item:"Red Rebel ice pick"   items (short or full name) and kinds of container
 //   cat:Electronics           handbook categories
 //   value>=40k  price<5k      roubles: value per slot (loose items) or of the equipment (players,
@@ -17,7 +18,7 @@
 // Comparisons: >= > <= < =; numbers take k and m. An empty query matches nothing.
 
 import { type ItemCatalog, type ItemInfo, containerTypes } from "../model/items";
-import type { QuestKind } from "../model/protocol";
+import type { NeedKind } from "../model/quests";
 import type { PlayerRow, RowBase, SubjectKind } from "../list/rows";
 import { type PlayerType, SPECIAL_TYPES } from "../model/roles";
 
@@ -29,7 +30,7 @@ export type Term =
   | { kind: "is"; values: string[] }
   | { kind: "item"; names: string[] }
   | { kind: "cat"; names: string[] }
-  | { kind: "quest"; kinds: QuestKind[] }
+  | { kind: "quest"; kinds: NeedKind[] }
   | { kind: "num"; field: NumField; op: Op; value: number };
 
 const NUM_FIELDS: Record<string, NumField> = {
@@ -38,9 +39,10 @@ const NUM_FIELDS: Record<string, NumField> = {
 const FIELDS = ["is", "item", "cat", "quest", ...Object.keys(NUM_FIELDS)];
 
 /** What `quest:` takes: kinds of quest, and other names for them. */
-const QUEST_KIND_NAMES: Record<string, QuestKind[]> = {
+const QUEST_KIND_NAMES: Record<string, NeedKind[]> = {
   story: ["story"], main: ["story"], side: ["side"], trader: ["side"], daily: ["daily"], dailies: ["daily"],
   weekly: ["weekly"], weeklies: ["weekly"], repeatable: ["daily", "weekly"], repeatables: ["daily", "weekly"],
+  imported: ["imported"], future: ["imported"],
 };
 
 /** What `is:` knows: a row test each. */
@@ -151,8 +153,8 @@ export function parseQuery(q: string): Parsed {
     if (op === ":" && key === "quest") {
       const values = list(rest).map((v) => v.toLowerCase());
       const unknown = values.filter((v) => !(v in QUEST_KIND_NAMES));
-      if (!values.length) errors.push("quest: needs a value (story, side, daily, weekly)");
-      else if (unknown.length) errors.push(`quest:${unknown.join(",")}: unknown (story, side, daily, weekly, repeatable)`);
+      if (!values.length) errors.push("quest: needs a value (story, side, daily, weekly, imported)");
+      else if (unknown.length) errors.push(`quest:${unknown.join(",")}: unknown (story, side, daily, weekly, repeatable, imported)`);
       else terms.push({ kind: "quest", kinds: [...new Set(values.flatMap((v) => QUEST_KIND_NAMES[v]!))] });
       continue;
     }
@@ -334,8 +336,8 @@ export const isStructured = (q: string): boolean => parseQuery(q).terms.some((t)
 export const QUERY_HELP: { example: string; text: string; words: string }[] = [
   { example: "is:boss", text: "kinds of player: pmc usec bear pscav scav boss guard raider rogue cultist bd infected special human", words: "is players kinds" },
   { example: "is:item", text: "kinds of thing: item quest container airdrop corpse exfil explosive", words: "is things kinds" },
-  { example: "is:needed", text: "loose items a started quest still needs (and quest items one needs)", words: "needed quest" },
-  { example: "quest:story", text: "needed by a kind of quest: story side daily weekly repeatable", words: "quest story side daily weekly repeatable task" },
+  { example: "is:needed", text: "items a started quest still needs (quest items too), and players and corpses carrying one", words: "needed quest carrying" },
+  { example: "quest:story", text: "needed by a kind of quest: story side daily weekly repeatable, or an imported one", words: "quest story side daily weekly repeatable imported future task" },
   { example: "item:LEDX", text: "an item (short or full name), or a kind of container", words: "item" },
   { example: "cat:Electronics", text: "a handbook category", words: "cat category" },
   { example: "value>=40k", text: "value per slot (loose items), of the equipment (players, corpses)", words: "value" },

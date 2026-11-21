@@ -1,16 +1,43 @@
 - improve assets system
     - frequently accidentally lose changes on pull, maybe do git style conflict resolution
+    - not started; findings from the 2026-11 review:
+        - root cause: `tools/assets.py` compares a local file only with the manifest, so "I edited it" and "the manifest moved on" both show as "modified" and `pull --force` becomes routine (it overwrites with no backup)
+        - `push` with a stale local file reverts a teammate's newer manifest entry
+        - `gc --delete` can remove blobs referenced only by a manifest that isn't in this machine's git history yet
+        - proposal: record the last-synced hash per file (three-way: fast-forward / local edit / real conflict, with `resolve --ours|--theirs`), and snapshot a file before any overwrite; optionally a git merge driver for `assets.json`
 - minor improvements
     - don't give bear/usec any special status in visuals, everything should be encoded in changeable settings
+        - not started; drawing is already rule-driven (`rules/defaults.ts`), what's still code:
+        - the player type taxonomy in `model/roles.ts` (closed `PlayerType` union, labels, `SPECIAL_TYPES`)
+        - the `is:usec` / `is:bear` / `is:pmc` vocabulary (`highlight/query.ts`) and presets (`highlight/suggest.ts`)
+        - bold for bosses in the list (`list/columns.tsx`), a separate side-colour table in `components/PovPage.tsx`
+        - vehicles are the one marker kind not driven by rules (`draw/render.ts`)
 - backend/memory read optimization; there's noticeably more lag while the backend is running
     - also noticed that frontend seems to be very delayed at times (maybe already backend, hard to tell)
-- cleanup/review round, some loose thoughts (not a thorough review)
-    - app/ seems to be more about probing than anything else at this point, we should consider moving that out
-    - having both scripts/ and tools/ seems a bit redundant unless there's a genuine categorical difference I'm missing
-    - code/architectural cleanliness started out very clean but the deeper one goes into the various systems (younger code) the more convoluted it gets
-        - both in terms of super dense code/syntax & in terms of wonky abstractions etc.
+    - candidates from the review (unmeasured): no per-client coalescing in the hub (a slow tab replays stale frames in order), Nagle is on (`websocket_tcp_nodelay`), two Crow IO threads that also do blocking file scans, `Players` publishes at ~100 Hz whether or not anything changed, tripwire types re-read every 20 ms
+- cleanup/review round: follow-ups (found 2026-11, not done)
+    - overlay (shelved, see `docs/design.md`): `WaylandWindow.cpp` frame scheduling is untestable as written; `Scene`/`Frames` test gaps (grid, stretched scope lens, fallback paths)
+    - frontend
+        - floating map controls are positioned by magic numbers spread over four CSS files; switch/input styling is copy-pasted instead of `ui/` primitives
+        - `SlimItems` positional tuple in `model/catalog.ts`; player gear recomputed on every players tick
+    - backend
+        - quest cache is keyed by object address and never pruned (a reused address would serve the wrong quest)
+        - `Scene::findByName` reads names of recycled GameObject addresses from cached memory
+        - loot: quest "info" items are hidden in the backend by object-name prefix; the frontend can't override it
+        - loot resolve reads whole corpse item trees serially on the scan thread
+        - hub: a new client is replayed the latest messages in alphabetical type order, and the last raid's messages are never dropped; make the hub drop per-raid messages when a raid ends, then send status first
+        - `/ws` origin check passes a DNS-rebinding page (low risk, read-only)
+        - `eft::resolveNativeTransform` has no production caller
+    - tools
+        - `t3d/unity.py` `extract_scene` is a 320-line closure forest; split it when the game files are at hand (verify with a byte-identical cache)
+        - dataset fields `chunks[].level/error/cell` are written but nothing reads them
 - make frontend themeable
     - want to play around with some different colors/fonts
+    - not started; what's in the way (2026-11 review):
+        - the palette (`draw/theme.ts`) is a compile-time constant read at module load by `draw/style.ts`, `rules/defaults.ts`, `Radar.tsx` (map background) and `PovPage.tsx`; needs a runtime theme that canvas and map follow
+        - fonts and other tokens live in `styles/global.css` only; canvas fonts are literals (`"11px sans-serif"`) in `draw/style.ts`, `draw/render.ts`, `PovPage.tsx`; the text-width cache is keyed by font string and never cleared
+        - stored rules copy their colours as hex (`rules/store.ts`), so a theme can't recolour them and changed defaults never reach existing users: decide whether rule colours become theme tokens
+        - colours outside the palette: `rules/defaults.ts`, `draw/style.ts`, `draw/render.ts`, `highlight/match.ts`, `map3d/Map3D.ts` (grid), `map3d/stage.ts` (`LOOKS`), `StyleSwitch.tsx`, `RuleRow.tsx`; shadows and some radii are literals in CSS; `color-scheme: dark` is fixed
 - quest text from the global locale table (`TODO(quest-locale)` in `game/eft/world/Quests.cpp`)
     - quests read their own English-only dictionaries; exfil names already use the game's text table in the player's language
     - check in a raid whether that table has `"<quest id> name"` and the condition ids; if so, drop the separate reader

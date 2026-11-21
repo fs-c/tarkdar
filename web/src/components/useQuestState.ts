@@ -21,10 +21,13 @@ export function useQuestState(unfiltered: RadarState, filterQuest: boolean) {
   const needs = useMemo(() => readQuestNeeds(unfiltered.quests), [unfiltered.quests]);
   const questLabels = useMemo(() => questItemLabels(needs), [needs]);
   const questNeeds = needs?.items ?? NO_NEEDS;
-  const state: RadarState = useMemo(() => {
-    const loot = withoutUnneededQuestItems(deduped, filterQuest ? needs : null);
-    return loot === unfiltered.loot ? unfiltered : { ...unfiltered, loot };
-  }, [unfiltered, deduped, filterQuest, needs]);
+  // Its own memo: `unfiltered` is new on every players update, and a new loot array there would rebuild
+  // every loot row and its rule matches (~30×/s; on Lighthouse renders went from ~25 to ~130 ms).
+  const loot = useMemo(() => withoutUnneededQuestItems(deduped, filterQuest ? needs : null), [deduped, filterQuest, needs]);
+  const state: RadarState = useMemo(
+    () => (loot === unfiltered.loot ? unfiltered : { ...unfiltered, loot }),
+    [unfiltered, loot],
+  );
   const questInfo = !needs
     ? "quests unknown: all shown"
     : !needs.complete

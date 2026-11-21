@@ -160,7 +160,8 @@ export class Connection {
 
   private setCamera(camera: CameraData | null): void {
     this.camera = camera;
-    notifyOnFrame(this.notifyCamera);
+    // Only the POV page listens: elsewhere a flush would be for nothing (and count as a render).
+    if (this.cameraListeners.size > 0) notifyOnFrame(this.notifyCamera);
   }
 
   private readonly notifyCamera = (): void => {

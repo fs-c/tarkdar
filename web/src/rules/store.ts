@@ -177,7 +177,7 @@ export function normalizeStore(stored: unknown): RuleStore {
 
 export const ruleStore = defineStore<RuleStore>({
   key: "radar.rules",
-  version: 3,
+  version: 4,
   scope: "user",
   defaults: defaultStore,
   migrations: {
@@ -198,6 +198,22 @@ export const ruleStore = defineStore<RuleStore>({
       if (!isObject(d) || !Array.isArray(d.rules) || d.rules.some((r) => isObject(r) && r.origin === "gear.quest-needed")) return d;
       const gear = DEFAULT_RULES.find((r) => r.id === "gear.quest-needed")!;
       return { ...d, rules: [...d.rules, fromDefault(gear)] };
+    },
+    // Quest needs: only what has to be found in raid is singled out (is:fir), what can be bought isn't.
+    // Rules still as their old default get the new one; changed ones stay.
+    3: (d) => {
+      if (!isObject(d) || !Array.isArray(d.rules)) return d;
+      const old: Record<string, { label: string; query: string }> = {
+        "item.quest-needed": { label: "Needed for quests", query: "is:item is:needed" },
+        "gear.quest-needed": { label: "Carrying needed items", query: "is:player,corpse is:needed" },
+      };
+      const rules = d.rules.map((r) => {
+        const was = isObject(r) && typeof r.origin === "string" ? old[r.origin] : undefined;
+        const now = was && DEFAULT_RULES.find((x) => x.id === (r as { origin: string }).origin);
+        if (!was || !now || !isObject(r)) return r;
+        return { ...r, ...(r.query === was.query ? { query: now.query } : {}), ...(r.label === was.label ? { label: now.label } : {}) };
+      });
+      return { ...d, rules };
     },
   },
   normalize: normalizeStore,

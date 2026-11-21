@@ -75,17 +75,18 @@ export const DEFAULT_RULES: readonly DefaultRule[] = [
   rule("Loot", "item.cheap", "Cheap items", `is:item value<${k(VALUE_TIERS.mid)}`, { color: "#8b969f", emphasis: "faint", show: SHOW_LEVELS.mid }),
   rule("Loot", "item.valuable", "Valuable items", `is:item value>=${k(VALUE_TIERS.high)}`, { color: "#f5c542", emphasis: "strong", show: SHOW_LEVELS.always }),
   rule("Loot", "quest", "Quest items", "is:quest", { color: "#ffd84d", show: SHOW_LEVELS.always }),
-  // Ordinary items a started quest still needs (to find, hand over or plant): over the value rules.
-  rule("Loot", "item.quest-needed", "Needed for quests", "is:item is:needed", { color: "#ffd84d", emphasis: "strong", show: SHOW_LEVELS.always }),
+  // Ordinary items a started quest still needs found in raid (to find, hand over or plant): over the
+  // value rules. Ones it doesn't need found in raid can be bought, so they aren't singled out.
+  rule("Loot", "item.quest-needed", "Needed for quests (FIR)", "is:item is:fir", { color: "#ffd84d", emphasis: "strong", show: SHOW_LEVELS.always }),
   rule("Containers", "container", "Containers", "is:container", { color: "#b08a5a", show: SHOW_LEVELS.always }),
   rule("Containers", "airdrop", "Airdrops", "is:airdrop", { color: "#4de1ff", show: SHOW_LEVELS.always }),
   rule("Containers", "corpse", "Corpses", "is:corpse", { color: "#9a9a9a", show: SHOW_LEVELS.always }),
   rule("Exfils", "exfil", "Exfils", "is:exfil", { show: SHOW_LEVELS.always }),
   rule("Explosives", "explosive", "Grenades and tripwires", "is:explosive", { color: "#ff3b30", show: SHOW_LEVELS.always }),
   rule("Vehicles", "vehicle", "Vehicles", "is:vehicle", { color: "#f2c14e", show: SHOW_LEVELS.always }),
-  // Players and corpses carrying an item a started quest needs: ringed, so a corpse shows even with
+  // Players and corpses carrying an item a started quest needs found in raid: ringed, so a corpse shows even with
   // Containers off. Their own colour stays (a boss stays pink).
-  rule("General", "gear.quest-needed", "Carrying needed items", "is:player,corpse is:needed", { ring: "#ffd84d" }),
+  rule("General", "gear.quest-needed", "Carrying needed items (FIR)", "is:player,corpse is:fir", { ring: "#ffd84d" }),
 ];
 
 /** Categories hidden out of the box (the map's loot and container layers were off by default). */

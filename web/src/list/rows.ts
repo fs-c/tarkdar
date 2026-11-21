@@ -8,7 +8,7 @@ import { type ItemCatalog, containerName, equipmentValue, slotValue } from "../m
 import { exfilStatus } from "../model/exfils";
 import { type Selection, midpoint, selectionKey } from "../draw/pick";
 import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, Vehicle, WorldPos } from "../model/protocol";
-import { type NeedKind, type QuestNeed, carriedNeeds, formatQuestNeed, neededKinds } from "../model/quests";
+import { type NeedKind, type QuestNeed, carriedNeeds, formatQuestNeed, neededKinds, needsFir } from "../model/quests";
 import { type PlayerType, SPECIAL_TYPES, bossGroups, identityText, playerType } from "../model/roles";
 
 export type TabId = "players" | "items" | "containers" | "exfils";
@@ -44,6 +44,9 @@ export interface RowBase {
    *  objective few items count for): `is:needed`, the "Needed for quests" rule. Players (but you) and
    *  corpses: they carry such an item (the "Carrying needed items" rule). */
   questNeeded?: boolean;
+  /** One of those needs is found-in-raid (quest items: any), so buying won't do: `is:fir`, what the
+   *  default rules highlight. Gear taken off a body is found in raid, so carried items count. */
+  questFir?: boolean;
   /** The kinds of quest those needs are for: `quest:story` etc. */
   questKinds?: readonly NeedKind[];
 }
@@ -178,7 +181,7 @@ type NeedsMap = ReadonlyMap<string, readonly QuestNeed[]>;
 const NO_NEEDS: NeedsMap = new Map();
 
 /** What a player or corpse carries that quests need, as row fields; cached per needs map and gear. */
-type GearNeeds = Pick<RowBase, "questNeeds" | "questNeeded" | "questKinds">;
+type GearNeeds = Pick<RowBase, "questNeeds" | "questNeeded" | "questFir" | "questKinds">;
 const NOT_NEEDED: GearNeeds = {};
 const gearNeedsCache = new WeakMap<NeedsMap, WeakMap<Gear, GearNeeds>>();
 
@@ -190,7 +193,7 @@ function gearNeeds(gear: Gear, needs: NeedsMap): GearNeeds {
   if (!out) {
     const list = carriedNeeds(gear.tpls, needs);
     const kinds = neededKinds(list, true);
-    out = list.length ? { questNeeds: list.map(formatQuestNeed), questNeeded: true, questKinds: kinds } : NOT_NEEDED;
+    out = list.length ? { questNeeds: list.map(formatQuestNeed), questNeeded: true, ...(needsFir(list, true) ? { questFir: true } : {}), questKinds: kinds } : NOT_NEEDED;
     byGear.set(gear, out);
   }
   return out;
@@ -268,6 +271,7 @@ export function lootRows(
         name, shortName: info?.shortName ?? name, kind, basePrice: info?.priceSource === "base",
         ...(needs?.length ? { questNeeds: needs } : {}),
         ...(kinds.length ? { questNeeded: true, questKinds: kinds } : {}),
+        ...(needsFir(needList, kind === "quest") ? { questFir: true } : {}),
       });
     }
   }

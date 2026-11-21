@@ -101,6 +101,13 @@ describe("stored rules", () => {
     expect(defaultStore().rules).toHaveLength(DEFAULT_RULES.length);
   });
 
+  it("move the quest-need rules to is:fir, unless they were changed", () => {
+    const stored = (query: string, label: string) => ({ id: "item.quest-needed", origin: "item.quest-needed", category: "Loot", label, query, style: {}, on: true });
+    const from3 = (r: object) => decode(ruleStore, JSON.stringify({ $v: 3, data: { rules: [r], hidden: [] } })).value.rules.find((x) => x.id === "item.quest-needed");
+    expect(from3(stored("is:item is:needed", "Needed for quests"))).toMatchObject({ query: "is:item is:fir", label: "Needed for quests (FIR)" });
+    expect(from3(stored("is:item is:needed value>=10k", "Needed for quests"))).toMatchObject({ query: "is:item is:needed value>=10k", label: "Needed for quests (FIR)" });
+  });
+
   it("give vehicles the default rule; switching the Vehicles category off hides them; a changed colour applies", () => {
     const btr: Vehicle = { id: 1, kind: "btr", state: 2, pos: [0, 0, 0], yaw: 0, occupants: [] };
     const s = store();
@@ -120,12 +127,13 @@ describe("stored rules", () => {
     expect(missingDefaults(d.value.rules)).toBe(DEFAULT_RULES.length - 2); // the vehicle and gear rules are no longer missing
   });
 
-  it("ring corpses and players carrying what a quest needs, also with Containers off; a boss keeps its colour", () => {
+  it("ring corpses and players carrying what a quest needs found in raid, also with Containers off; a boss keeps its colour", () => {
     const off = { ...defaultStore(), hidden: ["Containers" as const] };
-    const corpse = styleOf(off, row("loot:1", "corpse", { questNeeded: true }));
+    const corpse = styleOf(off, row("loot:1", "corpse", { questNeeded: true, questFir: true }));
     expect(corpse).toMatchObject({ ring: "#ffd84d", show: 0 });
     expect(styleOf(off, row("loot:2", "corpse")).show).toBeNull();
-    const boss = styleOf(store(), row("player:1", "player", { questNeeded: true, type: "boss", ai: true, state: "alive" }));
+    expect(styleOf(off, row("loot:3", "corpse", { questNeeded: true })).show).toBeNull(); // can be bought
+    const boss = styleOf(store(), row("player:1", "player", { questNeeded: true, questFir: true, type: "boss", ai: true, state: "alive" }));
     expect(boss).toMatchObject({ ring: "#ffd84d", color: "#ff4fd8" });
   });
 

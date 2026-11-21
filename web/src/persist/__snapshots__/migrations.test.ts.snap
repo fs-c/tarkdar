@@ -350,10 +350,10 @@ exports[`radar.rules > from version 0 1`] = `
     {
       "category": "General",
       "id": "gear.quest-needed",
-      "label": "Carrying needed items",
+      "label": "Carrying needed items (FIR)",
       "on": true,
       "origin": "gear.quest-needed",
-      "query": "is:player,corpse is:needed",
+      "query": "is:player,corpse is:fir",
       "style": {
         "ring": "#ffd84d",
       },
@@ -393,10 +393,10 @@ exports[`radar.rules > from version 1 1`] = `
     {
       "category": "General",
       "id": "gear.quest-needed",
-      "label": "Carrying needed items",
+      "label": "Carrying needed items (FIR)",
       "on": true,
       "origin": "gear.quest-needed",
-      "query": "is:player,corpse is:needed",
+      "query": "is:player,corpse is:fir",
       "style": {
         "ring": "#ffd84d",
       },
@@ -436,10 +436,10 @@ exports[`radar.rules > from version 2 1`] = `
     {
       "category": "General",
       "id": "gear.quest-needed",
-      "label": "Carrying needed items",
+      "label": "Carrying needed items (FIR)",
       "on": true,
       "origin": "gear.quest-needed",
-      "query": "is:player,corpse is:needed",
+      "query": "is:player,corpse is:fir",
       "style": {
         "ring": "#ffd84d",
       },
@@ -481,10 +481,55 @@ exports[`radar.rules > from version 3 1`] = `
     {
       "category": "General",
       "id": "gear.quest-needed",
-      "label": "Carrying needed items",
+      "label": "Carrying needed items (FIR)",
       "on": true,
       "origin": "gear.quest-needed",
-      "query": "is:player,corpse is:needed",
+      "query": "is:player,corpse is:fir",
+      "style": {
+        "ring": "#ff0000",
+      },
+    },
+  ],
+}
+`;
+
+exports[`radar.rules > from version 4 1`] = `
+{
+  "hidden": [
+    "Containers",
+  ],
+  "rules": [
+    {
+      "category": "Loot",
+      "id": "r:abc1",
+      "label": "GPUs",
+      "on": true,
+      "query": "gpu",
+      "style": {
+        "label": "always",
+        "labelFrom": 2,
+        "show": null,
+      },
+    },
+    {
+      "category": "Vehicles",
+      "id": "vehicle",
+      "label": "Vehicles",
+      "on": true,
+      "origin": "vehicle",
+      "query": "is:vehicle",
+      "style": {
+        "color": "#f2c14e",
+        "show": 0,
+      },
+    },
+    {
+      "category": "General",
+      "id": "gear.quest-needed",
+      "label": "Carrying needed items (FIR)",
+      "on": true,
+      "origin": "gear.quest-needed",
+      "query": "is:player,corpse is:fir",
       "style": {
         "ring": "#ff0000",
       },

@@ -126,6 +126,20 @@ describe("matching", () => {
     expect(match("gunsmith")).toEqual(["loot:12"]);
     expect(keys("is:needed")).toEqual([]); // nothing needed without quest data
   });
+  it("matches what has to be found in raid: FIR objectives, and quest items", () => {
+    const needs = new Map<string, QuestNeed[]>([
+      ["bolts", [{ quest: "Gunsmith", kind: "side", count: 2, fir: true, of: 1 }]],
+      ["salewa", [{ quest: "Bring meds", kind: "side", count: 1, fir: false, of: 1 }]], // can be bought
+      ["drive", [{ quest: "Retrieve the drive", kind: "story", count: 1, fir: false, of: 1 }]],
+      ["gpu", [{ quest: "Got one", kind: "side", count: 1, fir: true, of: 1, covered: true }]], // owned already
+    ]);
+    const rows = [loot(12, "item", "bolts"), loot(13, "quest", "drive"), loot(15, "item", "salewa"), loot(16, "item", "gpu")];
+    const quested = lootRows(rows, catalog, new Map(), needs).items;
+    const match = (q: string) => matchingRows(quested, q, catalog).map((r) => r.key);
+    expect(match("is:needed")).toEqual(["loot:12", "loot:13", "loot:15"]);
+    expect(match("is:fir")).toEqual(["loot:12", "loot:13"]);
+    expect(match("is:item is:fir")).toEqual(["loot:12"]);
+  });
   it("matches what a kind of quest needs", () => {
     const needs = new Map<string, QuestNeed[]>([
       ["bolts", [{ quest: "Gunsmith", kind: "side", count: 2, fir: true, of: 1 }, { quest: "Prapor daily", kind: "daily", count: 1, fir: true, of: 1 }]],

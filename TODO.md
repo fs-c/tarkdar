@@ -1,6 +1,3 @@
-- minor improvements
-    - only highlight found-in-raid-required items (also consider this for equipment)
-    - (some) radio groups expand to fill the parent which looks odd
 - backend/memory read optimization; there's noticeably more lag while the backend is running
     - still open: cache transform hierarchy/index lookups (2 of the 3 read rounds per positions tick), move builds/bone resolves off the live thread, publish players only on change, slower tripwire scan
 - cleanup/review round: follow-up (found 2026-11)

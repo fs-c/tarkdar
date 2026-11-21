@@ -252,6 +252,12 @@ export function neededKinds(needs: readonly QuestNeed[] | undefined, questItem: 
   return NEED_KINDS.filter((k) => kinds.has(k));
 }
 
+/** Whether one of those needs has to be found in raid (a found-in-raid objective), so buying the item
+ *  won't do: `is:fir`. Quest items can't be bought, so any need counts. */
+export function needsFir(needs: readonly QuestNeed[] | undefined, questItem: boolean): boolean {
+  return !!needs?.some((n) => isOpen(n) && (questItem || (isSpecific(n) && n.fir)));
+}
+
 /**
  * The carried items behind carriedNeeds: each template a quest needs (in the order first carried),
  * how many of it are carried, and the needs it's for.

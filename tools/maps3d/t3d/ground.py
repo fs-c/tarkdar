@@ -72,7 +72,9 @@ def _open(a: np.ndarray, radius: int) -> np.ndarray:
 def _fill(values: np.ndarray, known: np.ndarray) -> np.ndarray:
     """Fills unknown cells from the known ones around them (pull-push over an image pyramid)."""
     if known.all() or values.size <= 1:
-        return np.where(known, values, 0.0).astype(np.float32) if not known.any() else values
+        if known.any():
+            return values
+        return np.zeros(values.shape, dtype=np.float32)     # nothing known to fill from
     rows, cols = values.shape
     pr, pc = rows + rows % 2, cols + cols % 2
     v = np.zeros((pr, pc), dtype=np.float64)
@@ -130,14 +132,10 @@ def _up_samples(positions: np.ndarray, indices: np.ndarray, spacing: float) -> n
     return points
 
 
-def height_map(surfaces: list[tuple[np.ndarray, np.ndarray, bool]], bounds_xz, cell: float = 1.0,
-               debug: dict | None = None) -> GroundMap:
-    """`surfaces`: world-space (positions (V, 3), indices, is heightmap terrain) triples.
-    `bounds_xz`: ((x0, z0), (x1, z1)), the area to cover."""
-    (x0, z0), (x1, z1) = bounds_xz
-    x0, z0 = np.floor(x0 / cell) * cell - MARGIN * cell, np.floor(z0 / cell) * cell - MARGIN * cell
-    cols = int(np.ceil((x1 - x0) / cell)) + MARGIN
-    rows = int(np.ceil((z1 - z0) / cell)) + MARGIN
+def _rasterize(surfaces: list, x0: float, z0: float, cols: int, rows: int, cell: float):
+    """Per grid cell, from the up-facing samples of `surfaces`: the lowest and highest height
+    of ordinary surfaces and the highest of heightmap terrain (+-inf where there is none).
+    Returns (low, top, terrain), each (rows, cols) float32."""
     low = np.full(rows * cols, np.inf, dtype=np.float32)
     top = np.full(rows * cols, -np.inf, dtype=np.float32)
     terrain = np.full(rows * cols, -np.inf, dtype=np.float32)
@@ -156,12 +154,12 @@ def height_map(surfaces: list[tuple[np.ndarray, np.ndarray, bool]], bounds_xz, c
             else:
                 np.minimum.at(low, key, y)
                 np.maximum.at(top, key, y)
-    low, top, terrain = (a.reshape(rows, cols) for a in (low, top, terrain))
-    trusted = np.isfinite(terrain)
-    surface = np.where(trusted, terrain, low)
-    filled = np.isfinite(surface)
+    return low.reshape(rows, cols), top.reshape(rows, cols), terrain.reshape(rows, cols)
 
-    ground = filled.copy()
+
+def _ground_seeds(surface: np.ndarray, trusted: np.ndarray, cell: float) -> np.ndarray:
+    """Cells that are ground by the progressive morphological filter, plus the trusted ones."""
+    ground = np.isfinite(surface)
     current = surface
     previous = 0
     for radius_m in FILTER_RADII:
@@ -171,12 +169,27 @@ def height_map(surfaces: list[tuple[np.ndarray, np.ndarray, bool]], bounds_xz, c
         with np.errstate(invalid="ignore"):
             ground &= ~((current - opened) > limit)
         current, previous = opened, radius
-    ground |= trusted
+    return ground | trusted
 
+
+def height_map(surfaces: list[tuple[np.ndarray, np.ndarray, bool]], bounds_xz, cell: float = 1.0,
+               debug: dict | None = None) -> GroundMap:
+    """`surfaces`: world-space (positions (V, 3), indices, is heightmap terrain) triples.
+    `bounds_xz`: ((x0, z0), (x1, z1)), the area to cover."""
+    (x0, z0), (x1, z1) = bounds_xz
+    x0, z0 = np.floor(x0 / cell) * cell - MARGIN * cell, np.floor(z0 / cell) * cell - MARGIN * cell
+    cols = int(np.ceil((x1 - x0) / cell)) + MARGIN
+    rows = int(np.ceil((z1 - z0) / cell)) + MARGIN
+    low, top, terrain = _rasterize(surfaces, x0, z0, cols, rows, cell)
+    trusted = np.isfinite(terrain)
+    surface = np.where(trusted, terrain, low)
+
+    ground = _ground_seeds(surface, trusted, cell)
     height = _fill(np.where(ground, surface, 0.0), ground).astype(np.float32)
     accepted = ground.copy()
     nan = np.float32(np.nan)
-    _grow(height, accepted, [np.where(np.isfinite(top), top, nan), np.where(np.isfinite(low), low, nan)], STEP * cell)
+    candidates = [np.where(np.isfinite(top), top, nan), np.where(np.isfinite(low), low, nan)]
+    _grow(height, accepted, candidates, STEP * cell)
     height = _fill(height, accepted).astype(np.float32)
     # Buildings: tall over a width no wall, pole, container or bus has. One cell more than that,
     # so the mask covers their edges whatever the sampling.

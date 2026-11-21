@@ -6,7 +6,8 @@ Two separate choices, because only the first needs the game files:
   `Assets/Content/Locations/<folder>/` (scripts, AI, culling and all: re-extracting
   later means mounting the game again, keeping a scene in the cache costs little).
   Plus every scene the game's own preset for the location names (`game`, see below).
-- `select(scenes, game_presets)`: the build picks its scenes from the cached ones.
+- `select`, a `Selection` (`select.pick(scenes, game_presets)`): the build picks its scenes from
+  the cached ones.
 
 The game's presets (`unity.location_presets`, saved in the cache manifest as `gamePresets`)
 are what the game loads for a location id. Maps not tuned by hand build from them.
@@ -18,6 +19,8 @@ Scenes are identified by path (levelN indices shift between game patches).
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
+from dataclasses import dataclass
 
 CUSTOMS_SCENES = [
     "Assets/Content/Locations/Custom/custom_multiScene.unity",
@@ -72,13 +75,23 @@ def in_folders(scenes: list[str], folders) -> list[str]:
     return [p for p in dict.fromkeys(scenes) if (location_folder(p) or "").lower() in folders]
 
 
-def _listed(names: list[str]):
+@dataclass(frozen=True)
+class Selection:
+    """Which of the cached scenes a build uses.
+
+    `pick(scenes, game_presets)` returns the chosen scene paths. `required` are scenes that
+    must exist: extraction and the build stop when one is missing (empty when the choice is
+    computed from whatever is there)."""
+    pick: Callable[[list[str], dict | None], list[str]]
+    required: tuple[str, ...] = ()
+
+
+def _listed(names: list[str]) -> Selection:
     """select: exactly these scenes, in this order (the ones present)."""
-    def select(scenes: list[str], game_presets: dict | None = None) -> list[str]:
+    def pick(scenes: list[str], game_presets: dict | None = None) -> list[str]:
         have = set(scenes)
         return [p for p in names if p in have]
-    select.names = list(names)
-    return select
+    return Selection(pick, required=tuple(names))
 
 
 def _streets(all_scenes: list[str], game_presets: dict | None = None) -> list[str]:
@@ -120,19 +133,19 @@ def game_preset_scenes(game_presets: dict | None, name: str) -> list[str] | None
     return None
 
 
-def _geometry_scenes(game: str, exclude: str | None = None):
+def _geometry_scenes(game: str, exclude: str | None = None) -> Selection:
     """select: the game preset's scenes (all cached ones without it), except non-geometry
     ones and `exclude` (a regex on the scene name)."""
     extra = re.compile(exclude, re.I) if exclude else None
 
-    def select(scenes: list[str], game_presets: dict | None = None) -> list[str]:
+    def pick(scenes: list[str], game_presets: dict | None = None) -> list[str]:
         listed = game_preset_scenes(game_presets, game)
         if listed is not None:
             have = set(scenes)
             scenes = [p for p in listed if p in have]
         return [p for p in scenes if not NON_GEOMETRY_RE.search(scene_name(p))
                 and not (extra and extra.search(scene_name(p)))]
-    return select
+    return Selection(pick)
 
 
 def _untuned(label: str, ids: list[str], folders: list[str], *, game: str | None = None,
@@ -147,7 +160,7 @@ def _untuned(label: str, ids: list[str], folders: list[str], *, game: str | None
 # ids: the game's location ids this map is used for (matched case-insensitively
 #      by the frontend; written to the dataset's map.json).
 # folders: Assets/Content/Locations/<folder>/ scenes to extract.
-# select: the scenes a build uses, from the cached ones.
+# select: a Selection: the scenes a build uses, from the cached ones.
 # indoorOptional: the build drops *indoor* scenes unless --include-indoor.
 # interior: the map is (mostly) indoors: the build keeps everything (no hidden-surface removal,
 #          indoor scenes included) and the viewer cuts the map open above the floor being
@@ -161,7 +174,7 @@ MAPS = {
     "customs": {"label": "Customs", "tag": "BIGMAP", "ids": ["bigmap"], "indoorOptional": False,
                 "folders": ["Custom"], "game": "bigmap", "select": _listed(CUSTOMS_SCENES)},
     "streets": {"label": "Streets", "tag": "TARKOVSTREETS", "ids": ["TarkovStreets"], "indoorOptional": True,
-                "folders": ["City"], "game": "TarkovStreets", "select": _streets},
+                "folders": ["City"], "game": "TarkovStreets", "select": Selection(_streets)},
     "factory": {"label": "Factory", "tag": "FACTORY4", "ids": ["factory4_day", "factory4_night"], "indoorOptional": False,
                 "folders": ["Factory_Rework"], "game": "factory4_day", "select": _listed(FACTORY_SCENES),
                 "interior": True},

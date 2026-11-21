@@ -18,6 +18,7 @@ triangles visible, and `bias` keeps surfaces that lie just behind another one.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -80,16 +81,72 @@ def above_ground(points: np.ndarray, ground_points: np.ndarray, pixel: float, cl
     """Per point: is it more than `clearance` above the ground surface (or
     outside the area the ground samples cover)?"""
     lo = np.minimum(points[:, [0, 2]].min(axis=0), ground_points[:, [0, 2]].min(axis=0))
-
-    def cells(pts):
-        px = np.floor((pts[:, [0, 2]] - lo) / pixel).astype(np.int64)
-        return px, px[:, 1] * width + px[:, 0]
-
     hi = np.maximum(points[:, [0, 2]].max(axis=0), ground_points[:, [0, 2]].max(axis=0))
     width, rows = (np.floor((hi - lo) / pixel).astype(np.int64) + 1).tolist()
+
+    def cell_index(pts: np.ndarray) -> np.ndarray:
+        """Index of each point's pixel in the row-major height grid."""
+        px = np.floor((pts[:, [0, 2]] - lo) / pixel).astype(np.int64)
+        return px[:, 1] * width + px[:, 0]
+
     height = np.full(width * rows, -np.inf, dtype=np.float32)
-    np.maximum.at(height, cells(ground_points)[1], ground_points[:, 1])
-    return points[:, 1] > height[cells(points)[1]] + clearance
+    np.maximum.at(height, cell_index(ground_points), ground_points[:, 1])
+    return points[:, 1] > height[cell_index(points)] + clearance
+
+
+@dataclass
+class View:
+    """One viewing direction: the camera basis and the depth buffer's pixel grid."""
+    basis: np.ndarray        # float32 rows (u, v, d); depth = distance towards the viewer along d
+    lo: np.ndarray           # float32 (u, v) of the buffer's corner
+    width: int               # pixels per row
+    rows: int
+    key_type: type           # integer type wide enough for a pixel key (row * width + column)
+
+    @property
+    def size(self) -> int:
+        return self.width * self.rows
+
+
+def make_view(d: np.ndarray, corners: np.ndarray, occluder_corners: np.ndarray | None, pixel: float) -> View:
+    """The view along direction `d` of a mesh (`corners`, float64 positions) and, if it takes
+    part in the depth buffer, its occluders."""
+    # Orthonormal basis (u, v, d)
+    helper = np.array([1.0, 0.0, 0.0]) if abs(d[1]) > 0.9 else np.array([0.0, 1.0, 0.0])
+    u = np.cross(helper, d)
+    u /= np.linalg.norm(u)
+    basis = np.stack([u, np.cross(d, u), d]).astype(np.float32)
+    plane = basis[:2].T.astype(np.float64)
+    extent = corners @ plane
+    if occluder_corners is not None:
+        extent = np.concatenate([extent, occluder_corners @ plane])
+    lo = (extent.min(axis=0) - pixel).astype(np.float32)
+    width, rows = (np.ceil((extent.max(axis=0) - lo) / pixel).astype(np.int64) + 2).tolist()
+    key_type = np.int32 if width * rows < 2**31 else np.int64
+    return View(basis, lo, width, rows, key_type)
+
+
+def project_samples(pts: np.ndarray, owners: np.ndarray, front: np.ndarray, view: View, pixel: float):
+    """Yield (pixel key, depth, triangle id, start, selection) for the front-facing samples, in
+    bounded pieces of `CHUNK` samples. `start` is the piece's position in `pts`, `selection` the
+    mask of its samples that were kept."""
+    basis, lo = view.basis, view.lo
+    for start in range(0, len(pts), CHUNK):
+        ids = owners[start:start + CHUNK]
+        sel = front[ids]
+        if not sel.any():
+            continue
+        selected = pts[start:start + CHUNK][sel]
+        # One axis at a time and in place: this loop is memory-bound.
+        column, row = selected @ basis[0], selected @ basis[1]
+        for axis, values in enumerate((column, row)):
+            values -= lo[axis]
+            values /= pixel
+            np.floor(values, out=values)
+        key = row.astype(view.key_type)
+        key *= view.width
+        key += column.astype(view.key_type)
+        yield key, selected @ basis[2], ids[sel], start, sel
 
 
 def visible_triangles(positions: np.ndarray, indices: np.ndarray, directions: np.ndarray, *,
@@ -120,54 +177,25 @@ def visible_triangles(positions: np.ndarray, indices: np.ndarray, directions: np
     corners = np.asarray(positions, dtype=np.float64)
     exposed = above_ground(points, occ[0], pixel, ground_clearance) if occ is not None else None
 
-    def chunks(pts, own, front):
-        """(pixel key, depth, triangle id, position of the piece, selection within it) of the
-        front-facing samples, in bounded pieces."""
-        for start in range(0, len(pts), CHUNK):
-            ids = own[start:start + CHUNK]
-            sel = front[ids]
-            if not sel.any():
-                continue
-            selected = pts[start:start + CHUNK][sel]
-            # One axis at a time and in place: this loop is memory-bound.
-            column, row = selected @ basis[0], selected @ basis[1]
-            for axis, values in enumerate((column, row)):
-                values -= lo[axis]
-                values /= pixel
-                np.floor(values, out=values)
-            key = row.astype(key_type)
-            key *= width
-            key += column.astype(key_type)
-            yield key, selected @ basis[2], ids[sel], start, sel
-
     for d in directions:
-        # Orthonormal basis (u, v, d); depth = distance towards the viewer.
-        helper = np.array([1.0, 0.0, 0.0]) if abs(d[1]) > 0.9 else np.array([0.0, 1.0, 0.0])
-        u = np.cross(helper, d)
-        u /= np.linalg.norm(u)
-        basis = np.stack([u, np.cross(d, u), d]).astype(np.float32)
         use_occluders = occ is not None and d[1] > 0
         eligible = exposed if occ is not None and d[1] <= 0 else None
-        extent = corners @ basis[:2].T.astype(np.float64)
-        if use_occluders:
-            extent = np.concatenate([extent, np.asarray(occluders[0], dtype=np.float64) @ basis[:2].T.astype(np.float64)])
-        lo = (extent.min(axis=0) - pixel).astype(np.float32)
-        width, rows = (np.ceil((extent.max(axis=0) - lo) / pixel).astype(np.int64) + 2).tolist()
-        nearest = np.full(width * rows, -np.inf, dtype=np.float32)
-        key_type = np.int32 if width * rows < 2**31 else np.int64
+        occluder_corners = np.asarray(occluders[0], dtype=np.float64) if use_occluders else None
+        view = make_view(d, corners, occluder_corners, pixel)
+        nearest = np.full(view.size, -np.inf, dtype=np.float32)
 
         front = normals @ d > 0
         # Projecting the samples is nearly all of the work: the projected samples are kept
         # for the test below instead of being projected a second time.
         projected = []
-        for key, depth, ids, start, sel in chunks(points, owner, front):
+        for key, depth, ids, start, sel in project_samples(points, owner, front, view, pixel):
             np.maximum.at(nearest, key, depth)
             if eligible is not None:
                 keep = eligible[start:start + CHUNK][sel]
                 key, depth, ids = key[keep], depth[keep], ids[keep]
             projected.append((key, depth, ids))
         if use_occluders:
-            for key, depth, *_ in chunks(occ[0], occ[1], occ[2] @ d > 0):
+            for key, depth, *_ in project_samples(occ[0], occ[1], occ[2] @ d > 0, view, pixel):
                 np.maximum.at(nearest, key, depth)
         for key, depth, ids in projected:
             visible[ids[depth >= nearest[key] - bias]] = True

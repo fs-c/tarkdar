@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -222,93 +222,122 @@ def _occluder_for(terrain, lo, hi, margin: float, origin):
     return (pos - origin).astype(np.float32), idx
 
 
-def bake(ds: dataset.Dataset, opt: Options, log=print) -> dataset.Dataset:
+@dataclass
+class Classified:
+    """What `classify_instances` decided about every placed mesh."""
+    # (cell, category) -> [(instance, [(slot, (first, count)), ...]), ...]: what gets merged
+    buckets: dict[tuple, list] = field(default_factory=lambda: defaultdict(list))
+    passthrough: list[dataset.Instance] = field(default_factory=list)    # kept as instances
+    foliage_boxes: list[tuple] = field(default_factory=list)             # world (min, max) of dropped foliage
+    dropped: int = 0
+    backdrop: dict[str, list] = field(default_factory=lambda: defaultdict(list))   # name -> widths dropped
+    outside: int = 0                                                     # dropped for lying outside the map
+
+
+def _slots_by_category(inst: dataset.Instance, geom: dataset.Geom) -> dict[str, list]:
+    """category -> [(slot, (first, count)), ...] for the material slots of one placed mesh."""
+    by_category: dict[str, list] = defaultdict(list)
+    for slot, (first, count) in zip(inst.slots, geom.parts.tolist()):
+        by_category[slot.category].append((slot, (first, count)))
+    return by_category
+
+
+def classify_instances(ds: dataset.Dataset, opt: Options) -> Classified:
+    """Decide for every instance: merged into a cell bucket, kept as it is, or dropped."""
     merge, drop = set(opt.merge), set(opt.drop)
     bounds = [g.bounds() for g in ds.geoms]
-
-    # (cell, category) -> [(instance, [(slot, (first, count)), ...]), ...]
-    buckets: dict[tuple, list] = defaultdict(list)
-    passthrough: list[dataset.Instance] = []
-    foliage_boxes: list[tuple] = []
-    dropped = 0
-    backdrop: dict[str, list] = defaultdict(list)      # name -> widths of the oversized objects dropped
-    outside = 0
+    result = Classified()
     known = ds.playable is not None or any(g.kind == "terrain" for g in ds.geoms)
     play_lo, play_hi = dataset.focus_bounds(ds) if known else (None, None)
     for inst in ds.instances:
         geom = ds.geoms[inst.geom]
-        by_category: dict[str, list] = defaultdict(list)
-        for slot, (first, count) in zip(inst.slots, geom.parts.tolist()):
-            by_category[slot.category].append((slot, (first, count)))
+        by_category = _slots_by_category(inst, geom)
         if not any(c in merge for c in by_category):
             if all(c in drop for c in by_category):
-                dropped += 1
+                result.dropped += 1
                 if opt.tree_markers and set(by_category) == {"foliage"}:
                     wa = geometry.world_aabb(*bounds[inst.geom], inst.matrix)
-                    foliage_boxes.append((wa.min(axis=0), wa.max(axis=0)))
+                    result.foliage_boxes.append((wa.min(axis=0), wa.max(axis=0)))
             else:
-                passthrough.append(inst)     # terrain, water: kept as instances (noise parts included)
+                result.passthrough.append(inst)     # terrain, water: kept as instances (noise parts included)
             continue
         wa = geometry.world_aabb(*bounds[inst.geom], inst.matrix)
-        width = float((wa.max(axis=0) - wa.min(axis=0))[[0, 2]].max())
+        box_min, box_max = wa.min(axis=0), wa.max(axis=0)
+        width = float((box_max - box_min)[[0, 2]].max())
         if width > opt.backdrop_size:
-            dropped += 1
+            result.dropped += 1
             path = ds.paths[inst.path] if 0 <= inst.path < len(ds.paths) else ""
-            backdrop[path.rsplit("/", 1)[-1] or geom.name].append(width)
+            result.backdrop[path.rsplit("/", 1)[-1] or geom.name].append(width)
             continue
-        if play_lo is not None and ((wa.max(axis=0) < play_lo - opt.backdrop_margin)[[0, 2]].any() or
-                                    (wa.min(axis=0) > play_hi + opt.backdrop_margin)[[0, 2]].any()):
-            dropped += 1
-            outside += 1
-            continue
-        cell = cell_of((wa.min(axis=0) + wa.max(axis=0)) / 2, opt.cell_size)
+        if play_lo is not None:
+            wholly_below = (box_max < play_lo - opt.backdrop_margin)[[0, 2]].any()
+            wholly_above = (box_min > play_hi + opt.backdrop_margin)[[0, 2]].any()
+            if wholly_below or wholly_above:
+                result.dropped += 1
+                result.outside += 1
+                continue
+        cell = cell_of((box_min + box_max) / 2, opt.cell_size)
         for category, parts in by_category.items():
             if category in merge:
-                buckets[(cell, category)].append((inst, parts))
+                result.buckets[(cell, category)].append((inst, parts))
+    return result
 
-    terrain = _terrain_triangles(ds, passthrough) if opt.hsr else None
 
-    def job_for(category, items):
-        """Merge one bucket into cell-local arrays (the simplifier and the
-        visibility bake work in float32; world coordinates would lose precision)."""
-        P, C, I = [], [], []
-        offset = 0
-        fallback = CATEGORY_COLOR.get(category, DEFAULT_COLOR)
-        for inst, parts in items:
-            geom = ds.geoms[inst.geom]
-            # One colour per part; vertices shared between parts take the last one.
-            colors = np.empty((len(geom.positions), 4), dtype=np.uint8)
-            colors[:] = (*fallback, 255)
-            for slot, (first, count) in parts:
-                if slot.color[3]:
-                    colors[geom.indices[first:first + count]] = slot.color
-            p, idx, used = instance_world(geom, inst.matrix, [r for _, r in parts])
-            P.append(p)
-            C.append(colors[used])
-            I.append(idx + offset)
-            offset += len(p)
-        positions = np.concatenate(P)
-        lo, hi = positions.min(axis=0), positions.max(axis=0)
-        do_hsr = opt.hsr and category in opt.hsr_categories
-        occluder = _occluder_for(terrain, lo, hi, opt.occluder_margin, lo) if do_hsr else None
-        return lo, ((positions - lo).astype(np.float32), np.concatenate(C), np.concatenate(I), opt, do_hsr,
-                    occluder, category in opt.surfaces)
+def make_cell_job(ds: dataset.Dataset, category: str, items: list, opt: Options, terrain):
+    """Merge one bucket into cell-local arrays (the simplifier and the visibility bake work in
+    float32; world coordinates would lose precision).
 
-    # Cells are independent: process them in parallel, a few in flight at a time
-    # (a merged cell is up to a few hundred MB before simplification).
-    keys = sorted(buckets)
-    results: dict[tuple, tuple] = {}      # bucket key -> (mesh or None, stats)
-    origins: dict[tuple, np.ndarray] = {}
-    totals = defaultdict(int)
-    workers = opt.workers or os.cpu_count() or 1
-    # One thread per worker: numpy's BLAS would otherwise start a thread per
-    # core in every worker and the machine thrashes. Workers inherit this.
+    Returns (origin, job): `origin` is the world position of the cell-local zero, `job` the
+    argument tuple of `_process_cell`."""
+    P, C, I = [], [], []
+    offset = 0
+    fallback = CATEGORY_COLOR.get(category, DEFAULT_COLOR)
+    for inst, parts in items:
+        geom = ds.geoms[inst.geom]
+        # One colour per part; vertices shared between parts take the last one.
+        colors = np.empty((len(geom.positions), 4), dtype=np.uint8)
+        colors[:] = (*fallback, 255)
+        for slot, (first, count) in parts:
+            if slot.color[3]:
+                colors[geom.indices[first:first + count]] = slot.color
+        p, idx, used = instance_world(geom, inst.matrix, [r for _, r in parts])
+        P.append(p)
+        C.append(colors[used])
+        I.append(idx + offset)
+        offset += len(p)
+    positions = np.concatenate(P)
+    lo, hi = positions.min(axis=0), positions.max(axis=0)
+    do_hsr = opt.hsr and category in opt.hsr_categories
+    occluder = _occluder_for(terrain, lo, hi, opt.occluder_margin, lo) if do_hsr else None
+    job = ((positions - lo).astype(np.float32), np.concatenate(C), np.concatenate(I), opt, do_hsr,
+           occluder, category in opt.surfaces)
+    return lo, job
+
+
+def limit_blas_threads() -> None:
+    """One BLAS thread per worker: numpy's BLAS would otherwise start a thread per core in every
+    worker and the machine thrashes.
+
+    Called right before the worker pool starts. numpy is already imported here, so this does not
+    change the BLAS of this process (it read the variables at import); it takes effect in the
+    worker processes, which inherit the environment and import numpy after they start."""
     for var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
         os.environ[var] = "1"
+
+
+def process_cells(keys: list, make_job, workers: int) -> tuple[dict, dict]:
+    """Run `_process_cell` on the job of every key, in parallel. `make_job(key)` returns
+    (origin, job). Returns (results, origins): key -> (mesh or None, stats), key -> origin.
+
+    Cells are independent. A few are in flight at a time (a merged cell is up to a few hundred MB
+    before simplification), so jobs are made lazily, as the pool has room."""
+    results: dict[tuple, tuple] = {}
+    origins: dict[tuple, np.ndarray] = {}
+    limit_blas_threads()
     with ProcessPoolExecutor(max_workers=workers) as pool:
         pending = {}
         for key in keys:
-            origins[key], job = job_for(key[1], buckets[key])
+            origins[key], job = make_job(key)
             pending[pool.submit(_process_cell, job)] = key
             del job
             while len(pending) >= workers + 2:
@@ -317,12 +346,16 @@ def bake(ds: dataset.Dataset, opt: Options, log=print) -> dataset.Dataset:
                     results[pending.pop(future)] = future.result()
         for future, key in pending.items():
             results[key] = future.result()
+    return results, origins
 
-    out_geoms: list[dataset.Geom] = []
-    out_instances: list[dataset.Instance] = []
-    cells = sorted({cell for cell, _ in buckets})
-    scene_of = {cell: i for i, cell in enumerate(cells)}
-    scenes = [{"level": f"cell {x},{z}", "path": f"cells/cell_{x}_{z}"} for x, z in cells]
+
+def cell_instances(keys: list, results: dict, origins: dict, scene_of: dict):
+    """Turn the processed cells into dataset geoms and instances (one mesh per cell and category).
+
+    Returns (geoms, instances, totals, vertices): `totals` sums the per-cell triangle counts."""
+    geoms: list[dataset.Geom] = []
+    instances: list[dataset.Instance] = []
+    totals = defaultdict(int)
     vertices = 0
     for key in keys:
         mesh, stats = results[key]
@@ -331,73 +364,112 @@ def bake(ds: dataset.Dataset, opt: Options, log=print) -> dataset.Dataset:
         if mesh is None:
             continue
         cell, category = key
-        origin = origins[key]
         indices, positions, colors = mesh
         vertices += len(positions)
         # Back to world space. float32 is exact enough here: the map is ~2 km across.
-        world = (positions.astype(np.float64) + origin).astype(np.float32)
-        out_instances.append(dataset.Instance(len(out_geoms), np.eye(4), scene_of[cell], [dataset.Slot(category)], -1))
-        out_geoms.append(dataset.Geom(f"cell_{cell[0]}_{cell[1]}_{category}", "mesh", world,
-                                      np.zeros((len(world), 3), dtype=np.float32), indices,
-                                      np.array([[0, len(indices)]], dtype=np.uint32), colors, flat=True))
-    cell_meshes = len(out_geoms)
+        world = (positions.astype(np.float64) + origins[key]).astype(np.float32)
+        instances.append(dataset.Instance(len(geoms), np.eye(4), scene_of[cell], [dataset.Slot(category)], -1))
+        geoms.append(dataset.Geom(f"cell_{cell[0]}_{cell[1]}_{category}", "mesh", world,
+                                  np.zeros((len(world), 3), dtype=np.float32), indices,
+                                  np.array([[0, len(indices)]], dtype=np.uint32), colors, flat=True))
+    return geoms, instances, totals, vertices
 
-    # Terrain without a ground image (backdrop meshes around the map) takes the
-    # average ground colour, so it does not stand out against the real terrain.
-    grounds = [g.texture.reshape(-1, 3).mean(axis=0) for g in (ds.geoms[i.geom] for i in passthrough)
+
+def average_ground_color(ds: dataset.Dataset, instances: list) -> tuple | None:
+    """Mean colour of the ground images of `instances`, desaturated like the renderer does, or None.
+
+    Terrain without a ground image (backdrop meshes around the map) takes it, so it does not
+    stand out against the real terrain."""
+    grounds = [g.texture.reshape(-1, 3).mean(axis=0) for g in (ds.geoms[i.geom] for i in instances)
                if g.texture is not None]
-    average_ground = None
-    if grounds:
-        mean = np.mean(grounds, axis=0)
-        # The renderer mutes ground images (settings.ts groundSaturation); match its default here.
-        mean = mean + (mean @ np.array([0.2126, 0.7152, 0.0722]) - mean) * GROUND_DESATURATION
-        average_ground = tuple(int(v) for v in np.rint(mean))
+    if not grounds:
+        return None
+    mean = np.mean(grounds, axis=0)
+    # The renderer mutes ground images (settings.ts groundSaturation); match its default here.
+    mean = mean + (mean @ np.array([0.2126, 0.7152, 0.0722]) - mean) * GROUND_DESATURATION
+    return tuple(int(v) for v in np.rint(mean))
 
-    # Unmerged instances keep their meshes and scenes (appended after the cells).
+
+def passthrough_color(geom: dataset.Geom, category: str, average_ground: tuple | None) -> tuple:
+    """Vertex colour of an unmerged mesh."""
+    if geom.texture is not None:
+        return (255, 255, 255)       # a draped colour image is multiplied with the vertex colour: white
+    if category == "terrain" and average_ground is not None:
+        return average_ground
+    return CATEGORY_COLOR.get(category, DEFAULT_COLOR)
+
+
+def append_passthrough(ds: dataset.Dataset, instances: list, geoms: list, scenes: list,
+                       out_instances: list, average_ground: tuple | None) -> None:
+    """Add the unmerged instances with their meshes and scenes (appended after the cells)."""
     geom_map: dict[int, int] = {}
     scene_map: dict[int, int] = {}
-    for inst in passthrough:
+    for inst in instances:
         if inst.geom not in geom_map:
-            geom_map[inst.geom] = len(out_geoms)
+            geom_map[inst.geom] = len(geoms)
             geom = ds.geoms[inst.geom]
             colors = np.empty((len(geom.positions), 4), dtype=np.uint8)
-            # A draped colour image is multiplied with the vertex colour: white.
-            category = inst.slots[0].category
-            if geom.texture is not None:
-                base = (255, 255, 255)
-            elif category == "terrain" and average_ground is not None:
-                base = average_ground
-            else:
-                base = CATEGORY_COLOR.get(category, DEFAULT_COLOR)
-            colors[:] = (*base, 255)
-            out_geoms.append(replace(geom, colors=colors))
+            colors[:] = (*passthrough_color(geom, inst.slots[0].category, average_ground), 255)
+            geoms.append(replace(geom, colors=colors))
         if inst.scene not in scene_map:
             scene_map[inst.scene] = len(scenes)
             scenes.append(ds.scenes[inst.scene])
         out_instances.append(dataset.Instance(geom_map[inst.geom], inst.matrix, scene_map[inst.scene],
                                               inst.slots, inst.path))
 
-    trees = tree_positions(foliage_boxes) if opt.tree_markers else []
+
+def append_trees(trees: list, geoms: list, scenes: list, out_instances: list) -> None:
+    """Add one marker instance per tree (x, base y, z, height) on a shared marker mesh."""
+    marker = len(geoms)
+    geoms.append(tree_marker())
+    scenes.append({"level": "trees", "path": "markers/trees"})
+    for x, y, z, height in trees:
+        radius = float(np.clip(0.16 * height, 0.6, 2.0))
+        m = np.diag([radius, height, radius, 1.0])
+        m[:3, 3] = [x, y, z]
+        out_instances.append(dataset.Instance(marker, m, len(scenes) - 1, [dataset.Slot("foliage")], -1))
+
+
+def _backdrop_summary(backdrop: dict[str, list]) -> str:
+    """"name (max width, count), ..." widest first."""
+    def entry(name: str, widths: list) -> str:
+        count = f", {len(widths)}x" if len(widths) > 1 else ""
+        return f"{name} ({max(widths):,.0f} m{count})"
+    return ", ".join(entry(name, widths) for name, widths in sorted(backdrop.items(), key=lambda kv: -max(kv[1])))
+
+
+def bake(ds: dataset.Dataset, opt: Options, log=print) -> dataset.Dataset:
+    """Dataset of placed meshes -> Dataset of simplified cell meshes plus what is kept as it is."""
+    found = classify_instances(ds, opt)
+    terrain = _terrain_triangles(ds, found.passthrough) if opt.hsr else None
+
+    keys = sorted(found.buckets)
+    workers = opt.workers or os.cpu_count() or 1
+    results, origins = process_cells(
+        keys, lambda key: make_cell_job(ds, key[1], found.buckets[key], opt, terrain), workers)
+
+    cells = sorted({cell for cell, _ in found.buckets})
+    scene_of = {cell: i for i, cell in enumerate(cells)}
+    scenes = [{"level": f"cell {x},{z}", "path": f"cells/cell_{x}_{z}"} for x, z in cells]
+    out_geoms, out_instances, totals, vertices = cell_instances(keys, results, origins, scene_of)
+    cell_meshes = len(out_geoms)
+
+    average_ground = average_ground_color(ds, found.passthrough)
+    append_passthrough(ds, found.passthrough, out_geoms, scenes, out_instances, average_ground)
+
+    trees = tree_positions(found.foliage_boxes) if opt.tree_markers else []
     if trees:
-        marker = len(out_geoms)
-        out_geoms.append(tree_marker())
-        scenes.append({"level": "trees", "path": "markers/trees"})
-        for x, y, z, height in trees:
-            radius = float(np.clip(0.16 * height, 0.6, 2.0))
-            m = np.diag([radius, height, radius, 1.0])
-            m[:3, 3] = [x, y, z]
-            out_instances.append(dataset.Instance(marker, m, len(scenes) - 1, [dataset.Slot("foliage")], -1))
+        append_trees(trees, out_geoms, scenes, out_instances)
 
     log(f"  cells: {len(cells)} of {opt.cell_size:g} m, error {opt.error * 100:g} cm: {totals['in']:,} triangles "
         f"-> {totals['simplified']:,} simplified -> {totals['out']:,} visible ({vertices:,} vertices) in "
-        f"{cell_meshes:,} cell meshes; {len(passthrough):,} instances kept as they are, {dropped:,} dropped, "
-        f"{len(trees):,} tree markers")
-    if backdrop:
-        log(f"  dropped as backdrop (wider than {opt.backdrop_size:g} m): "
-            + ", ".join(f"{name} ({max(widths):,.0f} m{f', {len(widths)}x' if len(widths) > 1 else ''})"
-                        for name, widths in sorted(backdrop.items(), key=lambda kv: -max(kv[1]))))
-    if outside:
-        log(f"  dropped as backdrop (more than {opt.backdrop_margin:g} m outside the playable area): {outside:,} objects")
+        f"{cell_meshes:,} cell meshes; {len(found.passthrough):,} instances kept as they are, "
+        f"{found.dropped:,} dropped, {len(trees):,} tree markers")
+    if found.backdrop:
+        log(f"  dropped as backdrop (wider than {opt.backdrop_size:g} m): " + _backdrop_summary(found.backdrop))
+    if found.outside:
+        log(f"  dropped as backdrop (more than {opt.backdrop_margin:g} m outside the playable area): "
+            f"{found.outside:,} objects")
     return dataset.Dataset(name=ds.name, label=ds.label, tag=ds.tag, profile=ds.profile, scenes=scenes,
                            geoms=out_geoms, instances=out_instances, materials=ds.materials, paths=ds.paths,
                            playable=ds.playable)

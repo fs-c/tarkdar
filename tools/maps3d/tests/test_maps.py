@@ -35,7 +35,7 @@ class PresetTest(unittest.TestCase):
 
     def test_every_preset_selects_within_its_folders(self):
         for name, mp in maps.MAPS.items():
-            for p in getattr(mp["select"], "names", []):
+            for p in mp["select"].required:
                 self.assertIn(maps.location_folder(p), mp["folders"], f"{name}: {p}")
 
     def test_build_selects_from_the_cache(self):
@@ -105,7 +105,7 @@ class GamePresetTest(unittest.TestCase):
 
     def test_untuned_map_builds_from_the_game_preset(self):
         cached = [LOC + f"Woods/{n}.unity" for n in ("woods_combined", "woods_light", "woods_terrain", "woods_AI")]
-        sel = maps.MAPS["woods"]["select"]
+        sel = maps.MAPS["woods"]["select"].pick
         # game order, only what the game loads, without scripts/AI
         self.assertEqual([maps.scene_name(p) for p in sel(cached, GAME_PRESETS)], ["woods_terrain", "woods_combined"])
         # without game presets (older cache): every cached geometry scene
@@ -135,7 +135,7 @@ class GamePresetTest(unittest.TestCase):
         scenes = [LOC + "Terminal/Terminal_Area_01_CutScene.unity",
                   "Assets/CutscenesSources/Scenes/Terminal_area_PortCutscene_00_Intro.unity"]
         presets = {"terminal": {"scenes": [{"path": p} for p in scenes]}}
-        self.assertEqual(maps.MAPS["terminal"]["select"](scenes, presets), scenes[:1])
+        self.assertEqual(maps.MAPS["terminal"]["select"].pick(scenes, presets), scenes[:1])
 
 
 if __name__ == "__main__":

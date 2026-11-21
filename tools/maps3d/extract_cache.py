@@ -117,7 +117,7 @@ def main():
         scenes = extract_scenes(map_name, all_scenes, manifest["gamePresets"])
         if not scenes:
             sys.exit(f"{map_name}: no BuildSettings scenes in folders {preset['folders']}")
-        missing = [p for p in getattr(preset["select"], "names", []) if p not in level_of]
+        missing = [p for p in preset["select"].required if p not in level_of]
         if missing:
             sys.exit(f"{map_name}: preset scenes not in BuildSettings: {missing}")
         if preset.get("tuned") is False and maps_mod.game_preset_scenes(manifest["gamePresets"], preset["game"]) is None:

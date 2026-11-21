@@ -17,6 +17,7 @@ import time
 from collections import Counter
 from dataclasses import replace
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 
@@ -126,11 +127,51 @@ class Tables:
                             self.colors[material], material)
 
 
+class MeshEvent(NamedTuple):
+    """A placed renderer that passed the filters of `collect`."""
+    scene: int
+    hash: str
+    name: str
+    unity_matrix: np.ndarray
+    materials: list[int]       # dataset material ids, -1 where the slot has none
+    path: int
+
+
+class TerrainEvent(NamedTuple):
+    """A heightmap terrain that passed the filters of `collect`."""
+    scene: int
+    name: str
+    geom: tuple                # (positions, normals, indices, parts), see geometry.terrain_mesh
+    unity_matrix: np.ndarray
+    path: int
+    colors: np.ndarray | None  # ground colour image from the splat maps
+    rect: tuple                # where the colour image lies on the terrain (local x0, z0, x1, z1)
+
+
+def _terrain_event(a: dict, meta: dict, index: int, scene_index: int, terrain_step: int, tables: Tables):
+    """The TerrainEvent of terrain `index` of a scene, or None if its mesh cannot be built."""
+    t = meta["terrains"][index]
+    heights = a[f"terrain{index}_heights"]
+    built = geometry.terrain_mesh(heights, t["scale"], terrain_step)
+    if built is None:
+        return None
+    matrix = np.array(t["matrix"], dtype=np.float64).reshape(4, 4)
+    path = tables.path(t["goPath"]) if t.get("goPath") else -1
+    # Ground colour from the splat maps; it covers the whole heightmap.
+    splat_maps = [a[sm["array"]] for sm in t.get("splatMaps", [])]
+    layer_colors = [_layer_color(layer, meta["textures"]) for layer in t.get("layers", [])]
+    colors = geometry.terrain_colors(splat_maps, layer_colors)
+    columns, rows = heights.shape[::-1]
+    width = (columns - 1) * float(t["scale"][0])
+    depth = (rows - 1) * float(t["scale"][2])
+    rect = (0.0, 0.0, width, -depth)     # local z runs negative in three.js space
+    return TerrainEvent(scene_index, f"Terrain_{t['name'] or 'slice'}", built, matrix, path, colors, rect)
+
+
 def collect(root: Path, scene_keys: list[str], target_lod: int, terrain_step: int, tables: Tables):
     """Pass 1: apply per-renderer filters. Returns ordered events + needed mesh hashes.
 
-    Events: ("mesh", scene, hash, name, unity matrix, material ids, path id)
-          | ("terrain", scene, name, geom, unity matrix, path id, colour image, its rect)
+    Events: MeshEvent | TerrainEvent
     """
     events = []
     needed = set()
@@ -184,24 +225,16 @@ def collect(root: Path, scene_keys: list[str], target_lod: int, terrain_step: in
             gp = int(a["r_go_path"][i])
             path = tables.path(strings[gp]) if gp >= 0 else -1
             needed.add(ref["hash"])
-            events.append(("mesh", scene_index, ref["hash"], ref["name"], np.array(a["r_matrix"][i]), mats, path))
+            events.append(MeshEvent(scene_index, ref["hash"], ref["name"], np.array(a["r_matrix"][i]), mats, path))
         for ti, t in enumerate(meta["terrains"]):
             if not t["enabled"] or not t["active"]:
                 skipped["terrain disabled/inactive"] += 1
                 continue
-            heights = a[f"terrain{ti}_heights"]
-            built = geometry.terrain_mesh(heights, t["scale"], terrain_step)
-            if built is None:
+            event = _terrain_event(a, meta, ti, scene_index, terrain_step, tables)
+            if event is None:
                 skipped["terrain failed"] += 1
-                continue
-            m = np.array(t["matrix"], dtype=np.float64).reshape(4, 4)
-            path = tables.path(t["goPath"]) if t.get("goPath") else -1
-            # Ground colour from the splat maps; it covers the whole heightmap.
-            colors = geometry.terrain_colors([a[sm["array"]] for sm in t.get("splatMaps", [])],
-                                             [_layer_color(layer, meta["textures"]) for layer in t.get("layers", [])])
-            size = (np.array(heights.shape[::-1]) - 1) * np.array([t["scale"][0], t["scale"][2]], dtype=np.float64)
-            rect = (0.0, 0.0, float(size[0]), -float(size[1]))     # local z runs negative in three.js space
-            events.append(("terrain", scene_index, f"Terrain_{t['name'] or 'slice'}", built, m, path, colors, rect))
+            else:
+                events.append(event)
         del meta, a
     return events, needed, skipped, scenes
 
@@ -230,6 +263,66 @@ def _slots(tables: Tables, mesh_name: str, part_count: int, mats: list[int], dom
     return [tables.slot(mesh_name, "mesh", mats[min(k, len(mats) - 1)]) for k in range(part_count)]
 
 
+class GeomRegistry:
+    """The dataset's geoms in first-seen order, one per distinct content."""
+
+    def __init__(self):
+        self.geoms: list[dataset.Geom] = []
+        self._by_digest: dict[bytes, int] = {}
+
+    def register(self, name: str, kind: str, geom: tuple) -> int:
+        """Index of the geom with this content (positions, normals, indices, parts), added if new."""
+        positions, normals, indices, parts = geom
+        digest = _digest(positions, indices, parts)
+        index = self._by_digest.get(digest)
+        if index is None:
+            index = self._by_digest[digest] = len(self.geoms)
+            self.geoms.append(dataset.Geom(name, kind, positions, normals, indices, parts))
+        return index
+
+
+def place_instances(events: list, processed: dict, tables: Tables, categories: set[str] | None):
+    """Pass 3: events -> (geoms, instances, filtered), geometry registered in first-seen order.
+
+    `filtered` counts the renderers left out for having no slot in `categories`."""
+    registry = GeomRegistry()
+    by_hash: dict[str, int] = {}      # mesh hash -> geom index, -1 for an unreadable mesh
+    instances: list[dataset.Instance] = []
+    filtered = 0
+    for ev in events:
+        if isinstance(ev, MeshEvent):
+            geom, dominant = processed[ev.hash]
+            index = by_hash.get(ev.hash)
+            if index is None:
+                index = by_hash[ev.hash] = -1 if geom is None else registry.register(ev.name, "mesh", geom)
+            if index < 0:
+                continue
+            slots = _slots(tables, ev.name, len(registry.geoms[index].parts), ev.materials, dominant)
+            if categories is not None and not any(slot.category in categories for slot in slots):
+                filtered += 1
+                continue
+            instances.append(dataset.Instance(index, geometry.to_three_matrix(ev.unity_matrix), ev.scene,
+                                              slots, ev.path))
+        else:
+            index = registry.register(ev.name, "terrain", ev.geom)
+            if ev.colors is not None:
+                registry.geoms[index].texture, registry.geoms[index].texture_rect = ev.colors, ev.rect
+            instances.append(dataset.Instance(index, geometry.to_three_matrix(ev.unity_matrix), ev.scene,
+                                              [tables.slot(ev.name, "terrain", -1)], ev.path))
+    return registry.geoms, instances, filtered
+
+
+def drop_unused_geoms(geoms: list, instances: list) -> list:
+    """Geoms that no instance uses are removed; instances are renumbered in place."""
+    used = sorted({inst.geom for inst in instances})
+    if len(used) == len(geoms):
+        return geoms
+    remap = {old: new for new, old in enumerate(used)}
+    for inst in instances:
+        inst.geom = remap[inst.geom]
+    return [geoms[i] for i in used]
+
+
 def select_scenes(manifest: dict, map_name: str, include_indoor: bool) -> list[str]:
     """The cached scenes (keys) a build of `map_name` uses.
 
@@ -241,8 +334,8 @@ def select_scenes(manifest: dict, map_name: str, include_indoor: bool) -> list[s
     if preset is None:
         paths = list(key_of)
     else:
-        paths = preset["select"](list(key_of), manifest.get("gamePresets"))
-        missing = [p for p in getattr(preset["select"], "names", []) if p not in key_of]
+        paths = preset["select"].pick(list(key_of), manifest.get("gamePresets"))
+        missing = [p for p in preset["select"].required if p not in key_of]
         if missing:
             sys.exit(f"{map_name}: preset scenes not in the cache (re-extract): {missing}")
     indoor_optional = (preset or mp).get("indoorOptional", False)
@@ -265,7 +358,8 @@ def level_borders(root: Path, manifest: dict, map_name: str):
         if not BORDERS_RE.search(path.removesuffix(".unity")):
             continue
         _, a = cache.read_scene(root, key)
-        on = np.asarray(a["c_enabled"], dtype=bool) & np.asarray(a["c_active"], dtype=bool) & (np.asarray(a["c_kind"]) == 0)
+        is_box = np.asarray(a["c_kind"]) == 0
+        on = np.asarray(a["c_enabled"], dtype=bool) & np.asarray(a["c_active"], dtype=bool) & is_box
         if not on.any():
             continue
         m = np.asarray(a["c_matrix"], dtype=np.float64)[on]
@@ -298,54 +392,10 @@ def assemble(root: Path, map_name: str, profile: str, *, lod: int, terrain_step:
     if skipped:
         log("  skipped: " + ", ".join(f"{v:,} {k}" for k, v in skipped.most_common()))
 
-    # Pass 3: register geometry in first-seen order.
-    geoms: list[dataset.Geom] = []
-    bounds = []
-    by_digest: dict[bytes, int] = {}
-    by_hash: dict[str, int] = {}
-    instances: list[dataset.Instance] = []
-    filtered = 0
-
-    def register(geom_name, kind, geom):
-        p, n, idx, parts = geom
-        d = _digest(p, idx, parts)
-        gi = by_digest.get(d)
-        if gi is None:
-            gi = by_digest[d] = len(geoms)
-            geoms.append(dataset.Geom(geom_name, kind, p, n, idx, parts))
-            bounds.append((p.min(axis=0), p.max(axis=0)))
-        return gi
-
-    for ev in events:
-        if ev[0] == "mesh":
-            _, scene_index, h, mesh_name, unity_m, mats, path = ev
-            geom, dominant = processed[h]
-            gi = by_hash.get(h)
-            if gi is None:
-                gi = by_hash[h] = -1 if geom is None else register(mesh_name, "mesh", geom)
-            if gi < 0:
-                continue
-            slots = _slots(tables, mesh_name, len(geoms[gi].parts), mats, dominant)
-            if categories is not None and not any(slot.category in categories for slot in slots):
-                filtered += 1
-                continue
-            instances.append(dataset.Instance(gi, geometry.to_three_matrix(unity_m), scene_index, slots, path))
-        else:
-            _, scene_index, tname, geom, unity_m, path, colors, rect = ev
-            gi = register(tname, "terrain", geom)
-            if colors is not None:
-                geoms[gi].texture, geoms[gi].texture_rect = colors, rect
-            instances.append(dataset.Instance(gi, geometry.to_three_matrix(unity_m), scene_index,
-                                              [tables.slot(tname, "terrain", -1)], path))
+    geoms, instances, filtered = place_instances(events, processed, tables, categories)
     if filtered:
         log(f"  dropped {filtered:,} renderers of other categories")
-
-    used = sorted({inst.geom for inst in instances})
-    if len(used) != len(geoms):
-        remap = {old: new for new, old in enumerate(used)}
-        geoms = [geoms[i] for i in used]
-        for inst in instances:
-            inst.geom = remap[inst.geom]
+    geoms = drop_unused_geoms(geoms, instances)
 
     playable = level_borders(root, manifest, map_name) if MAPS.get(map_name, {}).get("borders") else None
     if playable is not None:

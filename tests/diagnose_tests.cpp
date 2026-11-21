@@ -1,4 +1,4 @@
-#include "FakeWorld.hpp"
+#include "FakePlayers.hpp"
 
 #include "tools/diagnose/Diagnose.hpp"
 
@@ -56,7 +56,7 @@ TEST_CASE("diagnose reports each step, with hints for failures") {
 TEST_CASE("diagnose lists player kinds and why entries didn't build") {
     FakeWorld w;
     w.newWorld(u"Woods", 2);
-    const mem::Address observed = w.newObservedPlayer();
+    const mem::Address observed = newObservedPlayer(w);
     const mem::Address broken = w.heap.object(w.observedClass);
     const auto roster = w.rosterPlayers();
     std::vector<mem::Address> list(roster.begin(), roster.end());

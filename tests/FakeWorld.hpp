@@ -13,7 +13,6 @@
 
 #include <eft_offsets.hpp>
 
-#include <cmath>
 #include <map>
 #include <memory>
 #include <string>
@@ -23,7 +22,8 @@ namespace radar::test {
 
 // A fake EscapeFromTarkov process with just enough structure for raid discovery: the IL2CPP
 // type-info table with GamePlayerOwner statics, a local player, a GameWorld with location and
-// roster, and a GameObjectManager listing a "GameWorld" GameObject.
+// roster, and a GameObjectManager listing a "GameWorld" GameObject. Builders for observed players,
+// cameras/weapons and placed objects live in FakePlayers.hpp, FakeCameras.hpp and FakeObjects.hpp.
 class FakeWorld {
 public:
     static constexpr mem::Pid kPid = 1234;
@@ -123,42 +123,6 @@ public:
         return addSkeleton(fp, fp.instance + off::Player::_playerBody, position);
     }
 
-    // A network-replicated ObservedPlayerView: controller → health / movement → state context, side,
-    // AI flag and voice on the view, and the same kind of skeleton as newPlayer.
-    Address newObservedPlayer(int side = 4, bool ai = true, std::u16string_view voice = u"BossKilla",
-                              std::optional<math::Vec3> position = std::nullopt) {
-        FakePlayer fp;
-        fp.instance = heap.object(observedClass, 0x200);
-        const Address controller = heap.alloc(0x200), health = heap.alloc(0x100), movement = heap.alloc(0x100),
-                      state = heap.alloc(0x200);
-        heap.put<Address>(fp.instance + off::ObservedPlayerView::ObservedPlayerController, controller);
-        heap.put<Address>(controller + off::ObservedPlayerController::HealthController, health);
-        heap.put<Address>(controller + off::ObservedPlayerController::MovementController, movement);
-        heap.put<Address>(movement + off::ObservedMovementController::ObservedPlayerStateContext, state);
-        heap.put<std::uint8_t>(fp.instance + off::ObservedPlayerView::IsAI, ai ? 1 : 0);
-        heap.put<std::int32_t>(fp.instance + off::ObservedPlayerView::Side, side);
-        heap.put<Address>(fp.instance + off::ObservedPlayerView::Voice, heap.managedString(voice));
-        fp.rotation = state + off::ObservedPlayerStateContext::Rotation;
-        fp.corpseField = health + off::ObservedHealthController::PlayerCorpse;
-        return addSkeleton(fp, fp.instance + off::ObservedPlayerView::PlayerBody, position);
-    }
-
-    // Nickname and group id of an observed player.
-    void setObservedIdentity(Address instance, std::u16string_view nickname, std::u16string_view groupId) {
-        heap.put<Address>(instance + off::ObservedPlayerView::NickName, heap.managedString(nickname));
-        heap.put<Address>(instance + off::ObservedPlayerView::GroupId, heap.managedString(groupId));
-    }
-
-    // An observed player's AI data (class `aiClass`: StubAIData or AIData) → BotHostilityData._role.
-    void setObservedRole(Address instance, int role, std::string_view aiClass = "StubAIData") {
-        const bool stub = aiClass == "StubAIData";
-        const Address aiData = heap.object(heap.klass(aiClass), 0x200);
-        const Address hostility = heap.alloc(0x80);
-        heap.put<Address>(aiData + (stub ? off::StubAIData::BotHostilityData : off::AIData::BotHostilityData), hostility);
-        heap.put<std::int32_t>(hostility + off::BotHostilityData::Role, role);
-        heap.put<Address>(instance + off::ObservedPlayerView::AIData, aiData);
-    }
-
     Address addSkeleton(FakePlayer fp, Address bodyField, std::optional<math::Vec3> position) {
         const math::Vec3 pos = position.value_or(math::Vec3{100.0f + 3.0f * float(fakePlayers.size()), 5, 200});
         // Skeleton: body → root joint → List<Transform> (managed) → native transforms in one hierarchy.
@@ -203,146 +167,6 @@ public:
         const float v[2] = {yaw, pitch};
         heap.putBytes(fakePlayers.at(player).rotation, v, sizeof(v));
     }
-    // ---- cameras ----
-    // A camera at `position` looking along +z (Unity's world forward), with a perspective projection.
-    struct FakeCamera {
-        Address native = 0;
-        Address gameObject = 0;
-    };
-    static math::Mat4 viewAt(math::Vec3 p) {
-        // worldToCameraMatrix (OpenGL convention: the camera looks down its -z, so z is flipped).
-        math::Mat4 v;
-        auto set = [&](int r, int c, float x) { v.m[static_cast<std::size_t>(c * 4 + r)] = x; };
-        set(0, 0, 1), set(1, 1, 1), set(2, 2, -1), set(3, 3, 1);
-        set(0, 3, -p.x), set(1, 3, -p.y), set(2, 3, p.z);
-        return v;
-    }
-    static math::Mat4 perspective(float fovDegrees, float aspect, float zNear = 0.05f, float zFar = 1000.0f) {
-        math::Mat4 m;
-        auto set = [&](int r, int c, float x) { m.m[static_cast<std::size_t>(c * 4 + r)] = x; };
-        const float f = 1.0f / std::tan(fovDegrees * 3.14159265f / 360.0f);
-        set(0, 0, f / aspect), set(1, 1, f), set(2, 2, (zFar + zNear) / (zNear - zFar));
-        set(2, 3, 2 * zFar * zNear / (zNear - zFar)), set(3, 2, -1);
-        return m;
-    }
-    static math::Mat4 multiply(const math::Mat4& a, const math::Mat4& b) {
-        math::Mat4 out;
-        for (int r = 0; r < 4; ++r)
-            for (int c = 0; c < 4; ++c) {
-                float sum = 0;
-                for (int k = 0; k < 4; ++k) sum += a.at(r, k) * b.at(k, c);
-                out.m[static_cast<std::size_t>(c * 4 + r)] = sum;
-            }
-        return out;
-    }
-
-    // Adds a camera to Unity's camera list: its GameObject (named `name`), matrices, fov and aspect.
-    FakeCamera addCamera(std::string_view name, math::Vec3 position, float fov = 75.0f, float aspect = 16.0f / 9.0f) {
-        FakeCamera c;
-        c.native = heap.alloc(0x600);
-        c.gameObject = heap.alloc(0x100);
-        heap.put<Address>(c.gameObject + kUnity.gameObjectName, heap.cString(name));
-        heap.put<Address>(c.native + kUnity.componentGameObject, c.gameObject);
-        setCameraComponents(c, {});
-        moveCamera(c.native, position, fov, aspect);
-        cameras.push_back(c.native);
-        const Address container = heap.alloc(0x20);
-        const Address items = heap.alloc(8 * cameras.size());
-        heap.putBytes(items, cameras.data(), 8 * cameras.size());
-        heap.put<Address>(container + eft::kCameraLayout.listItems, items);
-        heap.put<std::uint32_t>(container + eft::kCameraLayout.listCount, static_cast<std::uint32_t>(cameras.size()));
-        heap.put<Address>(kUnityPlayer + off::unity_rva::allCameras, container);
-        return c;
-    }
-    void moveCamera(Address camera, math::Vec3 position, float fov = 75.0f, float aspect = 16.0f / 9.0f) {
-        const auto view = viewAt(position);
-        heap.put(camera + eft::kCameraLayout.worldToCamera, view.m);
-        heap.put(camera + eft::kCameraLayout.viewProjection, multiply(perspective(fov, aspect), view).m);
-        heap.put(camera + eft::kCameraLayout.fieldOfView, fov);
-        heap.put(camera + eft::kCameraLayout.aspect, aspect);
-    }
-    // The camera's GameObject components: [Transform, the camera, managed components...].
-    void setCameraComponents(const FakeCamera& c, const std::vector<Address>& managed) {
-        std::vector<Address> natives{heap.alloc(0x100), c.native};
-        for (const Address m : managed) {
-            const Address component = heap.alloc(0x100);
-            heap.put<Address>(component + kUnity.componentManagedObject, m);
-            natives.push_back(component);
-        }
-        const Address entries = heap.alloc(natives.size() * kUnity.componentEntryStride);
-        for (std::size_t i = 0; i < natives.size(); ++i)
-            heap.put<Address>(entries + i * kUnity.componentEntryStride + kUnity.componentEntryComponent, natives[i]);
-        heap.put<Address>(c.gameObject + kUnity.gameObjectComponents, entries);
-        heap.put<std::uint64_t>(c.gameObject + kUnity.gameObjectComponentCount, natives.size());
-    }
-
-    // The local player's weapon: ProceduralWeaponAnimation with aiming flag and sights. Each sight:
-    // per-scope zoom modes, the selected scope and mode, and the live ScopeZoomValue.
-    struct FakeSight {
-        std::vector<std::vector<float>> zooms;
-        int scope = 0;
-        int mode = 0;
-        float scopeZoomValue = 0;
-    };
-    struct FakeWeapon {
-        Address pwa = 0;
-        std::vector<Address> sightBones;  // SightNBone objects
-        std::vector<Address> boneNatives; // their Bone transforms' native objects
-    };
-    FakeWeapon setWeapon(bool aiming, const std::vector<FakeSight>& sights) {
-        FakeWeapon w;
-        w.pwa = heap.alloc(0x400);
-        heap.put<Address>(localPlayer + off::Player::ProceduralWeaponAnimation, w.pwa);
-        heap.put<std::uint8_t>(w.pwa + off::ProceduralWeaponAnimation::IsAiming, aiming ? 1 : 0);
-        for (const auto& s : sights) {
-            const Address bone = heap.alloc(0x40), mod = heap.alloc(0x80), tmpl = heap.alloc(0x400);
-            const Address transform = heap.alloc(0x40), native = heap.alloc(0x100);
-            heap.put<Address>(transform + kIl2Cpp.unityObjectCachedPtr, native);
-            heap.put<Address>(bone + off::SightNBone::Mod, mod);
-            heap.put<Address>(bone + off::SightNBone::Bone, transform);
-            heap.put<std::int32_t>(mod + off::SightComponent::SelectedScope, s.scope);
-            heap.put<float>(mod + off::SightComponent::ScopeZoomValue, s.scopeZoomValue);
-            std::vector<std::int32_t> modes(s.zooms.size(), 0);
-            if (s.scope >= 0 && static_cast<std::size_t>(s.scope) < modes.size()) modes[static_cast<std::size_t>(s.scope)] = s.mode;
-            heap.put<Address>(mod + off::SightComponent::ScopesSelectedModes, heap.array(modes));
-            std::vector<Address> scopes;
-            for (const auto& z : s.zooms) scopes.push_back(heap.array(z));
-            heap.put<Address>(tmpl + off::SightModTemplate::Zooms, heap.array(scopes));
-            heap.put<Address>(mod + off::SightComponent::Template, tmpl);
-            w.sightBones.push_back(bone);
-            w.boneNatives.push_back(native);
-        }
-        heap.put<Address>(w.pwa + off::ProceduralWeaponAnimation::Optics, heap.list(w.sightBones));
-        return w;
-    }
-    void setAiming(const FakeWeapon& w, bool aiming) {
-        heap.put<std::uint8_t>(w.pwa + off::ProceduralWeaponAnimation::IsAiming, aiming ? 1 : 0);
-    }
-    // An OpticCameraManager (component of `optic`'s GameObject) whose Camera is `optic` and whose
-    // CurrentOpticSight looks through the sight with this index (-1: none).
-    Address addOpticCameraManager(const FakeCamera& optic, const FakeWeapon& w, int currentSight) {
-        const Address manager = heap.object(heap.klass("OpticCameraManager", "EFT.CameraControl"), 0x100);
-        const Address managedCamera = heap.alloc(0x40);
-        heap.put<Address>(managedCamera + kIl2Cpp.unityObjectCachedPtr, optic.native);
-        heap.put<Address>(manager + off::OpticCameraManager::Camera, managedCamera);
-        if (currentSight >= 0) {
-            const Address sight = heap.alloc(0x80), scope = heap.alloc(0x40);
-            heap.put<Address>(scope + kIl2Cpp.unityObjectCachedPtr, w.boneNatives.at(static_cast<std::size_t>(currentSight)));
-            heap.put<Address>(sight + off::OpticSight::ScopeTransform, scope);
-            heap.put<Address>(manager + off::OpticCameraManager::CurrentOpticSight, sight);
-        }
-        setCameraComponents(optic, {manager});
-        return manager;
-    }
-
-    // Detaches (or re-attaches) a joint bone's managed Transform from its native transform, as for
-    // a bone not set up yet.
-    void setBoneAttached(Address player, eft::Joint joint, bool attached) {
-        const auto& fp = fakePlayers.at(player);
-        const auto j = static_cast<std::size_t>(joint);
-        heap.put<Address>(fp.managed[j] + kIl2Cpp.unityObjectCachedPtr, attached ? fp.native[j] : 0);
-    }
-    void kill(Address player) { heap.put<Address>(fakePlayers.at(player).corpseField, heap.alloc(0x40)); }
     void setRosterList(const std::vector<Address>& list) {
         roster = list;
         heap.put<Address>(world + off::ClientLocalGameWorld::RegisteredPlayers, heap.list(list, 64));
@@ -399,58 +223,14 @@ public:
     Address gameWorldObject = 0;
     Address world = 0, localPlayer = 0;
 
+    std::vector<Address> cameras;  // Unity's camera list, maintained by FakeCameras.hpp
+
 private:
     std::unique_ptr<mem::Target> target;
     Address gameWorldClass = 0, clientWorldClass = 0, playerClass = 0, clientPlayerClass = 0;
     std::vector<Address> roster;   // as last set by setRoster / setRosterList
-    std::vector<Address> cameras;  // Unity's camera list
     Address ownerClass = 0, ownerStatics = 0;
     Address gom = 0;
 };
-
-// Gives a managed component a native side, a named GameObject and a Transform at `pos`.
-inline void place(FakeWorld& w, Address managed, math::Vec3 pos, std::string_view name = "object",
-                  math::Quat rotation = {}) {
-    auto& h = w.heap;
-    const Address native = h.alloc(0x100), go = h.alloc(0x100), transform = h.alloc(0x100);
-    const Address hierarchy = h.alloc(0x100), trs = h.alloc(sizeof(unity::TrsX)), parents = h.alloc(4);
-    h.put<Address>(managed + kIl2Cpp.unityObjectCachedPtr, native);
-    h.put<Address>(native + kUnity.componentGameObject, go);
-    h.put<Address>(go + kUnity.gameObjectName, h.cString(name));
-    const Address entries = h.alloc(kUnity.componentEntryStride);
-    h.put<Address>(entries + kUnity.componentEntryComponent, transform);
-    h.put<Address>(go + kUnity.gameObjectComponents, entries);
-    h.put<std::uint64_t>(go + kUnity.gameObjectComponentCount, 1);
-    h.put<Address>(transform + kUnity.transformHierarchy, hierarchy);
-    h.put<std::int32_t>(transform + kUnity.transformIndex, 0);
-    h.put<Address>(hierarchy + kUnity.hierarchyLocalTransforms, trs);
-    h.put<Address>(hierarchy + kUnity.hierarchyParentIndices, parents);
-    h.put<std::int32_t>(parents, -1);
-    h.put(trs, unity::TrsX{pos, 0, rotation, {1, 1, 1}, 0});
-}
-
-// Moves a component placed with place(), keeping its rotation.
-inline void move(FakeWorld& w, Address managed, math::Vec3 pos) {
-    mem::MemoryView view(w.fake, FakeWorld::kPid);
-    const Address native = view.read<Address>(managed + kIl2Cpp.unityObjectCachedPtr);
-    const Address go = view.read<Address>(native + kUnity.componentGameObject);
-    const Address transform =
-        view.read<Address>(view.read<Address>(go + kUnity.gameObjectComponents) + kUnity.componentEntryComponent);
-    const Address trs =
-        view.read<Address>(view.read<Address>(transform + kUnity.transformHierarchy) + kUnity.hierarchyLocalTransforms);
-    auto local = view.read<unity::TrsX>(trs);
-    local.t = pos;
-    w.heap.put(trs, local);
-}
-
-// An item template with a MongoID string id.
-inline Address itemWithTemplate(FakeWorld& w, std::u16string_view templateId, bool quest = false) {
-    auto& h = w.heap;
-    const Address item = h.alloc(0x100), tmpl = h.alloc(0x200);
-    h.put<Address>(item + off::Item::Template, tmpl);
-    h.put<Address>(tmpl + off::ItemTemplate::_id + off::MongoID::StringId, h.managedString(templateId));
-    h.put<std::uint8_t>(tmpl + off::ItemTemplate::QuestItem, quest ? 1 : 0);
-    return item;
-}
 
 }  // namespace radar::test

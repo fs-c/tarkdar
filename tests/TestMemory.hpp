@@ -13,11 +13,6 @@ namespace radar::test {
 
 using mem::Address;
 
-// Every axis within eps.
-inline bool near(math::Vec3 a, math::Vec3 b, float eps = 1e-3f) {
-    return std::fabs(a.x - b.x) < eps && std::fabs(a.y - b.y) < eps && std::fabs(a.z - b.z) < eps;
-}
-
 // Layouts used by core tests. Values mirror a typical x64 IL2CPP/Unity build, but the tests only
 // rely on them being self-consistent.
 inline constexpr il2cpp::Layout kIl2Cpp{

@@ -1,4 +1,4 @@
-#include "FakeWorld.hpp"
+#include "FakeCameras.hpp"
 
 #include "core/unity/Camera.hpp"
 #include "game/eft/camera/CameraTracker.hpp"
@@ -9,7 +9,10 @@
 
 using namespace radar;
 using radar::test::FakeWorld;
+using radar::test::multiply;
 using radar::test::near;
+using radar::test::perspective;
+using radar::test::viewAt;
 using math::Mat4;
 using math::Vec3;
 using mem::Address;
@@ -26,8 +29,8 @@ eft::SightZoomData zoomData(std::vector<std::vector<float>> zooms, int scope, in
 }  // namespace
 
 TEST_CASE("camera matrices: validation and position") {
-    const Mat4 view = FakeWorld::viewAt({10, 2, -5});
-    const Mat4 vp = FakeWorld::multiply(FakeWorld::perspective(60, 1.5f), view);
+    const Mat4 view = viewAt({10, 2, -5});
+    const Mat4 vp = multiply(perspective(60, 1.5f), view);
     CHECK(unity::matrixLooksValid(view));
     CHECK(unity::viewProjectionLooksValid(vp));
     CHECK(unity::viewProjectionMatchesView(vp, view));
@@ -45,14 +48,14 @@ TEST_CASE("camera matrices: validation and position") {
     // A view-projection from another camera orientation doesn't match this view.
     Mat4 turned = view;
     std::swap(turned.m[2], turned.m[0]), std::swap(turned.m[6], turned.m[4]), std::swap(turned.m[10], turned.m[8]);
-    CHECK_FALSE(unity::viewProjectionMatchesView(FakeWorld::multiply(FakeWorld::perspective(60, 1.5f), turned), view));
+    CHECK_FALSE(unity::viewProjectionMatchesView(multiply(perspective(60, 1.5f), turned), view));
 }
 
 TEST_CASE("Cameras lists and samples cameras") {
     FakeWorld w;
     w.newWorld(u"bigmap", 0);
-    const auto fps = w.addCamera("FPS Camera", {1, 2, 3}, 70, 1.6f);
-    const auto broken = w.addCamera("Broken", {0, 0, 0});
+    const auto fps = addCamera(w, "FPS Camera", {1, 2, 3}, 70, 1.6f);
+    const auto broken = addCamera(w, "Broken", {0, 0, 0});
     w.heap.put(broken.native + eft::kCameraLayout.viewProjection, Mat4{}.m);
 
     const auto game = w.attachGame();
@@ -73,8 +76,8 @@ TEST_CASE("Cameras lists and samples cameras") {
 TEST_CASE("Cameras: the 64-bit count wins, and clip w is made positive in front") {
     FakeWorld w;
     w.newWorld(u"bigmap", 0);
-    const auto a = w.addCamera("A", {0, 0, 0});
-    w.addCamera("B", {0, 0, 0});
+    const auto a = addCamera(w, "A", {0, 0, 0});
+    addCamera(w, "B", {0, 0, 0});
     const auto game = w.attachGame();
     const unity::Cameras cameras(game.mem, eft::kCameraLayout);
     const Address global = FakeWorld::kUnityPlayer + off::unity_rva::allCameras;
@@ -142,12 +145,12 @@ TEST_CASE("resolveSight: fixed and variable scopes") {
 TEST_CASE("CameraTracker follows the FPS camera, aiming and the scope") {
     FakeWorld w;
     w.newWorld(u"bigmap", 0);
-    w.addCamera("Main Camera", {0, 50, 0});
-    const auto fps = w.addCamera("FPS Camera", {5, 1.6f, 5});
-    const auto optic = w.addCamera("BaseOpticCamera(Clone)", {5, 1.6f, 5.2f}, 7.0f, 1.0f);
+    addCamera(w, "Main Camera", {0, 50, 0});
+    const auto fps = addCamera(w, "FPS Camera", {5, 1.6f, 5});
+    const auto optic = addCamera(w, "BaseOpticCamera(Clone)", {5, 1.6f, 5.2f}, 7.0f, 1.0f);
     // A reflex sight and a variable 1–6× scope (at 3×), looked through the scope.
-    const auto weapon = w.setWeapon(false, {{.zooms = {{1}}}, {.zooms = {{1, 6}}, .mode = 1, .scopeZoomValue = 10}});
-    w.addOpticCameraManager(optic, weapon, 1);
+    const auto weapon = setWeapon(w, false, {{.zooms = {{1}}}, {.zooms = {{1, 6}}, .mode = 1, .scopeZoomValue = 10}});
+    addOpticCameraManager(w, optic, weapon, 1);
 
     eft::WorldState world;
     {
@@ -185,7 +188,7 @@ TEST_CASE("CameraTracker follows the FPS camera, aiming and the scope") {
         CHECK(world.camera.get()->revision == revision);
 
         // Aiming through the scope: sights, magnification and the optic camera.
-        w.setAiming(weapon, true);
+        setAiming(w, weapon, true);
         tracker.tick(t + eft::CameraTracker::kSightInterval);
         snap = world.camera.get();
         CHECK(snap->aiming);
@@ -199,7 +202,7 @@ TEST_CASE("CameraTracker follows the FPS camera, aiming and the scope") {
         CHECK(snap->optic->fieldOfView == doctest::Approx(7));
 
         // The camera moves: a new snapshot.
-        w.moveCamera(fps.native, {6, 1.6f, 5});
+        moveCamera(w, fps.native, {6, 1.6f, 5});
         tracker.tick(t + eft::CameraTracker::kSightInterval + milliseconds(16));
         REQUIRE(world.camera.get()->fps->position);
         CHECK(near(*world.camera.get()->fps->position, {6, 1.6f, 5}));
@@ -214,7 +217,7 @@ TEST_CASE("CameraTracker follows the FPS camera, aiming and the scope") {
         CHECK_FALSE(world.cameraReader.get()->reader);  // nothing to read: no reader
 
         // Its replacement is picked up at once: the live task asks for a look-up.
-        w.addCamera("FPS Camera", {7, 1.6f, 7});
+        addCamera(w, "FPS Camera", {7, 1.6f, 7});
         tracker.refresh(later + eft::CameraTracker::kFailureGrace + milliseconds(8));
         tracker.tick(later + eft::CameraTracker::kFailureGrace + milliseconds(16));
         REQUIRE(world.camera.get()->fps);
@@ -231,7 +234,7 @@ TEST_CASE("encodeCamera") {
     eft::CameraSnapshot snap;
     snap.raidId = 4;
     snap.revision = 9;
-    snap.fps = eft::CameraView{.viewProjection = FakeWorld::multiply(FakeWorld::perspective(60, 1.5f), FakeWorld::viewAt({1, 2, 3})),
+    snap.fps = eft::CameraView{.viewProjection = multiply(perspective(60, 1.5f), viewAt({1, 2, 3})),
                                .position = Vec3{1, 2, 3}, .fieldOfView = 60, .aspect = 1.5f};
     snap.aiming = true;
     snap.sights = {eft::SightState{.scope = 0, .mode = 1, .zoom = 4, .minZoom = 1, .maxZoom = 4, .magnified = true, .current = true}};
@@ -259,10 +262,10 @@ TEST_CASE("encodeCamera") {
 TEST_CASE("CameraTracker ignores an OpticCameraManager camera that doesn't read") {
     FakeWorld w;
     w.newWorld(u"bigmap", 0);
-    w.addCamera("FPS Camera", {5, 1.6f, 5});
-    const auto optic = w.addCamera("BaseOpticCamera(Clone)", {5, 1.6f, 5.2f}, 7.0f, 1.0f);
-    const auto weapon = w.setWeapon(true, {{.zooms = {{4}}}});
-    const Address manager = w.addOpticCameraManager(optic, weapon, 0);
+    addCamera(w, "FPS Camera", {5, 1.6f, 5});
+    const auto optic = addCamera(w, "BaseOpticCamera(Clone)", {5, 1.6f, 5.2f}, 7.0f, 1.0f);
+    const auto weapon = setWeapon(w, true, {{.zooms = {{4}}}});
+    const Address manager = addOpticCameraManager(w, optic, weapon, 0);
     // The manager's Camera points at something that isn't a camera.
     const Address bogus = w.heap.alloc(0x40);
     w.heap.put<Address>(bogus + radar::test::kIl2Cpp.unityObjectCachedPtr, w.heap.alloc(0x600));

@@ -1,4 +1,5 @@
-#include "FakeWorld.hpp"
+#include "FakeObjects.hpp"
+#include "FakePlayers.hpp"
 
 #include "game/eft/items/ItemTree.hpp"
 #include "game/eft/players/Players.hpp"
@@ -184,7 +185,7 @@ TEST_CASE("Players reads observed players' equipment through their controller") 
     FakeWorld w;
     w.newWorld(u"bigmap", 0);
     ItemClasses c(w);
-    const Address observed = w.newObservedPlayer();
+    const Address observed = newObservedPlayer(w);
     w.setRosterList({w.localPlayer, observed});
     const Address opc = mem::MemoryView(w.fake, FakeWorld::kPid).read<Address>(observed + off::ObservedPlayerView::ObservedPlayerController);
     const Address controller = w.heap.alloc(0x200), inventory = w.heap.alloc(0x100);

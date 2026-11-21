@@ -1,4 +1,5 @@
-#include "FakeWorld.hpp"
+#include "FakePlayers.hpp"
+#include "TestMath.hpp"
 
 #include "game/eft/players/Players.hpp"
 #include "game/eft/players/Skeleton.hpp"
@@ -119,7 +120,7 @@ TEST_CASE("Players tracks the roster, positions, rotation and death") {
     }
 
     SUBCASE("death is detected via the corpse field and is permanent") {
-        w.kill(bot1);
+        kill(w, bot1);
         players.rosterTick(t + milliseconds(200));
         snap = world.players.get();
         const auto* dead = byPosition(*snap, {50, 2, 60});
@@ -191,9 +192,9 @@ TEST_CASE("Players tracks the position of a skeleton too short for the joints") 
 TEST_CASE("Players tracks a body with only some position bones, and picks up the rest later") {
     FakeWorld w;
     w.newWorld(u"bigmap", 0);
-    const Address zombie = w.newObservedPlayer(4, true, u"Zombie", Vec3{30, 2, 40});
-    w.setBoneAttached(zombie, eft::Joint::LeftFoot, false);
-    w.setBoneAttached(zombie, eft::Joint::RightFoot, false);
+    const Address zombie = newObservedPlayer(w, 4, true, u"Zombie", Vec3{30, 2, 40});
+    setBoneAttached(w, zombie, eft::Joint::LeftFoot, false);
+    setBoneAttached(w, zombie, eft::Joint::RightFoot, false);
     w.setRosterList({w.localPlayer, zombie});
 
     eft::WorldState world;
@@ -212,8 +213,8 @@ TEST_CASE("Players tracks a body with only some position bones, and picks up the
     REQUIRE(byPosition(*world.players.get(), {31, 2, 41}));
 
     // The feet appear: the periodic re-resolve completes the skeleton.
-    w.setBoneAttached(zombie, eft::Joint::LeftFoot, true);
-    w.setBoneAttached(zombie, eft::Joint::RightFoot, true);
+    setBoneAttached(w, zombie, eft::Joint::LeftFoot, true);
+    setBoneAttached(w, zombie, eft::Joint::RightFoot, true);
     players.positionsTick(t + eft::Players::kBoneRetry + eft::Players::kBoneRetryStagger * 8);
     snap = world.players.get();
     z = byPosition(*snap, {31, 2, 41});
@@ -225,8 +226,8 @@ TEST_CASE("Players builds observed players through their own layout") {
     FakeWorld w;
     w.newWorld(u"bigmap", 0);
     const Address client = w.newPlayer(4, Vec3{50, 2, 60});
-    const Address boss = w.newObservedPlayer(4, true, u"BossKilla", Vec3{-20, 1, 30});
-    const Address pmc = w.newObservedPlayer(2, false, u"Bear_1", Vec3{10, 4, -10});
+    const Address boss = newObservedPlayer(w, 4, true, u"BossKilla", Vec3{-20, 1, 30});
+    const Address pmc = newObservedPlayer(w, 2, false, u"Bear_1", Vec3{10, 4, -10});
     w.setRosterList({w.localPlayer, client, boss, pmc});
     w.setRotation(boss, 45.0f, 2.0f);
 
@@ -258,7 +259,7 @@ TEST_CASE("Players builds observed players through their own layout") {
     CHECK(p->side == eft::Side::Bear);
 
     const auto bossId = b->id;
-    w.kill(boss);
+    kill(w, boss);
     w.movePlayer(pmc, {11, 4, -10});
     players.rosterTick(t + eft::Players::kCorpseInterval);
     players.positionsTick(t + eft::Players::kCorpseInterval);
@@ -360,13 +361,13 @@ TEST_CASE("Players ignores a single empty roster read") {
 TEST_CASE("Players reads observed players' role, nickname and group, also once the AI data appears later") {
     FakeWorld w;
     w.newWorld(u"bigmap", 0);
-    const Address boss = w.newObservedPlayer(4, true, u"BossBully", Vec3{1, 0, 1});
-    const Address guard = w.newObservedPlayer(4, true, u"Scav_3", Vec3{2, 0, 2});
-    const Address odd = w.newObservedPlayer(4, true, u"Scav_1", Vec3{3, 0, 3});
-    w.setObservedIdentity(boss, u"Reshala", u"group-1");
-    w.setObservedIdentity(guard, u"Torpeda", u"group-1");
-    w.setObservedRole(boss, 3);
-    w.setObservedRole(odd, 1, "SomethingElse");  // unexpected AI data class: ignored
+    const Address boss = newObservedPlayer(w, 4, true, u"BossBully", Vec3{1, 0, 1});
+    const Address guard = newObservedPlayer(w, 4, true, u"Scav_3", Vec3{2, 0, 2});
+    const Address odd = newObservedPlayer(w, 4, true, u"Scav_1", Vec3{3, 0, 3});
+    setObservedIdentity(w, boss, u"Reshala", u"group-1");
+    setObservedIdentity(w, guard, u"Torpeda", u"group-1");
+    setObservedRole(w, boss, 3);
+    setObservedRole(w, odd, 1, "SomethingElse");  // unexpected AI data class: ignored
     w.setRosterList({w.localPlayer, boss, guard, odd});
 
     eft::WorldState world;
@@ -390,7 +391,7 @@ TEST_CASE("Players reads observed players' role, nickname and group, also once t
     const auto guardId = g->id;
 
     // The guard's AI data shows up later: picked up on a later roster tick.
-    w.setObservedRole(guard, 5, "AIData");
+    setObservedRole(w, guard, 5, "AIData");
     players.rosterTick(t + eft::Players::kRoleRetry);
     players.rosterTick(t + 2 * eft::Players::kRoleRetry);
     snap = world.players.get();

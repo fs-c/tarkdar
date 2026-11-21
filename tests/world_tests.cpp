@@ -1,4 +1,6 @@
-#include "FakeWorld.hpp"
+#include "FakeObjects.hpp"
+#include "FakePlayers.hpp"
+#include "TestMath.hpp"
 
 #include "game/eft/world/Exfils.hpp"
 #include "game/eft/world/Explosives.hpp"
@@ -390,9 +392,9 @@ TEST_CASE("Vehicles: BTR position, heading, gunner and passengers") {
     FakeWorld w;
     w.newWorld(u"TarkovStreets", 0);
     auto& h = w.heap;
-    const Address gunner = w.newObservedPlayer(4, true, u"Scav_3", Vec3{10, 4, 20});
-    const Address passenger = w.newObservedPlayer(1, false, u"Usec_5", Vec3{11, 3, 21});
-    const Address approaching = w.newObservedPlayer(2, false, u"Bear_1", Vec3{14, 1, 20});
+    const Address gunner = newObservedPlayer(w, 4, true, u"Scav_3", Vec3{10, 4, 20});
+    const Address passenger = newObservedPlayer(w, 1, false, u"Usec_5", Vec3{11, 3, 21});
+    const Address approaching = newObservedPlayer(w, 2, false, u"Bear_1", Vec3{14, 1, 20});
     w.setRosterList({w.localPlayer, gunner, passenger, approaching});
 
     const auto session = w.makeSession(5);

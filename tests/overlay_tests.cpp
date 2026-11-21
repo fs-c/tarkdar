@@ -1,4 +1,4 @@
-#include "FakeWorld.hpp"
+#include "TestMath.hpp"
 
 #include "overlay/Frames.hpp"
 #include "overlay/Pacing.hpp"
@@ -10,7 +10,9 @@
 #include <algorithm>
 
 using namespace radar;
-using radar::test::FakeWorld;
+using radar::test::multiply;
+using radar::test::perspective;
+using radar::test::viewAt;
 using math::Vec3;
 using overlay::DrawList;
 using sched::Clock;
@@ -20,7 +22,7 @@ namespace {
 
 // A camera at `eye` looking along +z.
 eft::CameraView cameraAt(Vec3 eye, float fov = 90, float aspect = 16.f / 9.f) {
-    return {FakeWorld::multiply(FakeWorld::perspective(fov, aspect), FakeWorld::viewAt(eye)), eye, fov, aspect};
+    return {multiply(perspective(fov, aspect), viewAt(eye)), eye, fov, aspect};
 }
 
 eft::PlayersSnapshot players(std::uint64_t raid, std::vector<std::pair<std::uint32_t, Vec3>> others) {

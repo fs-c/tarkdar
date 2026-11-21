@@ -12,7 +12,8 @@ import { WILD_SPAWN_TYPES, bossGroups, playerType } from "../model/roles";
 import type { Timeline, TimelineEvent } from "../stream/timeline";
 import { formatDuration } from "../stream/playback";
 import type { Contribution, Style } from "../rules/rules";
-import { Price } from "../ui";
+import { Price, cx } from "../ui";
+import f from "./Floating.module.css";
 import s from "./DetailsPanel.module.css";
 
 interface Props {
@@ -47,7 +48,7 @@ interface DetailsPanelProps extends Props {
 
 export function DetailsPanel(props: DetailsPanelProps) {
   return (
-    <div className={s.details}>
+    <div className={cx(f.belowTopRight, s.details)}>
       <Details {...props} />
       {props.look && <LookSection look={props.look} />}
       {props.history && <History selection={props.selection} catalog={props.catalog} {...props.history} />}

@@ -14,7 +14,7 @@ import {
   type RuleStore, type SetPinned, type SetRuleStore, type StoredRule, addRule, categoryChanged, defaultStore, duplicateRule, missingDefaults,
   moveRule, newRuleId, removeRule, resetCategory, restoreDefaults, updateRule,
 } from "../rules/store";
-import { Button, PanelBody, Segmented, type SegmentedOption } from "../ui";
+import { Button, PanelBody, Segmented, type SegmentedOption, Switch } from "../ui";
 import { RuleRow } from "./RuleRow";
 import s from "./FiltersPanel.module.css";
 import type { SetStored } from "../persist";
@@ -128,7 +128,7 @@ export function FiltersPanel(p: Props) {
             <header className={s.header}>
               {hideable ? (
                 <label className={s.switchLabel} title={shown ? "Shown: click to hide all of them (ringed things, e.g. highlights, still show)" : "Hidden: click to show"}>
-                  <input type="checkbox" role="switch" className={s.switch} checked={shown} onChange={() => toggleCategory(group)} />
+                  <Switch size="sm" checked={shown} onChange={() => toggleCategory(group)} />
                   <h3 className={s.title}>{group}</h3>
                 </label>
               ) : (

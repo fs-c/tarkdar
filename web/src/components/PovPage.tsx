@@ -15,6 +15,7 @@ import { applyRules } from "../rules/rules";
 import { hiddenKinds, storedRules, useRuleStore } from "../rules/store";
 import { canvasFont } from "../theme/font";
 import { getTheme, useTheme } from "../theme";
+import { ToggleRow } from "../ui";
 import s from "./PovPage.module.css";
 
 /** Player height drawn (m). */
@@ -78,12 +79,8 @@ export function PovPage() {
         <a href="#">← Radar</a>
         <h3>Player's view (experimental)</h3>
         <Readout state={state} camera={camera} />
-        <label>
-          <input type="checkbox" checked={layers.grid} onChange={() => setLayers((l) => ({ ...l, grid: !l.grid }))} /> Ground grid
-        </label>
-        <label>
-          <input type="checkbox" checked={layers.loot} onChange={() => setLayers((l) => ({ ...l, loot: !l.loot }))} /> Loot
-        </label>
+        <ToggleRow label="Ground grid" checked={layers.grid} onChange={() => setLayers((l) => ({ ...l, grid: !l.grid }))} />
+        <ToggleRow label="Loot" checked={layers.loot} onChange={() => setLayers((l) => ({ ...l, loot: !l.loot }))} />
       </aside>
     </div>
   );

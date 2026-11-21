@@ -13,7 +13,8 @@ import type { ItemCatalog } from "../model/items";
 import type { AnyRow } from "../list/rows";
 import type { Selection } from "../draw/pick";
 import type { WorldPos } from "../model/protocol";
-import { Button, useHotkeys } from "../ui";
+import { Button, TextInput, cx, useHotkeys } from "../ui";
+import f from "./Floating.module.css";
 import s from "./Highlights.module.css";
 
 interface Props {
@@ -115,11 +116,11 @@ export function Highlights({ highlights, setHighlights, matched, rows, catalog, 
   const remove = (id: number) => setHighlights((hs) => hs.filter((h) => h.id !== id));
 
   return (
-    <div className={s.root} ref={rootRef}>
+    <div className={f.topLeft} ref={rootRef}>
       <div className={s.bar}>
         <button
           type="button"
-          className={s.open}
+          className={cx(f.surface, f.round, s.open)}
           aria-pressed={open}
           title="Highlight things on the map and in the list ( / )"
           onClick={() => {
@@ -157,7 +158,7 @@ export function Highlights({ highlights, setHighlights, matched, rows, catalog, 
       </div>
       {open && (
         <div className={s.panel}>
-          <input
+          <TextInput
             ref={inputRef}
             className={s.input}
             placeholder="highlight: item, category, boss, ≥50k, is:item pen>=40…"

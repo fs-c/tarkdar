@@ -1,0 +1,64 @@
+/* Controls floating over the map: where each one sits, all in one place, so they line up and keep
+   clear of each other. The map area (App's <main>) carries the measures (.area); the controls take a
+   placement class from here and keep their own look in their own module.
+
+     top row     highlights (top left)                           style switch (top right)
+                                                                 details panel, below the switch
+     bottom row  playback pill (from the left, up to the buttons) the round buttons' column:
+                                                                 follow in the corner, north and
+                                                                 the floor picker stacked above it */
+.area {
+  --float-top: 10px; /* the top row's distance from the edges */
+  --float-bottom: 14px; /* the bottom row's */
+  --float-gap: 10px; /* between neighbours */
+  --float-button: 40px; /* round buttons; the playback pill's height */
+  --float-tile: 34px; /* the style switch's previews */
+  --details-w: 360px;
+  /* From the right edge to the left of the round buttons' column (and from the bottom edge to above follow). */
+  --float-column: calc(var(--float-bottom) + var(--float-button) + var(--float-gap));
+  /* What the top right corner holds: its height (what goes below it starts there) and width (the top
+     left stops short of it). */
+  --top-right-h: 0px;
+  --top-right-w: 0px;
+  /* the style switch: a tile, plus its padding (3px) and border (1px) on both sides */
+  &[data-style-switch="true"] {
+    --top-right-h: calc(var(--float-tile) + 8px + var(--float-gap));
+    --top-right-w: var(--top-right-h);
+  }
+  &[data-details="true"] { --top-right-w: calc(var(--details-w) + var(--float-gap)); }
+}
+
+/* ---- looks shared by the controls ---- */
+.surface { border: 1px solid var(--border-strong); background: var(--overlay); box-shadow: var(--shadow-float); }
+.round {
+  width: var(--float-button); height: var(--float-button); display: grid; place-items: center; padding: 0;
+  border-radius: 50%; color: var(--muted);
+  &:hover { color: var(--text); }
+  &[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+}
+
+/* ---- placements ---- */
+.topLeft {
+  position: absolute; top: var(--float-top); left: var(--float-top); z-index: 2;
+  max-width: min(640px, calc(100% - 2 * var(--float-top) - var(--top-right-w)));
+}
+.topRight { position: absolute; top: var(--float-top); right: var(--float-top); z-index: 2; max-width: calc(100% - 2 * var(--float-top)); }
+/* Below the top right corner, down to above the round buttons. */
+.belowTopRight {
+  position: absolute; top: calc(var(--float-top) + var(--top-right-h)); right: var(--float-top); z-index: 1;
+  width: min(var(--details-w), calc(100% - 2 * var(--float-top)));
+  max-height: calc(100% - var(--float-top) - var(--top-right-h) - var(--float-column));
+}
+.corner { position: absolute; right: var(--float-bottom); bottom: var(--float-bottom); z-index: 1; }
+/* Stacked above the corner button; the first of two goes above the second. */
+.aboveCorner {
+  position: absolute; right: var(--float-bottom); bottom: var(--float-column); z-index: 2; width: var(--float-button);
+  &:has(~ .aboveCorner) { bottom: calc(var(--float-column) + var(--float-button) + var(--float-gap)); }
+}
+/* The bottom row, from the left up to the round buttons' column. */
+.bottom {
+  position: absolute; left: var(--float-bottom); right: var(--float-column); bottom: var(--float-bottom); z-index: 1;
+  height: var(--float-button); border-radius: calc(var(--float-button) / 2);
+}
+/* ...or as narrow as its content, centred on the map (as far as the column lets it). */
+.bottomCentred { left: var(--float-column); width: fit-content; margin: 0 auto; }

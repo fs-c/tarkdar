@@ -13,7 +13,7 @@ import { RowStyles } from "../list/RowStyles";
 import type { Style } from "../rules/rules";
 import type { ListPrefs, ListRows } from "../list/useListRows";
 import type { Selection } from "../draw/pick";
-import { Button, Chip, cx, selectableRow } from "../ui";
+import { Button, Chip, TextInput, cx, selectableRow } from "../ui";
 import s from "./ListPanel.module.css";
 
 const ROW_HEIGHT = 22;
@@ -92,7 +92,7 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
     <RowStyles.Provider value={styles}>
     <div className={s.list}>
       <div className={s.filters}>
-        <input
+        <TextInput
           ref={filterRef}
           className={s.search}
           type="search"

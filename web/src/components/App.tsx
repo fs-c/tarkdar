@@ -3,7 +3,7 @@ import { type RadarState, wsUrl } from "../stream/connection";
 import { useCatalog } from "../model/useCatalog";
 import { useMapIndex } from "../model/useMapIndex";
 import { useConnection } from "../stream/useConnection";
-import { useHotkeys } from "../ui";
+import { cx, useHotkeys } from "../ui";
 import { useLootPrefs, useMapPrefs, useOverlayPrefs, useSidebarPrefs, useTrailPrefs } from "../persist/prefs";
 import { overlayData, overlayMarks } from "../overlay/marks";
 import { useOverlaySync } from "../overlay/useOverlaySync";
@@ -29,6 +29,7 @@ import { PlaybackBar } from "./PlaybackBar";
 import { ActivityBar, SidePanel, type ViewId } from "./Sidebar";
 import { formatStart } from "./format";
 import s from "./App.module.css";
+import f from "./Floating.module.css";
 import { StatusBar, StatusButton } from "./StatusBar";
 import { useMapDebug } from "./useMapDebug";
 import { useQuestState } from "./useQuestState";
@@ -337,7 +338,7 @@ export function App() {
             />
           </SidePanel>
         )}
-        <main className={s.main} data-style-switch={!!map} data-details={!!selection}>
+        <main className={cx(s.main, f.area)} data-style-switch={!!map} data-details={!!selection}>
           <Suspense fallback={null}>
             <Radar
               ref={radar}

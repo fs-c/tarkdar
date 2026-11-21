@@ -3,7 +3,7 @@
 
 import type { MapPrefs, TrailPrefs } from "../persist/prefs";
 import { COLOR_SCHEMES, type ColorGrade, type ColorSchemeName, PLAN_PALETTES, type PlanPalette, type PlanPaletteName, paletteOf, schemeOf } from "../map3d/settings";
-import { Actions, Button, PanelBody, Section, Segmented, SliderRow, ToggleRow } from "../ui";
+import { Actions, Button, ColorInput, PanelBody, Section, Segmented, SliderRow, ToggleRow } from "../ui";
 import s from "./MapPanel.module.css";
 import { PALETTE_LABELS } from "./StyleSwitch";
 import type { SetStored } from "../persist";
@@ -151,7 +151,6 @@ export function MapPanel(p: Props) {
         <label className={s.choice}>
           <span>Palette</span>
           <select
-            className={s.select}
             value={paletteOf(palette) ?? "custom"}
             onChange={(e) => {
               const picked = e.target.value === "custom" ? p.prefs.customPalette : PLAN_PALETTES[e.target.value as PlanPaletteName];
@@ -169,7 +168,7 @@ export function MapPanel(p: Props) {
         <div className={s.swatches}>
           {PALETTE_COLORS.map((c) => (
             <label key={c.key} className={s.swatch} title={c.title}>
-              <input type="color" value={palette[c.key]} onChange={(e) => {
+              <ColorInput value={palette[c.key]} onChange={(e) => {
                   const custom = { ...palette, [c.key]: e.target.value };
                   p.onPrefs((m) => ({ ...m, palette: custom, customPalette: custom }));
                 }} />

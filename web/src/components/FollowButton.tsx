@@ -1,5 +1,7 @@
 import { Locate, LocateFixed, Navigation } from "lucide-react";
+import { cx } from "../ui";
 import s from "./App.module.css";
+import f from "./Floating.module.css";
 
 interface Props {
   follow: boolean;
@@ -14,7 +16,7 @@ interface Props {
 export function FollowButton({ follow, heading, onClick }: Props) {
   return (
     <button
-      className={s.follow}
+      className={cx(f.surface, f.round, f.corner, s.follow)}
       aria-pressed={follow}
       data-heading={heading}
       title={

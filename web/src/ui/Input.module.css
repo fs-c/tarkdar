@@ -1,0 +1,14 @@
+@layer base, ui;
+@layer ui {
+  .field {
+    box-sizing: border-box; min-width: 0; padding: 4px 8px;
+    border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--chrome); color: var(--text); font: inherit;
+    &::placeholder { color: var(--faint); }
+    &:focus { outline: none; border-color: var(--accent); }
+    &[aria-invalid="true"] { border-color: var(--danger); }
+  }
+  .color {
+    flex: none; box-sizing: border-box; width: 34px; height: 22px; padding: 0 2px;
+    border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--chrome); cursor: pointer;
+  }
+}

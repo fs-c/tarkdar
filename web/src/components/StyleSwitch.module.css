@@ -1,13 +1,11 @@
 /* Floats over the map's top right corner. The options open to the left of the button, as one
    pill with it; on a narrow map they scroll. Button and options are all the same square tile. */
 .switch {
-  position: absolute; top: 10px; right: 10px; z-index: 2; box-sizing: border-box; max-width: calc(100% - 20px);
-  display: flex; align-items: stretch; padding: 3px;
-  border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--overlay);
-  box-shadow: var(--shadow-float);
+  /* placed by Floating.module.css, which counts on the padding and border for the corner it takes */
+  box-sizing: border-box; display: flex; align-items: stretch; padding: 3px; border-radius: var(--radius-lg);
   &[data-open="true"] { background: var(--overlay-surface); }
 }
-.preview { display: block; width: 34px; height: 34px; border-radius: var(--radius); }
+.preview { display: block; width: var(--float-tile); height: var(--float-tile); border-radius: var(--radius); }
 .button, .option {
   flex: none; display: block; padding: 0; border: 0; border-radius: var(--radius); background: none; cursor: pointer;
   /* Inset rings: .options clips its overflow, so anything drawn outside the tile would be cut off. */

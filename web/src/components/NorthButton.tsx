@@ -1,5 +1,6 @@
 import type { Ref } from "react";
-import s from "./Radar.module.css";
+import { cx } from "../ui";
+import f from "./Floating.module.css";
 
 interface Props {
   /** The map's usual orientation (degrees at the top of the home view): 0 is north. */
@@ -15,7 +16,7 @@ interface Props {
 export function NorthButton({ up, heading, needleRef, onClick }: Props) {
   return (
     <button
-      className={s.north}
+      className={cx(f.surface, f.round, f.aboveCorner)}
       title={`Turn the map ${up ? "back to its usual orientation" : "north up"} (stops following your view direction)`}
       onPointerDown={(e) => e.stopPropagation()}
       onPointerUp={(e) => e.stopPropagation()}

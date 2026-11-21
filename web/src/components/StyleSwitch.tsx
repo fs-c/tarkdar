@@ -4,7 +4,8 @@
 
 import { useRef, useState } from "react";
 import { PLAN_PALETTES, type MapStyle, type PlanPalette, type PlanPaletteName, paletteOf } from "../map3d/settings";
-import { useDismiss } from "../ui";
+import { cx, useDismiss } from "../ui";
+import f from "./Floating.module.css";
 import s from "./StyleSwitch.module.css";
 
 interface Props {
@@ -75,7 +76,7 @@ export function StyleSwitch({ style, palette, custom, onChange }: Props) {
   );
 
   return (
-    <div className={s.switch} ref={root} data-open={open}>
+    <div className={cx(f.surface, f.topRight, s.switch)} ref={root} data-open={open}>
       <div className={s.options} role="radiogroup" aria-label="Map style" inert={!open}>
         {option("realistic", "Realistic", REALISTIC, !plan, () => onChange("realistic", palette), false)}
         {(Object.keys(PLAN_PALETTES) as PlanPaletteName[]).map((name) =>

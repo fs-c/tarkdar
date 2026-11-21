@@ -4,19 +4,8 @@
   position: fixed; top: 0; left: 0; right: 0; bottom: var(--status-h);
   display: flex;
 }
+/* What floats over the map is placed by Floating.module.css (.area on this element). */
 .main { position: relative; flex: 1; min-width: 0; overflow: hidden; container: map / inline-size; }
 
-/* Follow-me toggle, floating over the map's bottom right corner (the playback pill is at the bottom centre). */
-.follow {
-  position: absolute; right: 14px; bottom: 14px; z-index: 1;
-  width: 40px; height: 40px; display: grid; place-items: center;
-  border: 1px solid var(--border-strong); border-radius: 50%; background: var(--overlay); color: var(--muted);
-  box-shadow: var(--shadow-float);
-  &:hover { color: var(--text); }
-  &[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
-  &[data-heading="true"] { background: var(--accent); color: var(--on-accent); }
-}
-/* The style switcher takes the top right corner: what else floats there starts below it. */
-.main[data-style-switch="true"] { --top-right-inset: 50px; }
-/* The details panel takes the right side: the highlight pills (top left) stop short of it. */
-.main[data-details="true"] { --details-w: 380px; }
+/* Follow-me toggle: a round button in the map's bottom right corner. Turning with the view: filled. */
+.follow[aria-pressed="true"][data-heading="true"] { background: var(--accent); color: var(--on-accent); }

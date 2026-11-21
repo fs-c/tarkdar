@@ -6,7 +6,7 @@ import { ArrowDown, ArrowUp, Copy, Pin, Trash2 } from "lucide-react";
 import { CATEGORIES, SHOW_LEVELS } from "../rules/defaults";
 import type { Emphasis, LabelMode, StyleProps } from "../rules/rules";
 import type { StoredRule } from "../rules/store";
-import { Button, Segmented, type SegmentedOption } from "../ui";
+import { Button, ColorInput, Segmented, type SegmentedOption, Switch, TextInput } from "../ui";
 import s from "./RuleRow.module.css";
 
 const EMPHASIS_OPTIONS: SegmentedOption<Emphasis | undefined>[] = [
@@ -83,7 +83,7 @@ export function RuleRow({ rule, open, onOpen, onChange, count, errors, onHover, 
   return (
     <div className={s.rule} data-open={open} data-on={rule.on} onPointerEnter={() => onHover(true)} onPointerLeave={() => onHover(false)}>
       <div className={s.head}>
-        <input type="checkbox" className={s.check} checked={rule.on} onChange={() => onChange({ on: !rule.on })} title={rule.on ? "On: click to switch off" : "Off: click to switch on"} />
+        <Switch size="sm" className={s.on} checked={rule.on} onChange={() => onChange({ on: !rule.on })} title={rule.on ? "On: click to switch off" : "Off: click to switch on"} />
         <button type="button" className={s.toggle} aria-expanded={open} onClick={() => onOpen(!open)} title={`${rule.query || "(no query)"}\nClick to edit`}>
           <span className={s.swatch} style={swatch} data-auto={!style.color} />
           <span className={s.name}>{rule.label || "(unnamed)"}</span>
@@ -99,7 +99,7 @@ export function RuleRow({ rule, open, onOpen, onChange, count, errors, onHover, 
       {open && (
         <div className={s.editor}>
           <Field label="Name">
-            <input className={s.text} value={rule.label} onChange={(e) => onChange({ label: e.target.value })} />
+            <TextInput className={s.text} value={rule.label} onChange={(e) => onChange({ label: e.target.value })} />
           </Field>
           <Field label={onKeep ? "Kept in" : "Category"}>
             <select value={rule.category} title="Where it's listed (General wins over the others)" onChange={(e) => onChange({ category: e.target.value as StoredRule["category"] })}>
@@ -109,12 +109,12 @@ export function RuleRow({ rule, open, onOpen, onChange, count, errors, onHover, 
             </select>
           </Field>
           <Field label="Matches">
-            <input
+            <TextInput
               className={s.query}
               value={rule.query}
               spellCheck={false}
               placeholder="is:boss · item:LEDX · cat:Electronics · value>=40k · pen>=40 · class>=5"
-              data-error={errors.length > 0}
+              aria-invalid={errors.length > 0}
               onChange={(e) => onChange({ query: e.target.value })}
             />
           </Field>
@@ -124,7 +124,7 @@ export function RuleRow({ rule, open, onOpen, onChange, count, errors, onHover, 
             </Field>
           )}
           <Field label="Colour">
-            <input type="color" className={s.color} value={style.color ?? "#c0c0c0"} onChange={(e) => setStyle({ color: e.target.value })} />
+            <ColorInput value={style.color ?? "#c0c0c0"} onChange={(e) => setStyle({ color: e.target.value })} />
             {style.color ? (
               <Button variant="link" title="Leave the colour to the rules below (or the thing's own: exfils by status)" onClick={() => setStyle({ color: undefined })}>
                 clear
@@ -134,8 +134,8 @@ export function RuleRow({ rule, open, onOpen, onChange, count, errors, onHover, 
             )}
           </Field>
           <Field label="Ring">
-            <input type="checkbox" checked={!!style.ring} onChange={() => setStyle({ ring: style.ring ? undefined : (style.color ?? "#ff8a3d") })} title="A ring around it; loot labelled at any zoom; shown even where its category is off" />
-            {style.ring && <input type="color" className={s.color} value={style.ring} onChange={(e) => setStyle({ ring: e.target.value })} />}
+            <Switch size="sm" checked={!!style.ring} onChange={() => setStyle({ ring: style.ring ? undefined : (style.color ?? "#ff8a3d") })} title="A ring around it; loot labelled at any zoom; shown even where its category is off" />
+            {style.ring && <ColorInput value={style.ring} onChange={(e) => setStyle({ ring: e.target.value })} />}
             <span className="muted">labelled, and shown even where its category is off</span>
           </Field>
           <Field label="Emphasis">

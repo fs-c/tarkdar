@@ -3,7 +3,7 @@
 import type { MapPrefs } from "../persist/prefs";
 import type { MapView } from "../map3d/Map3D";
 import { type QuestDebug, type QuestDebugQuest, questStatusName } from "../model/quests.debug";
-import { Actions, Button, Section, ToggleRow, cx } from "../ui";
+import { Actions, Button, Section, TextArea, ToggleRow, cx } from "../ui";
 import s from "./DebugPanel.module.css";
 import type { SetStored } from "../persist";
 
@@ -49,7 +49,7 @@ export function DebugSections(p: DebugProps) {
                 <Button onClick={() => void navigator.clipboard?.writeText(p.pickOutput)}>Copy</Button>
                 <Button onClick={p.onClearPicks}>Clear points</Button>
               </Actions>
-              <textarea className={s.output} readOnly rows={12} value={p.pickOutput} />
+              <TextArea className={s.output} readOnly rows={12} value={p.pickOutput} />
             </>
           )}
         </Section>

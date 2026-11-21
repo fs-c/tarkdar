@@ -1,4 +1,6 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { cx } from "../ui";
+import f from "./Floating.module.css";
 import s from "./Radar.module.css";
 
 interface Props {
@@ -11,7 +13,7 @@ interface Props {
 /** Indoor maps: the floor buttons (also Page Up / Page Down). */
 export function FloorPicker({ picked, onStep, onAuto }: Props) {
   return (
-    <div className={s.floor} onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
+    <div className={cx(f.surface, f.aboveCorner, s.floor)} onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
       <button title="Show a higher floor (Page Up)" onClick={() => onStep(1)}>
         <ChevronUp size={18} />
       </button>

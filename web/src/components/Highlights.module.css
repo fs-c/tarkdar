@@ -1,18 +1,8 @@
-/* Floats over the map's top left corner: the button, the pills next to it, the search below. */
-.root {
-  position: absolute; top: 10px; left: 10px; z-index: 2;
-  /* clear of the top right corner (style switch, details panel) */
-  max-width: min(640px, calc(100% - 20px - max(var(--details-w, 0px), 60px)));
-}
+/* Floats over the map's top left corner (Floating.module.css): the button, the pills next to it, the
+   search below. */
 .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 
-.open {
-  flex: none; width: 36px; height: 36px; display: grid; place-items: center;
-  border: 1px solid var(--border-strong); border-radius: 50%; background: var(--overlay); color: var(--muted);
-  box-shadow: var(--shadow-float);
-  &:hover { color: var(--text); }
-  &[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
-}
+.open { flex: none; }
 
 .pill {
   display: inline-flex; align-items: center; height: 26px; box-sizing: border-box;
@@ -45,11 +35,7 @@
   border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--overlay-surface);
   box-shadow: var(--shadow-pop);
 }
-.input {
-  width: 100%; box-sizing: border-box; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius);
-  background: var(--chrome); color: var(--text); font: inherit;
-  &:focus { outline: none; border-color: var(--accent); }
-}
+.input { width: 100%; padding: 5px 8px; }
 .suggestions { margin: 4px 0 0; padding: 0; list-style: none; max-height: 50vh; overflow: auto; }
 .suggestion {
   display: grid; grid-template-columns: 62px 1fr auto; align-items: baseline; gap: 6px;

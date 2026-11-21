@@ -1,7 +1,6 @@
+/* Placed below the top right corner by Floating.module.css. */
 .details {
-  position: absolute; top: calc(10px + var(--top-right-inset, 0px)); right: 10px; z-index: 1; box-sizing: border-box;
-  width: min(360px, calc(100% - 20px)); max-height: calc(100% - 80px - var(--top-right-inset, 0px)); overflow: auto;
-  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-sizing: border-box; overflow: auto; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg);
   background: var(--overlay-surface); box-shadow: var(--shadow-pop);
 }
 .title { margin: 0 0 6px; font-size: var(--fs-lg); }

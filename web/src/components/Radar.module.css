@@ -11,25 +11,15 @@
   background: var(--overlay-surface); color: var(--muted); font-size: var(--fs-sm);
   &[data-tone="error"] { color: var(--danger); }
 }
-/* Turned away from north: back to north up. Above the follow button (and below the floor picker). */
-.north {
-  position: absolute; right: 14px; bottom: 64px; z-index: 2;
-  width: 40px; height: 40px; display: grid; place-items: center; padding: 0; cursor: pointer;
-  border: 1px solid var(--border-strong); border-radius: 50%; background: var(--overlay); color: var(--muted);
-  box-shadow: var(--shadow-float);
-  &:hover { color: var(--text); }
-}
-/* Indoor maps: which floor the map is cut open at. Above the follow button (and north button). */
+/* Indoor maps: which floor the map is cut open at. Stacked above the follow button, like the north
+   button (Floating.module.css). */
 .floor {
-  position: absolute; right: 14px; bottom: 64px; z-index: 2; width: 40px; cursor: default;
-  display: grid; border: 1px solid var(--border-strong); border-radius: var(--radius);
-  background: var(--overlay); box-shadow: var(--shadow-float); overflow: hidden;
+  display: grid; border-radius: var(--radius); overflow: hidden; cursor: default;
   & button {
     display: grid; place-items: center; height: 30px; padding: 0; border: 0; background: none; color: var(--muted);
     &:hover:not(:disabled) { color: var(--text); background: var(--overlay-surface); }
   }
 }
-.floor:has(~ .north) { bottom: 114px; }
 /* Beats `.floor button` (and its hover colour) by specificity. */
 .floor button.floorLevel {
   font-size: var(--fs-xs); font-variant-numeric: tabular-nums;

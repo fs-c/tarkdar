@@ -9,6 +9,7 @@ import type { Selection } from "../draw/pick";
 import { type Playback, SPEEDS, formatDuration } from "../stream/playback";
 import type { TimelineEvent } from "../stream/timeline";
 import { cx, useDismiss } from "../ui";
+import f from "./Floating.module.css";
 import s from "./PlaybackBar.module.css";
 
 /** The shown moment as text: raid time when live, how far behind live, or position / length. */
@@ -35,7 +36,7 @@ export function PlaybackBar({ range, playback, replay, events, selection, onExit
 
   if (atLive && !expanded)
     return (
-      <button type="button" className={cx(s.pill, s.chip)} title="Live: go back in time" onClick={() => setExpanded(true)}>
+      <button type="button" className={cx(f.surface, f.bottom, f.bottomCentred, s.pill, s.chip)} title="Live: go back in time" onClick={() => setExpanded(true)}>
         <Radio size={15} className={s.liveIcon} />
         <span className={s.liveTag}>Live</span>
         <span className={s.time}>{timeLabel(range, null, true)}</span>
@@ -45,7 +46,7 @@ export function PlaybackBar({ range, playback, replay, events, selection, onExit
   const at = playback.cursor ?? range[1];
 
   return (
-    <div className={s.pill} data-mode={replay ? "replay" : atLive ? "live" : "behind"} role="toolbar" aria-label="Playback">
+    <div className={cx(f.surface, f.bottom, s.pill)} data-mode={replay ? "replay" : atLive ? "live" : "behind"} role="toolbar" aria-label="Playback">
       <button
         type="button"
         className={s.round}

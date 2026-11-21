@@ -4,7 +4,7 @@
   &[data-on="false"] .name, &[data-on="false"] .summary { color: var(--faint); }
 }
 .head { display: flex; align-items: center; gap: 4px; min-height: 26px; padding-right: 2px; }
-.check { margin: 0 0 0 6px; accent-color: var(--accent); cursor: pointer; }
+.on { margin-left: 6px; }
 .toggle {
   flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; padding: 4px 6px;
   border-radius: var(--radius); color: var(--text); text-align: left; cursor: pointer;
@@ -24,9 +24,7 @@
 .caption { color: var(--muted); font-size: var(--fs-xs); }
 .control { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--fs-xs); }
 .control > [role="radiogroup"] button { min-width: 0; padding: 3px 7px; font-size: var(--fs-xs); }
-.color { width: 34px; height: 22px; padding: 0 2px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--chrome); cursor: pointer; }
 .actions { display: flex; justify-content: flex-end; gap: 4px; padding-top: 2px; }
 .error { color: var(--danger); }
-.text, .query { flex: 1; min-width: 0; }
+.text, .query { flex: 1; padding: 2px 6px; }
 .query { font-family: var(--mono); font-size: var(--fs-xs); }
-.query[data-error="true"] { border-color: var(--danger); }

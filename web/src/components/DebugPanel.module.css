@@ -1,8 +1,4 @@
-.output {
-  display: block; width: 100%; box-sizing: border-box; margin-top: 10px; padding: 6px 8px; resize: vertical;
-  border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--chrome); color: var(--text);
-  font: var(--fs-sm) var(--mono);
-}
+.output { display: block; width: 100%; margin-top: 10px; padding: 6px 8px; resize: vertical; font: var(--fs-sm) var(--mono); }
 .readout { display: grid; gap: 2px; margin: 6px 0 10px; font-size: var(--fs-sm); }
 .readout > div { display: grid; grid-template-columns: 7.5em 1fr; gap: 8px; }
 .readout dt { color: var(--faint); }

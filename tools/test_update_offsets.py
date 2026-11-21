@@ -1,4 +1,4 @@
-"""Tests for tools/update-offsets.py. Run via CTest (sets UPDATE_OFFSETS and OFFSETS_JSON)."""
+"""Tests for tools/update-offsets.py. Run via CTest or directly: python3 -m unittest -v tools/test_update_offsets.py."""
 import contextlib
 import copy
 import importlib.util
@@ -8,7 +8,10 @@ import os
 import tempfile
 import unittest
 
-spec = importlib.util.spec_from_file_location("update_offsets", os.environ["UPDATE_OFFSETS"])
+HERE = os.path.dirname(os.path.abspath(__file__))
+OFFSETS_JSON = os.path.join(HERE, "..", "game", "eft", "offsets", "eft.offsets.json")
+
+spec = importlib.util.spec_from_file_location("update_offsets", os.path.join(HERE, "update-offsets.py"))
 uo = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(uo)
 
@@ -195,7 +198,7 @@ class UpdateOffsetsTest(unittest.TestCase):
                 self.assertEqual(uo.main([dump_path, "--offsets", offsets_path, "--force"]), 1)
 
     def test_checked_in_offsets_file_runs(self):
-        with open(os.environ["OFFSETS_JSON"]) as f:
+        with open(OFFSETS_JSON) as f:
             doc = json.load(f)
         report = uo.update(doc, uo.Dump({"classes": []}))
         self.assertGreater(len(report.missing), 0)

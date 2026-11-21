@@ -22,10 +22,10 @@ list-scenes:
 # cache/ lives in the asset store (assets.json at the repo root; setup: root README, "Data files").
 # assets.py takes paths relative to the current directory (here: tools/maps3d).
 cache-pull:
-	$(REPO)/scripts/assets.py pull cache
+	$(REPO)/tools/assets.py pull cache
 
 cache-push:
-	$(REPO)/scripts/assets.py push cache --prune
+	$(REPO)/tools/assets.py push cache --prune
 
 # Stage 2 - cache/ -> maps/3d/<map>/, served by the backend. No game files needed.
 maps: customs streets factory
@@ -41,7 +41,7 @@ factory:
 
 # Upload the built maps (so machines without this toolchain can pull them); commit assets.json.
 publish:
-	$(REPO)/scripts/assets.py push $(REPO)/maps/3d
+	$(REPO)/tools/assets.py push $(REPO)/maps/3d
 
 test:
 	$(PY) -m unittest discover -s . -t .

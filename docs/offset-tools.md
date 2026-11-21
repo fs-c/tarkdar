@@ -88,7 +88,7 @@ Pointers are session-specific; everything else should be identical between two d
 build.
 
 The reference dump lives at `dumps/il2cpp-dump.json` in the asset store (README, "Data files");
-`scripts/assets.py pull dumps/` fetches it.
+`tools/assets.py pull dumps/` fetches it.
 
 If a dump comes out empty or garbled, the IL2CPP struct layouts the dumper assumes (`managedLayout`
 in `eft.offsets.json`, fitting metadata v29-era runtimes) may not match. Check the game's

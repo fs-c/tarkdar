@@ -39,7 +39,7 @@ web/src/components/Radar.tsx     the map plus the marker overlay
 A machine that only runs the radar needs nothing but the built maps:
 
 ```sh
-scripts/assets.py pull maps/3d
+tools/assets.py pull maps/3d
 ```
 
 To rebuild them (Python 3.14+, a C++ compiler for the `meshoptimizer` package):
@@ -481,7 +481,8 @@ Customs cache when it is present (sizes, counts, categories).
 ## Known limits
 
 - Built and checked: Customs and Streets; Factory is a first version. Every other location is
-  extracted (cache v4) but not yet tuned: see `docs/maps3d-handoff.md`.
+  extracted (cache v4), built and published, but not yet tuned (`tuned: False` in `t3d/maps.py`:
+  scene choice is the game's preset minus non-geometry scenes). See "If this is picked up again".
 - No interiors on outdoor maps: Streets is built from its exterior scenes, and hidden-surface
   removal strips what is under roofs. Glass is drawn solid for that reason.
 - One level of detail; curved objects are faceted close up, thin objects are gone.
@@ -499,14 +500,26 @@ Customs cache when it is present (sizes, counts, categories).
 
 In the order it would pay off:
 
-1. **More maps** (needs the game): a preset per map, `make cache`, `make maps`, `make publish`.
+1. **Tune the untuned maps** (Woods, Shoreline, Interchange, Reserve, Lighthouse, Ground Zero,
+   Terminal, Labs, Labyrinth, Icebreaker; no game needed, only the cache). Per map: look at it in
+   the radar (ideally with a real raid recording), `make views`/`reference`/`measure`, fix the
+   scene selection, set `tuned`, `make publish`. Known: rocks use a stand-in colour
+   (`build.ROCK_COLOR`; the extractor is fixed for the next extraction); combined scenery meshes
+   straddling the 150 m backdrop line stay (Shoreline's port buildings in the sea).
+   Also: Customs' hand list leaves out `custom_city` and `custom_background`, which the game
+   loads (check whether they add anything); Labs, Labyrinth and Icebreaker were only checked with
+   a synthetic recording, never a real indoor raid.
+   Variants have presets but no published map: `labs-event`, `factory-event`,
+   `ground-zero-start`. Decide per variant: an extra location id on the main map, or a map of
+   its own.
 2. **GPU memory**: hand the 16-bit positions to the GPU as they are (the scale goes into the
    instance matrix) instead of expanding them: 17 MB less on Customs, 24 MB on Streets. Cutting
    meshes at 65,535 vertices would halve the index memory as well, for 60 to 80 more draw calls.
 3. **A faster bake**: hidden-surface removal is still nearly all of a build's CPU time
    (`visibility.py`, a sampled depth buffer in numpy); and a cache of baked cells keyed by their
    input would make a rebuild that changes nothing in a cell skip it.
-4. **Interiors** as their own cells, shown with a cut above the local player's floor.
+4. **Interiors** as their own cells, shown with a cut above the local player's floor; and of
+   buildings on outdoor maps (Interchange's mall, Reserve's bunkers, Streets), with the same cut.
 5. **Detail levels per cell** (the chunk header already has `level`, `error`, `cell`), and
    hidden-surface removal across cells.
 6. **Per-object picking**: a source id per triangle.

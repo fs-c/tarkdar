@@ -29,14 +29,27 @@ if(RADAR_BUILD_TESTS)
     target_include_directories(il2cpp-dump-tests SYSTEM PRIVATE ${PROJECT_SOURCE_DIR}/third_party/doctest)
     add_test(NAME il2cpp-dump-tests COMMAND il2cpp-dump-tests)
 
+    # Python tests: they locate their inputs relative to themselves.
+    add_test(NAME gen-offsets
+        COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gen_offsets
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/cmake)
     add_test(NAME update-offsets
         COMMAND ${Python3_EXECUTABLE} -m unittest -v test_update_offsets
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-    set_tests_properties(update-offsets PROPERTIES
-        ENVIRONMENT "UPDATE_OFFSETS=${CMAKE_CURRENT_SOURCE_DIR}/update-offsets.py;OFFSETS_JSON=${RADAR_OFFSETS_JSON}")
 
-    # scripts/assets.py (asset store) against a temporary local-directory store (needs rclone).
+    # tools/assets.py (asset store) against a temporary local-directory store (needs rclone).
+    # unittest exits 0 when everything is skipped; ctest reports that as "Skipped".
     add_test(NAME assets-tool
         COMMAND ${Python3_EXECUTABLE} -m unittest -v test_assets
-        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/scripts)
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    set_tests_properties(assets-tool PROPERTIES SKIP_REGULAR_EXPRESSION "OK \\(skipped=")
+
+    # The 3D map builder's unit tests, when its venv is set up (make -C tools/maps3d install).
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/maps3d/.venv/bin/python)
+        add_test(NAME maps3d
+            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/maps3d/.venv/bin/python -m unittest discover -s . -t .
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/maps3d)
+    else()
+        message(STATUS "maps3d tests skipped: tools/maps3d/.venv not found")
+    endif()
 endif()

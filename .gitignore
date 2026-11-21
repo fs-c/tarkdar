@@ -10,7 +10,7 @@ node_modules/
 *.jsonl
 /recordings/
 
-# Large data files live in the asset store, listed in assets.json (scripts/assets.py pull).
+# Large data files live in the asset store, listed in assets.json (tools/assets.py pull).
 .assets.env
 *.assets-tmp
 .assets-staging/

@@ -5,9 +5,3 @@ add_executable(radar-tests main.cpp mem_tests.cpp il2cpp_tests.cpp unity_tests.c
 find_package(ZLIB REQUIRED)
 target_link_libraries(radar-tests PRIVATE radar_core radar_eft radar_server radar_diagnose doctest ZLIB::ZLIB radar_warnings)
 add_test(NAME radar-tests COMMAND radar-tests)
-
-add_test(NAME gen-offsets
-    COMMAND ${Python3_EXECUTABLE} -m unittest -v test_gen_offsets
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(gen-offsets PROPERTIES
-    ENVIRONMENT "GEN_OFFSETS=${PROJECT_SOURCE_DIR}/cmake/gen_offsets.py;OFFSETS_JSON=${RADAR_OFFSETS_JSON}")

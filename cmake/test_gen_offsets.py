@@ -1,13 +1,14 @@
-"""Tests for cmake/gen_offsets.py. Run via CTest (sets GEN_OFFSETS and OFFSETS_JSON), or directly (defaults to the repo's files)."""
+"""Tests for cmake/gen_offsets.py. Run via CTest or directly: python3 -m unittest -v cmake/test_gen_offsets.py."""
 import copy
 import importlib.util
 import json
 import os
 import unittest
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-GEN_OFFSETS = os.environ.get("GEN_OFFSETS", os.path.join(ROOT, "cmake", "gen_offsets.py"))
-OFFSETS_JSON = os.environ.get("OFFSETS_JSON", os.path.join(ROOT, "game", "eft", "offsets", "eft.offsets.json"))
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.join(HERE, "..")
+GEN_OFFSETS = os.path.join(HERE, "gen_offsets.py")
+OFFSETS_JSON = os.path.join(ROOT, "game", "eft", "offsets", "eft.offsets.json")
 
 spec = importlib.util.spec_from_file_location("gen_offsets", GEN_OFFSETS)
 gen = importlib.util.module_from_spec(spec)

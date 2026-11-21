@@ -1,6 +1,6 @@
-"""Tests for scripts/assets.py, with a local directory as the rclone store.
+"""Tests for tools/assets.py, with a local directory as the rclone store.
 
-Run: python3 -m unittest -v scripts/test_assets.py  (also registered in CTest; needs rclone, see mise.toml).
+Run: python3 -m unittest -v tools/test_assets.py  (also registered in CTest; needs rclone, see mise.toml).
 """
 import json
 import os
@@ -31,8 +31,8 @@ class AssetsTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.repo = self.tmp / "repo"
-        (self.repo / "scripts").mkdir(parents=True)
-        shutil.copy(SCRIPT, self.repo / "scripts" / "assets.py")
+        (self.repo / "tools").mkdir(parents=True)
+        shutil.copy(SCRIPT, self.repo / "tools" / "assets.py")
         subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True)
         (self.repo / "assets.json").write_text(json.dumps({
             "version": 1, "store": {"prefix": "sha256/"},
@@ -52,7 +52,7 @@ class AssetsTest(unittest.TestCase):
         shutil.rmtree(self.tmp)
 
     def run_assets(self, *args, cwd=None, env=None, ok=True):
-        r = subprocess.run([sys.executable, str(self.repo / "scripts" / "assets.py"), *args], cwd=cwd or self.repo,
+        r = subprocess.run([sys.executable, str(self.repo / "tools" / "assets.py"), *args], cwd=cwd or self.repo,
                            env=env or self.env, capture_output=True, text=True)
         if ok:
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)

@@ -6,25 +6,25 @@ hashes. The files themselves are gitignored and live in the store under their
 content address, `<prefix><sha[:2]>/<sha256>`. Blobs are immutable and never
 overwritten, so any commit's manifest can be pulled later.
 
-    scripts/assets.py status [PATH...]        what is missing / modified / new
-    scripts/assets.py pull   [PATH...]        download missing files (locally modified ones
+    tools/assets.py status [PATH...]        what is missing / modified / new
+    tools/assets.py pull   [PATH...]        download missing files (locally modified ones
                                               are skipped unless --force)
-    scripts/assets.py add    PATH...          hash + upload + record files/dirs
-    scripts/assets.py push   [PATH...]        re-add every changed tracked file
+    tools/assets.py add    PATH...          hash + upload + record files/dirs
+    tools/assets.py push   [PATH...]        re-add every changed tracked file
                                               (and new files matching "track"),
                                               upload any blob the store lacks
-    scripts/assets.py rm     PATH...          stop tracking (keeps local + remote)
-    scripts/assets.py verify                  check the store has every blob
-    scripts/assets.py gc     [--delete]       blobs no commit's manifest references
+    tools/assets.py rm     PATH...          stop tracking (keeps local + remote)
+    tools/assets.py verify                  check the store has every blob
+    tools/assets.py gc     [--delete]       blobs no commit's manifest references
 
 Shared dirs (manifest "shared", e.g. recordings/) are for files that need no
 versioning: unique names, never changed. They live in the store as plain files
 under `shared/<repo path>` and never appear in the manifest, so adding one
 needs no commit. `pull` also fetches shared files missing locally.
 
-    scripts/assets.py share   PATH...         upload files (never overwrites)
-    scripts/assets.py unshare PATH...         delete them from the store
-    scripts/assets.py shared  [PATH...]       list: in the store, here, or both
+    tools/assets.py share   PATH...         upload files (never overwrites)
+    tools/assets.py unshare PATH...         delete them from the store
+    tools/assets.py shared  [PATH...]       list: in the store, here, or both
 
 PATH arguments are files, directories or prefixes (relative to the current
 directory); they filter which manifest entries a command touches.

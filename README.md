@@ -7,14 +7,18 @@ from a QEMU guest on a Linux host via VMM (MemProcFS) + LeechCore.
 
 ```sh
 # checks dependencies, inits submodules, fetches the VMM runtime files
-scripts/setup.sh
+tools/setup.sh
 cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The `assets-tool` test needs `rclone` (`mise install`) and is skipped without it. The 3D map
-builder's tests are not part of ctest: run `make test` in `tools/maps3d`.
+The `assets-tool` test needs `rclone` (`mise install`); ctest shows it as skipped without it. The
+`maps3d` test (the 3D map builder's Python tests) is registered only when `tools/maps3d/.venv`
+exists at configure time (`make install` in `tools/maps3d`); `make test` there also runs the harness tests.
+
+Layout: `tools/` is everything a developer runs that isn't the product (C++ tools, Python tools,
+setup), `cmake/` is build-time only, `tests/` holds the C++ tests.
 
 ```sh
 # web/dist, served by radar-backend
@@ -33,7 +37,7 @@ on the desktop without the game. Dear ImGui (`third_party/imgui`) draws the shap
 
 **Runtime files not in any source repo:** `info.db` and `libpdbcrust.so` from the official MemProcFS
 Linux release must sit in `build/bin/`. VMM uses them for Windows symbol and PDB parsing.
-`scripts/setup.sh` downloads them (the release matching the vendored MemProcFS version, for this
+`tools/setup.sh` downloads them (the release matching the vendored MemProcFS version, for this
 machine's architecture); pass `--build-dir` for a different build directory.
 
 **Patches:** local patches to submodules (`patches/`) are applied automatically when CMake
@@ -53,15 +57,15 @@ Large or copyrighted files are not in git. They live in a private asset store on
 the local network (plain files, moved by rclone) and are listed in `assets.json`
 by path and SHA-256: the il2cpp dump, the 3D maps
 (`maps/3d`, see `docs/maps3d.md`), the cache they are built from
-(`tools/maps3d/cache`) and shared raid recordings. `scripts/assets.py` (stdlib
+(`tools/maps3d/cache`) and shared raid recordings. `tools/assets.py` (stdlib
 Python plus `rclone`, which `mise install` provides) manages them:
 
 ```sh
-scripts/assets.py status               # missing / modified / new files
-scripts/assets.py pull                 # download everything missing (or: pull maps/ dumps/)
+tools/assets.py status               # missing / modified / new files
+tools/assets.py pull                 # download everything missing (or: pull maps/ dumps/)
                                        # running the radar needs maps/; tools/maps3d/cache only to rebuild 3D maps
-scripts/assets.py push                 # upload changed tracked files, update assets.json
-scripts/assets.py add dumps/X.json     # start tracking a file (or directory)
+tools/assets.py push                 # upload changed tracked files, update assets.json
+tools/assets.py add dumps/X.json     # start tracking a file (or directory)
 ```
 
 `push` and `add` change `assets.json`; commit it like code. Blobs are stored
@@ -76,9 +80,9 @@ sharing one needs no commit. They sit in the store as plain files under
 every raid to `recordings/`, so nothing is shared until you say so:
 
 ```sh
-scripts/assets.py share recordings/X.jsonl.gz    # upload (never overwrites)
-scripts/assets.py shared                         # list: ↓ only in the store, ↑ only here (--all)
-scripts/assets.py unshare recordings/X.jsonl.gz  # delete from the store (local copy stays)
+tools/assets.py share recordings/X.jsonl.gz    # upload (never overwrites)
+tools/assets.py shared                         # list: ↓ only in the store, ↑ only here (--all)
+tools/assets.py unshare recordings/X.jsonl.gz  # delete from the store (local copy stays)
 ```
 
 A test that depends on one exact recording should pin it as a normal asset
@@ -100,7 +104,7 @@ rclone config create tarkdar-hub sftp host=<hub hostname or IP> user=<user>
 ASSETS_REMOTE=tarkdar-hub:/home/<user>/.local/share/tarkdar-assets
 ```
 
-Any other rclone backend works the same way. `scripts/assets.py verify` checks the
+Any other rclone backend works the same way. `tools/assets.py verify` checks the
 store has every blob the manifest needs; `push` uploads any it is missing, so a
 full checkout can re-seed an empty store. The store is the only copy of older
 commits' blobs, so back it up with the hub.
@@ -117,6 +121,8 @@ sudo ./build/bin/radar-backend --device "qemu://hugepage-pid=$(pgrep -f 'guest='
 # Offline, just serving saved replays:
 ./build/bin/radar-backend --offline
 ```
+
+`./build-and-run.sh` (repo root) builds and starts the backend against the running QEMU guest.
 
 ```sh
 cd web/

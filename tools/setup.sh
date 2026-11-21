@@ -5,7 +5,7 @@
 #   3. downloads the VMM runtime files that aren't in any source repo (info.db, libpdbcrust.so) from
 #      the official MemProcFS Linux release into the build output directory.
 #
-# Usage: scripts/setup.sh [--build-dir DIR] [--release TAG] [--force] [--skip-deps] [--skip-runtime]
+# Usage: tools/setup.sh [--build-dir DIR] [--release TAG] [--force] [--skip-deps] [--skip-runtime]
 #   --build-dir DIR   CMake build directory (default: build); files go to DIR/bin
 #   --release TAG     MemProcFS release tag (default: the release matching the vendored MemProcFS
 #                     submodule's version, falling back to the latest release)

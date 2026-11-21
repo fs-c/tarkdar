@@ -16,4 +16,4 @@ if [[ $(wc -l <<<"$qemu_pids") -gt 1 ]]; then
 fi
 
 sudo XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-    ./build/bin/radar-backend --device "qemu://hugepage-pid=$qemu_pids"
+    ./build/bin/radar-backend --device "qemu://hugepage-pid=$qemu_pids" "$@"

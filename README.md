@@ -61,10 +61,10 @@ by path and SHA-256: the il2cpp dump, the 3D maps
 Python plus `rclone`, which `mise install` provides) manages them:
 
 ```sh
-tools/assets.py status               # missing / modified / new files
-tools/assets.py pull                 # download everything missing (or: pull maps/ dumps/)
+tools/assets.py status               # missing / behind / modified / conflict / new files
+tools/assets.py pull                 # download everything missing or behind (or: pull maps/ dumps/)
                                        # running the radar needs maps/; tools/maps3d/cache only to rebuild 3D maps
-tools/assets.py push                 # upload changed tracked files, update assets.json
+tools/assets.py push                 # upload locally modified tracked files, update assets.json
 tools/assets.py add dumps/X.json     # start tracking a file (or directory)
 ```
 
@@ -72,6 +72,41 @@ tools/assets.py add dumps/X.json     # start tracking a file (or directory)
 under their hash and never overwritten, so older commits stay pullable.
 `assets.json` → `track` lists globs whose new files `push` picks up
 automatically.
+
+Your copy of an asset can differ from `assets.json` because you changed it or
+because a `git pull` moved the manifest on. The tool tells them apart by
+remembering, per path, the hash this checkout last synced
+(`.assets-base.json`, gitignored):
+
+| What happened | `status` | `pull` | `push` |
+| --- | --- | --- | --- |
+| `git pull` brought new hashes, your file is untouched | behind | updates it | skips it ("run pull") |
+| You rebuilt or edited a file | modified | leaves it | publishes it |
+| Both (you rebuilt, and a pull changed the hash) | conflict | refuses it, exit 1 | refuses it, exit 1 |
+
+A conflict is settled per path, and the other paths carry on meanwhile:
+
+```sh
+tools/assets.py resolve maps/3d/customs --ours     # keep mine; the next push publishes it
+tools/assets.py resolve maps/3d/customs --theirs   # take the manifest's version
+```
+
+Nothing is overwritten silently: before `pull --force` (take the manifest's
+version of modified files), `resolve --theirs` or a restore replaces a file
+that exists nowhere else, the old one is *moved* to
+`.assets-trash/<UTC timestamp>/<path>`. A file equal to what you last pulled or
+pushed is not trashed, since `pull` brings it back.
+
+```sh
+tools/assets.py trash                              # what is in there, with sizes
+tools/assets.py trash --restore PATH [--from TS]   # put the newest (or that) copy back
+tools/assets.py trash --empty [--older-than DAYS]  # free the space
+```
+
+After an upgrade, or in a fresh checkout whose files already exist, there is no
+record yet: a file equal to the manifest is simply recorded, one that differs
+counts as modified (`pull` skips it, `pull --force` trashes and replaces it,
+`resolve --ours` keeps it). `gc` also keeps the blobs your checkout last synced.
 
 `recordings/` is a *shared dir* (`assets.json` → `shared`): its files need no
 versioning (unique names, never changed), so they are not in the manifest and

@@ -15,6 +15,8 @@ node_modules/
 *.assets-tmp
 .assets-staging/
 .assets-hashes.json
+.assets-base.json
+.assets-trash/
 
 # Maps are derived from copyrighted material, so they live in the asset store too: maps/3d (built by
 # tools/maps3d).

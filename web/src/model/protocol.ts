@@ -38,8 +38,11 @@ export interface Player {
    *  appear a moment after the player does. */
   role?: number;
   nickname?: string;
-  /** Players spawned together share one (a boss and its guards). */
+  /** Players spawned together share one (a boss and its guards). Not read online (observed bots). */
   groupId?: string;
+  /** Frontend-derived (timeline): AI only, the id of the first bot this one spawned on the same spot
+   *  with, at the same time (a boss and its guards, a scav group); unset if it spawned alone. */
+  spawnGroup?: number;
   dead: boolean;
   absent: boolean;
   /** Frontend-derived (timeline): absent, not dead, and last seen near an exfil. */

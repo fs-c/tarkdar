@@ -8,6 +8,8 @@
 //    carry it in their profile; observed players (network replicas) through their AI data
 //    (unverified, see docs/protocol.md). Only meaningful for AI: humans carry a default.
 //  - group: bots spawned together share a group id, so an AI in a boss's group is one of its guards.
+//    Only full players have one; online (observed bots) the timeline's spawnGroup stands in for it:
+//    bots that first appeared together on one spot (timeline.ts, SPAWN_RADIUS_M).
 //  - voice: the voice preset. Bosses, cultists and zombies have their own; guards, raiders, snipers
 //    and plain scavs mostly share the six Scav_N voices (per SPT's bot database), so a Scav_N voice
 //    alone can't tell them apart.
@@ -47,7 +49,7 @@ export interface PlayerTypeInfo {
 }
 
 /** What a classification needs from a player. */
-export type PlayerIdentity = Pick<Player, "local" | "ai" | "side" | "voice" | "role" | "nickname" | "groupId" | "kind">;
+export type PlayerIdentity = Pick<Player, "local" | "ai" | "side" | "voice" | "role" | "nickname" | "groupId" | "spawnGroup" | "kind">;
 
 type Entry = [name: string, label: string, type: PlayerType];
 
@@ -144,13 +146,19 @@ const BOSS_VOICES: Record<string, string> = {
 const roleName = (role: number) => WILD_SPAWN_TYPES[role]?.[0];
 const roleReason = (role: number) => `role ${role}${roleName(role) ? ` (${roleName(role)})` : ""}`;
 
-/** Group id → boss label, for every AI boss among `players`. */
+/** bossGroups' key for a spawn group (group ids are the game's, so they can't clash). */
+const spawnKey = (group: number) => `spawn:${group}`;
+
+/** Group id (or spawn group, see spawnKey) → boss label, for every AI boss among `players`. */
 export function bossGroups(players: readonly PlayerIdentity[]): Map<string, string> {
   const out = new Map<string, string>();
   for (const p of players) {
-    if (!p.groupId || p.local || !p.ai) continue;
+    if ((!p.groupId && p.spawnGroup === undefined) || p.local || !p.ai) continue;
     const t = playerType(p);
-    if (t.type === "boss") out.set(p.groupId, t.label);
+    if (t.type !== "boss") continue;
+    if (p.groupId) out.set(p.groupId, t.label);
+    // Several bosses in one spawn (the Goons): named after the first.
+    if (p.spawnGroup !== undefined && !out.has(spawnKey(p.spawnGroup))) out.set(spawnKey(p.spawnGroup), t.label);
   }
   return out;
 }
@@ -187,6 +195,12 @@ export function playerType(p: PlayerIdentity, groups?: ReadonlyMap<string, strin
   const boss = p.groupId ? groups?.get(p.groupId) : undefined;
   if (boss && byVoice?.type !== "boss")
     return { type: "follower", label: `${boss} guard`, reason: `in ${boss}'s group${byVoice ? `, ${byVoice.reason}` : ""}` };
+  // Spawning with a boss is weaker evidence than its group: only for bots that otherwise read as
+  // plain scavs (guards speak Scav_N), not ones whose voice says what they are (the Goons spawn
+  // together; zombies may spawn by infected Tagilla).
+  const spawnedWith = p.spawnGroup !== undefined ? groups?.get(spawnKey(p.spawnGroup)) : undefined;
+  if (spawnedWith && (!byVoice || byVoice.type === "ai-scav"))
+    return { type: "follower", label: `${spawnedWith} guard`, reason: `spawned with ${spawnedWith}${byVoice ? `, ${byVoice.reason}` : ""}` };
 
   if (byVoice) return byVoice;
   if (p.side === "usec") return { type: "usec", label: "USEC bot", reason: "AI, side usec" };
@@ -239,5 +253,6 @@ export function identityText(p: PlayerIdentity): string {
   if (p.voice) parts.push(`voice ${p.voice}`);
   if (p.nickname) parts.push(`nick ${p.nickname}`);
   if (p.groupId) parts.push(`group ${p.groupId}`);
+  if (p.spawnGroup !== undefined) parts.push(`spawn group #${p.spawnGroup}`);
   return parts.join(" · ");
 }

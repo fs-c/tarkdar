@@ -79,11 +79,12 @@ changes, at most about 30 times per second.
   Mapping values to names is the frontend's job (`web/src/model/roles.ts`). Full players (`local`,
   `client`): `Profile.Info.Settings.Role`. Observed players: `ObservedPlayerView.AIData` →
   `BotHostilityData._role`, which is **unverified** (check with `radar-diagnose` in a raid) and may only
-  appear a few seconds after the player does. Only meaningful for AI: humans carry a default (our own
-  PMC reads 1, assault).
+  appear a few seconds after the player does; in recordings up to 2026-11 it was never read for an
+  observed player. Only meaningful for AI: humans carry a default (our own PMC reads 1, assault).
 - **`nickname`:** the player's nickname (bosses carry their name); omitted if empty.
 - **`groupId`:** players spawned together share it (a boss and its guards, a PMC squad); omitted if
-  empty.
+  empty. Observed AI never had one in recordings up to 2026-11: the frontend finds a boss's guards by
+  where and when they first appear instead (`spawnGroup`, `web/src/stream/timeline.ts`).
 - **`side`:** `usec`, `bear`, `savage` (scavs, bosses and other non-PMC bots) or `unknown`.
 - **`dead`:** permanent once set; the player keeps its last position.
 - **`absent`:** left the game's player list without dying (extracted or despawned).

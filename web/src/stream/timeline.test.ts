@@ -39,6 +39,21 @@ describe("Timeline", () => {
     expect(tl.events[2]).toMatchObject({ t: T0 + 5000, player: 2 });
   });
 
+  it("groups bots that first appear on one spot together (a boss and its guards)", () => {
+    const tl = new Timeline();
+    const at = (id: number, x: number, extra: Partial<Player> = {}) => player(id, x, { side: "savage", ...extra });
+    tl.ingest(players(T0, 1, [player(1, 500), at(2, 0, { voice: "BossBully" }), at(3, 0), at(4, 30)]));
+    // Its position arrives a moment later, still on the spot; moving on doesn't change the group.
+    tl.ingest(players(T0 + 2000, 2, [player(1, 500), at(2, 3), at(3, 4), at(4, 30), at(5, 0, { pos: null })]));
+    tl.ingest(players(T0 + 3000, 3, [player(1, 500), at(2, 6), at(3, 8), at(4, 30), at(5, 0.5)]));
+    // The same spot much later: another spawn.
+    tl.ingest(players(T0 + 60_000, 4, [player(1, 500), at(2, 6), at(3, 8), at(4, 30), at(5, 9), at(6, 0), at(7, 0)]));
+
+    const groups = new Map(tl.stateAt(T0 + 60_000).players.map((p) => [p.id, p.spawnGroup]));
+    expect(Object.fromEntries(groups)).toEqual({ 1: undefined, 2: 2, 3: 2, 4: undefined, 5: 2, 6: 6, 7: 6 });
+    expect(tl.tracks.get(3)?.meta.spawnGroup).toBe(2); // events name players from meta
+  });
+
   it("drops messages it has seen (by revision) and keeps time monotonic", () => {
     const tl = new Timeline();
     expect(tl.ingest(players(T0, 5, [player(1, 0)]))).toBe(true);

@@ -128,7 +128,11 @@ export class Track {
   private readonly kept: number[] = [];
   private keptUpTo = 0;
 
-  /** Latest non-positional fields (side, voice, role, … can be resolved late). */
+  /** AI only: the id of the first bot this one spawned with (see SPAWN_RADIUS_M); unset if it
+   *  spawned alone. */
+  spawnGroup?: number;
+
+  /** Latest non-positional fields (side, voice, role, … can be resolved late), with spawnGroup. */
   constructor(public meta: Player) {}
 
   /** Indices of the samples a trail is drawn through (oldest first). */
@@ -246,6 +250,16 @@ export class Track {
   }
 }
 
+/**
+ * Bots whose first positions are this close (m) and this close in time (ms) spawned as one group.
+ * Online, the game gives observed bots no group id (nor a role), but a group spawns stacked on one
+ * point: in recordings (2026-11), every boss's guards appeared within 5 s of it at exactly its
+ * position, while other bots were 30 m or more away. Bots seen first mid-raid (a backend started
+ * late) have already moved apart, so they rarely group, and that's the safe direction to fail in.
+ */
+const SPAWN_RADIUS_M = 1;
+const SPAWN_WINDOW_MS = 10_000;
+
 /** A player that left this close (m, horizontally) to an exfil counts as extracted. */
 const EXTRACT_RADIUS_M = 50;
 
@@ -310,6 +324,8 @@ export class Timeline {
   private lootCache: { index: number; entries: LootEntry[] } = { index: -1, entries: [] };
   /** Player order: by id, as the backend sends them. */
   private playerIds: number[] = [];
+  /** AI tracks by the time of their first position, for spawnGroup (oldest first). */
+  private readonly spawns: { t: number; id: number; track: Track }[] = [];
 
   /** Takes one message; returns whether it changed anything. */
   ingest(msg: RecordedMessage): boolean {
@@ -393,7 +409,7 @@ export class Timeline {
         added = true;
         this.events.push({ t, kind: "playerSeen", player: p.id });
       }
-      track.meta = p;
+      track.meta = track.spawnGroup === undefined ? p : { ...p, spawnGroup: track.spawnGroup };
       // Parked at about -9999 (despawned): gone, whatever the list says; keep the last real position.
       const parked = isSentinelPos(p.pos);
       const absent = p.absent || parked;
@@ -406,9 +422,33 @@ export class Timeline {
         if (last && p.dead && !last.dead) this.events.push({ t, kind: "died", player: p.id, pos: p.pos });
         else if (last && absent && !last.absent && !p.dead) this.events.push({ t, kind: extracted ? "extracted" : "left", player: p.id, pos: lastPos });
       }
-      if (!parked) track.push(t, p);
+      if (!parked) {
+        const first = track.n === 0;
+        track.push(t, p);
+        if (first && track.n === 1 && p.ai && !p.local) this.joinSpawnGroup(t, p.id, track);
+      }
     }
     if (added) this.playerIds = [...this.tracks.keys()].sort((a, b) => a - b);
+  }
+
+  /** Puts a bot that just got its first position in the group of one that spawned on the same spot. */
+  private joinSpawnGroup(t: number, id: number, track: Track): void {
+    while (this.spawns.length && t - this.spawns[0]!.t > SPAWN_WINDOW_MS) this.spawns.shift();
+    const [x, y, z] = track.posOf(0);
+    const near = this.spawns.find(({ track: o }) => {
+      const [ox, oy, oz] = o.posOf(0);
+      return Math.hypot(ox - x, oy - y, oz - z) <= SPAWN_RADIUS_M;
+    });
+    if (near) {
+      const group = near.track.spawnGroup ?? near.id;
+      if (near.track.spawnGroup === undefined) {
+        near.track.spawnGroup = group;
+        near.track.meta = { ...near.track.meta, spawnGroup: group };
+      }
+      track.spawnGroup = group;
+      track.meta = { ...track.meta, spawnGroup: group };
+    }
+    this.spawns.push({ t, id, track });
   }
 
   private ingestSkeletons(t: number, data: SkeletonsData): void {

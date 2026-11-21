@@ -68,6 +68,24 @@ describe("playerType", () => {
     expect(type(players[0]!, groups)).toBe("boss");
     expect(type(players[1]!)).toBe("ai-scav"); // without the groups
   });
+
+  it("makes plain-scav AI that spawned with a boss its guards", () => {
+    const players = [
+      ai({ id: 1, voice: "BossSanitar", spawnGroup: 1 }),
+      ai({ id: 2, voice: "Scav_5", spawnGroup: 1 }),
+      ai({ id: 3, spawnGroup: 1 }),
+      ai({ id: 4, voice: "Zombie_Fast", spawnGroup: 1 }), // says what it is
+      ai({ id: 5, voice: "Scav_5", spawnGroup: 7 }), // a scav group
+      ai({ id: 6, voice: "BossBigPipe", spawnGroup: 1 }), // a boss stays one
+    ];
+    const groups = bossGroups(players);
+    expect(playerType(players[1]!, groups)).toEqual({ type: "follower", label: "Sanitar guard", reason: "spawned with Sanitar, voice Scav_5" });
+    expect(type(players[2]!, groups)).toBe("follower");
+    expect(type(players[3]!, groups)).toBe("zombie");
+    expect(type(players[4]!, groups)).toBe("ai-scav");
+    expect(type(players[5]!, groups)).toBe("boss");
+    expect(type(players[0]!, groups)).toBe("boss");
+  });
 });
 
 describe("identityText", () => {
@@ -75,5 +93,6 @@ describe("identityText", () => {
     expect(identityText(ai({ role: 5, voice: "Scav_3", nickname: "Torpeda", groupId: "g1" }))).toBe(
       "AI · observed · side savage · role 5 (followerBully) · voice Scav_3 · nick Torpeda · group g1",
     );
+    expect(identityText(ai({ voice: "Scav_3", spawnGroup: 4 }))).toBe("AI · observed · side savage · voice Scav_3 · spawn group #4");
   });
 });

@@ -126,21 +126,19 @@ export interface QuestNeeds {
   started: number;
 }
 
-/** Which quests count (the Quests view): all started ones but those ignored (one by one, or their
- *  whole kind), plus the imported ones. */
+/** Which quests count (the Quests view): all started ones but those ignored, plus the imported
+ *  ones. */
 export interface Counting {
   /** Quest ids that don't count. */
   ignored?: ReadonlySet<string>;
-  /** Kinds that don't count at all. */
-  ignoredKinds?: ReadonlySet<NeedKind>;
   /** Quests imported from tarkov.dev, not started yet: everything they need counts (unless ignored). */
   imported?: readonly ImportedQuest[];
 }
 
 const NO_IDS: ReadonlySet<string> = new Set();
 
-/** Ignored quests (one by one, or by kind) need nothing. */
-export const counts = (id: string, kind: NeedKind, c: Counting): boolean => !(c.ignored ?? NO_IDS).has(id) && !c.ignoredKinds?.has(kind);
+/** Ignored quests need nothing. */
+export const counts = (id: string, c: Counting): boolean => !(c.ignored ?? NO_IDS).has(id);
 
 /**
  * Null when it can't be told (the quests weren't read): then every quest item shows, also those of
@@ -162,7 +160,7 @@ export function questNeeds(quests: readonly QuestState[] | null, counting: Count
   };
   // Started quests first: what's owned goes to them before imported ones.
   for (const q of quests) {
-    if (q.status !== QUEST_STARTED || !counts(q.id, q.kind ?? "side", counting)) continue;
+    if (q.status !== QUEST_STARTED || !counts(q.id, counting)) continue;
     needs.started++;
     if (!q.objectives) {
       needs.complete = false;
@@ -174,7 +172,7 @@ export function questNeeds(quests: readonly QuestState[] | null, counting: Count
   }
   const live = new Set(quests.map((q) => q.id));
   for (const q of counting.imported ?? []) {
-    if (live.has(q.id) || !counts(q.id, "imported", counting)) continue;
+    if (live.has(q.id) || !counts(q.id, counting)) continue;
     for (const { objective: o, items } of openObjectives({ id: q.id, status: QUEST_STARTED, done: [], objectives: q.objectives }))
       add(q.id, o.id, items, { quest: q.name, kind: "imported", count: o.count, fir: !!o.fir, of: items.length });
   }

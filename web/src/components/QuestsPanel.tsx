@@ -1,6 +1,6 @@
 // Quests view of the side panel: the local player's quests in progress, by kind, with the items their
 // objectives still need; and quests imported from tarkov.dev that aren't started yet (to collect for
-// them already). A switch per quest and per kind says whether it counts. A quest that doesn't count
+// them already). A switch per quest says whether it counts (a button per kind sets them all). A quest that doesn't count
 // needs nothing: its quest items are left out (with Quest items: Needed), and its items aren't
 // `is:needed`. For quests left in progress for good, whose markers would only clutter the map.
 // What's owned (the stash, the gear on the character) covers objectives: shown per objective ("have
@@ -42,15 +42,27 @@ const MAX_RESULTS = 15;
 
 const toggled = <T,>(list: readonly T[], x: T): T[] => (list.includes(x) ? list.filter((y) => y !== x) : [...list, x]);
 
+/** "Enable all" / "Disable all" for a section's quests (their switches): disables unless all are off. */
+function AllButton({ ids, ignored, onPrefs }: { ids: readonly string[]; ignored: ReadonlySet<string>; onPrefs: SetStored<QuestPrefs> }) {
+  if (!ids.length) return null;
+  const enable = ids.every((id) => ignored.has(id));
+  const set = new Set(ids);
+  const apply = () => onPrefs((p) => ({ ...p, ignored: enable ? p.ignored.filter((id) => !set.has(id)) : [...new Set([...p.ignored, ...ids])] }));
+  return (
+    <Button variant="link" onClick={apply} title={enable ? "Count every quest here" : "Ignore every quest here"}>
+      {enable ? "Enable all" : "Disable all"}
+    </Button>
+  );
+}
+
 export function QuestsPanel({ quests, catalog, prefs, onPrefs, questInfo, needs, owned }: Props) {
-  const counting = { ignored: new Set(prefs.ignored), ignoredKinds: new Set(prefs.ignoredKinds) };
+  const counting = { ignored: new Set(prefs.ignored) };
   const toggleQuest = (id: string) => onPrefs((p) => ({ ...p, ignored: toggled(p.ignored, id) }));
-  const toggleKind = (k: NeedKind) => onPrefs((p) => ({ ...p, ignoredKinds: toggled(p.ignoredKinds, k) }));
   const shown = (quests ?? []).filter((q) => q.status === QUEST_STARTED || q.status === QUEST_READY);
   const live = new Set(shown.map((q) => q.id));
   const notCounting =
-    shown.filter((q) => q.status === QUEST_STARTED && !counts(q.id, q.kind ?? "side", counting)).length +
-    prefs.imported.filter((q) => !live.has(q.id) && !counts(q.id, "imported", counting)).length;
+    shown.filter((q) => q.status === QUEST_STARTED && !counts(q.id, counting)).length +
+    prefs.imported.filter((q) => !live.has(q.id) && !counts(q.id, counting)).length;
   const itemName = (tpl: string, names?: Record<string, string>) => names?.[tpl] ?? catalog.lookup(tpl)?.name ?? tpl;
 
   const byKind = new Map<NeedKind, QuestState[]>();
@@ -59,11 +71,6 @@ export function QuestsPanel({ quests, catalog, prefs, onPrefs, questInfo, needs,
     byKind.set(kind, [...(byKind.get(kind) ?? []), q]);
   }
 
-  const kindSwitch = (k: NeedKind) => {
-    const on = !counting.ignoredKinds.has(k);
-    return <Switch size="sm" checked={on} onChange={() => toggleKind(k)} title={on ? `${KIND_TITLES[k]} count (click: ignore them all)` : `${KIND_TITLES[k]} are ignored (click: count them)`} />;
-  };
-
   return (
     <PanelBody>
       <Section title="Summary">
@@ -71,9 +78,9 @@ export function QuestsPanel({ quests, catalog, prefs, onPrefs, questInfo, needs,
           {quests ? questInfo : "No quests read (not in a raid, or an older recording)."}
           {notCounting > 0 && ` · ${notCounting} not counting`}
         </p>
-        {(notCounting > 0 || prefs.ignoredKinds.length > 0) && (
+        {notCounting > 0 && (
           <Actions>
-            <Button title="Every quest and kind counts again" onClick={() => onPrefs((p) => ({ ...p, ignored: [], ignoredKinds: [] }))}>
+            <Button title="Every quest counts again" onClick={() => onPrefs((p) => ({ ...p, ignored: [] }))}>
               All count
             </Button>
           </Actions>
@@ -94,10 +101,10 @@ export function QuestsPanel({ quests, catalog, prefs, onPrefs, questInfo, needs,
       </Section>
       {ORDER.filter((k) => k !== "imported" && byKind.has(k)).map((kind) => {
         const list = [...byKind.get(kind)!].sort((a, b) => questLabel(a).localeCompare(questLabel(b)));
-        const kindOn = !counting.ignoredKinds.has(kind);
+        const toggleable = list.filter((q) => q.status !== QUEST_READY).map((q) => q.id);
         return (
-          <Section key={kind} title={`${KIND_TITLES[kind]} · ${list.length}`} aside={kindSwitch(kind)}>
-            <ul className={s.quests} data-on={kindOn}>
+          <Section key={kind} title={`${KIND_TITLES[kind]} · ${list.length}`} aside={<AllButton ids={toggleable} ignored={counting.ignored} onPrefs={onPrefs} />}>
+            <ul className={s.quests}>
               {list.map((q) => {
                 const ready = q.status === QUEST_READY;
                 const open = q.objectives && !ready ? openObjectives(q) : [];
@@ -108,7 +115,6 @@ export function QuestsPanel({ quests, catalog, prefs, onPrefs, questInfo, needs,
                     label={questLabel(q)}
                     meta={[q.kind !== "story" && q.name ? traderName(q.trader) : undefined, q.hidden ? "hidden step" : undefined, allOwned(q.id, open, needs) ? "all owned" : undefined]}
                     counts={!counting.ignored.has(q.id)}
-                    kindOn={kindOn}
                     ready={ready}
                     onToggle={() => toggleQuest(q.id)}
                   >
@@ -130,8 +136,6 @@ export function QuestsPanel({ quests, catalog, prefs, onPrefs, questInfo, needs,
         prefs={prefs}
         onPrefs={onPrefs}
         live={live}
-        kindSwitch={kindSwitch("imported")}
-        kindOn={!counting.ignoredKinds.has("imported")}
         toggleQuest={toggleQuest}
         itemName={itemName}
         needs={needs}
@@ -145,17 +149,15 @@ interface RowProps {
   label: string;
   meta: (string | undefined)[];
   counts: boolean;
-  /** Its kind counts (else the quest's own switch doesn't matter). */
-  kindOn: boolean;
   ready?: boolean;
   onToggle: () => void;
   onRemove?: () => void;
   children: ReactNode;
 }
 
-function QuestRow({ id, label, meta, counts: on, kindOn, ready, onToggle, onRemove, children }: RowProps) {
+function QuestRow({ id, label, meta, counts: on, ready, onToggle, onRemove, children }: RowProps) {
   return (
-    <li className={s.quest} data-counts={ready || (on && kindOn)}>
+    <li className={s.quest} data-counts={ready || on}>
       <div className={s.head}>
         <label className={s.label} title={id}>
           {ready ? (
@@ -167,7 +169,7 @@ function QuestRow({ id, label, meta, counts: on, kindOn, ready, onToggle, onRemo
               size="sm"
               checked={on}
               onChange={onToggle}
-              title={!kindOn ? "Its whole kind is ignored (the switch in the heading)" : on ? "Counts: its items are needed (click: ignore it)" : "Ignored: its items aren't needed (click: count it)"}
+              title={on ? "Counts: its items are needed (click: ignore it)" : "Ignored: its items aren't needed (click: count it)"}
             />
           )}
           <span className={s.name}>{label}</span>
@@ -253,22 +255,20 @@ interface ImportedProps {
   onPrefs: SetStored<QuestPrefs>;
   /** Ids of the quests in the game's list (started or ready): an imported one there counts as that. */
   live: ReadonlySet<string>;
-  kindSwitch: ReactNode;
-  kindOn: boolean;
   toggleQuest: (id: string) => void;
   itemName: (tpl: string, names?: Record<string, string>) => string;
   needs: QuestNeeds | null;
 }
 
-function ImportedSection({ prefs, onPrefs, live, kindSwitch, kindOn, toggleQuest, itemName, needs }: ImportedProps) {
+function ImportedSection({ prefs, onPrefs, live, toggleQuest, itemName, needs }: ImportedProps) {
   const [importing, setImporting] = useState(false);
   const list = [...prefs.imported].sort((a, b) => a.name.localeCompare(b.name));
   const remove = (id: string) => onPrefs((p) => ({ ...p, imported: p.imported.filter((q) => q.id !== id), ignored: p.ignored.filter((x) => x !== id) }));
   const add = (q: ImportedQuest) => onPrefs((p) => (p.imported.some((x) => x.id === q.id) ? p : { ...p, imported: [...p.imported, q] }));
   return (
-    <Section title={`${KIND_TITLES.imported} · ${list.length}`} aside={kindSwitch}>
+    <Section title={`${KIND_TITLES.imported} · ${list.length}`} aside={<AllButton ids={list.map((q) => q.id)} ignored={new Set(prefs.ignored)} onPrefs={onPrefs} />}>
       {!list.length && <p className="muted">Quests not started yet whose items you want to collect already: import them from tarkov.dev.</p>}
-      <ul className={s.quests} data-on={kindOn}>
+      <ul className={s.quests}>
         {list.map((q) => {
           const started = live.has(q.id);
           const open = importedOpen(q);
@@ -279,7 +279,6 @@ function ImportedSection({ prefs, onPrefs, live, kindSwitch, kindOn, toggleQuest
               label={q.name}
               meta={[traderName(q.trader), started ? "started" : undefined, !started && allOwned(q.id, open, needs) ? "all owned" : undefined]}
               counts={!prefs.ignored.includes(q.id)}
-              kindOn={kindOn}
               onToggle={() => toggleQuest(q.id)}
               onRemove={() => remove(q.id)}
             >

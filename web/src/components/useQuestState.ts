@@ -23,8 +23,8 @@ export function useQuestState(unfiltered: RadarState, filterQuest: boolean, ques
   // What started quests still need (quest items and ordinary ones): the filter, the "Needed for quests"
   // rule, labels on the map, in the list and details.
   // Quests that don't count need nothing; imported ones count as if started.
-  const { ignored, ignoredKinds, imported } = questPrefs;
-  const counting = useMemo(() => ({ ignored: new Set(ignored), ignoredKinds: new Set(ignoredKinds), imported }), [ignored, ignoredKinds, imported]);
+  const { ignored, imported } = questPrefs;
+  const counting = useMemo(() => ({ ignored: new Set(ignored), imported }), [ignored, imported]);
   const needs = useMemo(() => readQuestNeeds(unfiltered.quests, counting, owned), [unfiltered.quests, counting, owned]);
   const questLabels = useMemo(() => questItemLabels(needs), [needs]);
   const questNeeds = needs?.items ?? NO_NEEDS;

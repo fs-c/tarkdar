@@ -8,7 +8,6 @@ import { DEFAULT_EVENT_GROUPS, type EventGroup } from "../stream/events";
 import { DEFAULT_MAP_SETTINGS, type MapSettings, type MapStyle, type PlanPalette } from "../map3d/settings";
 import { DEFAULT_OVERLAY_PREFS, type OverlayPrefs } from "../overlay/marks";
 import { DEFAULT_THEME_ID, THEME_IDS } from "../theme/themes";
-import { NEED_KINDS, type NeedKind } from "../model/quests";
 import type { QuestObjective } from "../model/protocol";
 import type { ImportedQuest } from "../model/taskFeed";
 import { defineStore, flatNormalize, isHexColor, isObject, oneOf, usePersisted } from "./";
@@ -101,8 +100,6 @@ export const useLootPrefs = () => usePersisted(lootStore);
 export interface QuestPrefs {
   /** Quest ids that don't count (left in progress for good, their markers would only clutter the map). */
   ignored: string[];
-  /** Kinds that don't count at all. */
-  ignoredKinds: NeedKind[];
   /** Quests not started yet whose items count too (e.g. to collect for a later quest). */
   imported: ImportedQuest[];
   /** Owned items (stash, gear on the character) don't cover what quests need: everything still to
@@ -110,7 +107,7 @@ export interface QuestPrefs {
   ignoreOwned: boolean;
 }
 
-const questDefaults = (): QuestPrefs => ({ ignored: [], ignoredKinds: [], imported: [], ignoreOwned: false });
+const questDefaults = (): QuestPrefs => ({ ignored: [], imported: [], ignoreOwned: false });
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string"))] : []);
 
@@ -143,7 +140,6 @@ export const questStore = defineStore<QuestPrefs>({
     const d = isObject(data) ? data : {};
     return {
       ignored: strings(d.ignored),
-      ignoredKinds: strings(d.ignoredKinds).filter((k): k is NeedKind => NEED_KINDS.includes(k as NeedKind)),
       imported: cleanImported(d.imported),
       ignoreOwned: d.ignoreOwned === true,
     };

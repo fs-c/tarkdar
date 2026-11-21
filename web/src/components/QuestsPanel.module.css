@@ -1,5 +1,4 @@
 .quests, .objectives, .results { margin: 0; padding: 0; list-style: none; }
-.quests[data-on="false"] .name, .quests[data-on="false"] .objectives { color: var(--faint); }
 .quest {
   padding: 4px 0;
   &[data-counts="false"] .name, &[data-counts="false"] .objectives { color: var(--faint); }

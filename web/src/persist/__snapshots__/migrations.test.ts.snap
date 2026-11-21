@@ -273,7 +273,6 @@ exports[`radar.quests > from version 0 1`] = `
   "ignored": [
     "5ac23c6186f7741247042bad",
   ],
-  "ignoredKinds": [],
   "imported": [],
 }
 `;
@@ -283,9 +282,6 @@ exports[`radar.quests > from version 1 1`] = `
   "ignoreOwned": false,
   "ignored": [
     "5ac23c6186f7741247042bad",
-  ],
-  "ignoredKinds": [
-    "daily",
   ],
   "imported": [
     {

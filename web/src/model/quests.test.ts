@@ -115,10 +115,6 @@ describe("ignored quests", () => {
     expect(needs.complete).toBe(true);
     expect(needs.started).toBe(1);
   });
-  it("need nothing when their whole kind is ignored", () => {
-    const quests = [quest("a", [obj("o1", "find", ["x"])]), quest("d", [obj("o2", "find", ["y"])], { kind: "daily" })];
-    expect([...questNeeds(quests, { ignoredKinds: new Set(["daily"]) })!.items.keys()]).toEqual(["x"]);
-  });
 });
 
 describe("imported quests", () => {
@@ -132,7 +128,6 @@ describe("imported quests", () => {
   it("count as the started quest once it's in the game's list; ignored ones need nothing", () => {
     expect(questNeeds([quest("col", [obj("c2", "find", ["egg"])], { name: "Collector" })], { imported: [collector] })!.items.get("egg")![0]!.kind).toBe("side");
     expect(questNeeds([], { imported: [collector], ignored: new Set(["col"]) })!.items.size).toBe(0);
-    expect(questNeeds([], { imported: [collector], ignoredKinds: new Set(["imported"]) })!.items.size).toBe(0);
   });
 });
 

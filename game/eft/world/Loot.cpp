@@ -20,14 +20,6 @@ using mem::MemoryView;
 using sched::Clock;
 
 namespace {
-// The battle-pass info documents ("item_barter_info_<topic>") carry the quest-item flag but are
-// ordinary loot.
-// TODO: this seems like the kind of thing that frontend should decide, backend should report facts
-bool isInfoDocument(std::string_view objectName) {
-    constexpr std::string_view kPrefix = "item_barter_info_";
-    return objectName.size() > kPrefix.size() && text::startsWithIgnoreCase(objectName, kPrefix);
-}
-
 bool plausible(const math::Vec3& p) { return math::isPlausiblePosition(p); }
 }  // namespace
 
@@ -146,8 +138,8 @@ std::expected<Loot::Resolved, Loot::Unresolved> Loot::resolveOne(Address instanc
         auto id = tmpl ? readMongoId(game_, tmpl + off::ItemTemplate::_id) : std::nullopt;
         if (!id) return unexpected(Unresolved::Retry);
         loot.templateId = std::move(*id);
-        const bool questItem =
-            game_.mem.read<std::uint8_t>(tmpl + off::ItemTemplate::QuestItem) != 0 && !isInfoDocument(loot.objectName);
+        // The template's flag as it is: the frontend decides what counts (e.g. info documents carry it too).
+        const bool questItem = game_.mem.read<std::uint8_t>(tmpl + off::ItemTemplate::QuestItem) != 0;
         loot.kind = questItem ? LootEntry::Kind::QuestItem : LootEntry::Kind::Item;
     } else {
         if (unknown) {
@@ -160,7 +152,6 @@ std::expected<Loot::Resolved, Loot::Unresolved> Loot::resolveOne(Address instanc
         return unexpected(Unresolved::Permanent);
     }
     r.entry.transform = game_.scene.transform(*gameObject).value_or(0);
-    loot.contents = readContents(r.entry);
     return r;
 }
 
@@ -185,6 +176,12 @@ void Loot::resolve(Clock::time_point now) {
         else fail(a, r.error());
     }
 
+    {
+        std::vector<Address> roots;
+        for (const auto& r : resolved) roots.push_back(r.entry.contentsRoot);
+        auto contents = readContents(roots);
+        for (std::size_t i = 0; i < resolved.size(); ++i) resolved[i].entry.loot.contents = std::move(contents[i]);
+    }
     std::vector<Address> transforms;
     for (const auto& r : resolved) transforms.push_back(r.entry.transform);
     const auto poses = game_.transforms.worldPoses(transforms, Freshness::Cached);
@@ -221,16 +218,27 @@ void Loot::refreshAirdrops() {
     }
 }
 
-std::vector<ItemNode> Loot::readContents(const Entry& e) const {
-    if (!e.contentsRoot) return {};
-    ItemTreeReader reader(game_);
-    auto contents = reader.readContents(e.contentsRoot);
+std::vector<std::vector<ItemNode>> Loot::readContents(std::span<const Address> roots) const {
+    std::vector<ItemRoot> trees;
+    std::vector<std::size_t> index;  // trees[k] is roots[index[k]]
+    for (std::size_t i = 0; i < roots.size(); ++i)
+        if (roots[i]) {
+            trees.push_back({ItemRoot::Kind::Contents, roots[i]});
+            index.push_back(i);
+        }
+    std::vector<std::vector<ItemNode>> out(roots.size());
+    if (trees.empty()) return out;
+    // All trees in one go (a few batched reads per depth level); the node cap scales with their number.
+    ItemTreeLimits limits;
+    limits.maxNodes *= trees.size();
+    ItemTreeReader reader(game_, limits);
+    auto contents = reader.read(trees);
+    for (std::size_t k = 0; k < trees.size(); ++k) out[index[k]] = std::move(contents[k]);
     if (reader.truncated() && !loggedTruncation_) {
         loggedTruncation_ = true;
-        log::debug("loot: contents of {:#x} cut at the item tree's node cap (first occurrence; others not logged)",
-                   e.contentsRoot);
+        log::debug("loot: corpse contents cut at the item tree's node cap (first occurrence; others not logged)");
     }
-    return contents;
+    return out;
 }
 
 void Loot::refreshContents() {
@@ -240,11 +248,16 @@ void Loot::refreshContents() {
     if (withContents.empty()) return;
     std::sort(withContents.begin(), withContents.end(), [](const Entry* x, const Entry* y) { return x->loot.id < y->loot.id; });
     const std::size_t n = std::min(kContentRefreshPerScan, withContents.size());
+    std::vector<Entry*> due;
+    std::vector<Address> roots;
     for (std::size_t i = 0; i < n; ++i) {
-        Entry& e = *withContents[(contentCursor_ + i) % withContents.size()];
-        auto contents = readContents(e);
-        if (contents != e.loot.contents) {
-            e.loot.contents = std::move(contents);
+        due.push_back(withContents[(contentCursor_ + i) % withContents.size()]);
+        roots.push_back(due.back()->contentsRoot);
+    }
+    auto contents = readContents(roots);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (contents[i] != due[i]->loot.contents) {
+            due[i]->loot.contents = std::move(contents[i]);
             dirty_ = true;
         }
     }

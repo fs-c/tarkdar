@@ -1,8 +1,8 @@
 // Which items the local player's quests still need, and what to call those quests.
 //
 // Everything comes from the backend's `quests` message: per quest in progress its kind (story, side,
-// daily, weekly), English name and item objectives (find, hand over, plant), read from the quest's
-// template in game memory, with the completed conditions and hand-over progress. No quest data is
+// daily, weekly), name (in the game's language) and item objectives (find, hand over, plant), read
+// from game memory, with the completed conditions and hand-over progress. No quest data is
 // downloaded. Older recordings have no objectives: then nothing is known, and every quest item shows.
 
 import type { LootEntry, QuestKind, QuestObjective, QuestState } from "./protocol";

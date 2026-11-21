@@ -136,6 +136,35 @@ TEST_CASE("readArray and readList") {
     }
 }
 
+TEST_CASE("batched readers match the single ones, element for element") {
+    SETUP;
+    const std::vector<std::uint64_t> values{0x10000, 0x20000, 0x30000};
+    const Address field = heap.alloc(8), nullField = heap.alloc(8), longField = heap.alloc(8), emptyField = heap.alloc(8);
+    heap.put<Address>(field, heap.managedString(u"Reserve  \r\n"));
+    heap.put<Address>(longField, heap.managedString(u"much too long"));
+    heap.put<Address>(emptyField, heap.managedString(u""));
+    const std::vector<Address> fields{field, nullField, longField, emptyField, 0};
+    const auto strings = managed.readStringFields(fields, 12);
+    REQUIRE(strings.size() == fields.size());
+    for (std::size_t i = 0; i < fields.size(); ++i) CHECK(strings[i] == managed.readStringField(fields[i], 12));
+    CHECK(strings[2] == std::nullopt);  // over the cap
+    CHECK(strings[0] == "Reserve");
+
+    const Address tooBig = heap.list(values, 8);
+    const Address oversized = heap.alloc(0x20);  // _size larger than the backing array
+    heap.put<Address>(oversized + kIl2Cpp.listItems, heap.array(values));
+    heap.put<std::int32_t>(oversized + kIl2Cpp.listSize, 5);
+    const std::vector<Address> lists{heap.list(values, 8), heap.list(std::vector<std::uint64_t>{}), oversized, 0, tooBig};
+    const auto readLists = managed.readLists<std::uint64_t>(lists, 4);
+    for (std::size_t i = 0; i < lists.size(); ++i) CHECK(readLists[i] == managed.readList<std::uint64_t>(lists[i], 4));
+    CHECK(readLists[0] == values);
+
+    const std::vector<Address> arrays{heap.array(values), heap.array(std::vector<std::uint64_t>{}), 0};
+    const auto readArrays = managed.readArrays<std::uint64_t>(arrays, 3);
+    for (std::size_t i = 0; i < arrays.size(); ++i) CHECK(readArrays[i] == managed.readArray<std::uint64_t>(arrays[i], 3));
+    CHECK(managed.readArrays<std::uint64_t>(arrays, 2)[0] == std::nullopt);  // over cap
+}
+
 TEST_CASE("readDictionary skips freed slots") {
     SETUP;
     struct Entry {

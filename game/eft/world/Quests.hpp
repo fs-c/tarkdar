@@ -18,12 +18,14 @@ namespace radar::eft {
 // in are reported, with
 //  - their completed condition ids (QuestStatusData.CompletedConditions, a HashSet),
 //  - from their template (QuestStatusData.Template, read once per entry: templates don't change): the
-//    English name and objective texts (QuestTemplate.Localization), trader, kind (story, side, daily,
-//    weekly) and item objectives (find, hand over, plant: QuestTemplate.Conditions, the conditions to
-//    hand the quest in),
+//    trader, kind (story, side, daily, weekly) and item objectives (find, hand over, plant:
+//    QuestTemplate.Conditions, the conditions to hand the quest in),
+//  - their name and objective texts from the game's text table, in the player's language
+//    (Locale.hpp: "<quest id> name", the condition ids),
 //  - hand-over progress from the profile's condition counters (Profile.TaskConditionCounters, keyed
 //    by condition id).
-// Verified on SPT (2026-11-20, with a throwaway probe of the quest templates).
+// Verified on SPT (2026-11-20, with a throwaway probe of the quest templates; texts 2026-11-21:
+// radar-diagnose found the text table has every text the templates' own dictionaries have, the same).
 class Quests final : public RaidSubsystem {
 public:
     static constexpr auto kInterval = std::chrono::seconds(2);
@@ -34,6 +36,9 @@ public:
     static constexpr std::size_t kMaxTargets = 512;
     // A template that can't be read is tried again this many times (it may not be filled in yet).
     static constexpr int kTemplateAttempts = 5;
+    // A quest without texts is looked for this many times (the text table may not be readable yet;
+    // some quests have no texts at all).
+    static constexpr int kTextAttempts = 5;
     // Repeatables that run longer than this are weeklies (dailies: 24 h, weeklies: 7 days).
     static constexpr std::int32_t kWeeklyAfterSeconds = 2 * 24 * 3600;
 
@@ -67,14 +72,18 @@ private:
         std::string id{};
         std::optional<Template> tmpl{};
         int attempts = 0;
+        bool texted = false;  // has a name or an objective text
+        int textAttempts = 0;
     };
 
     // The quest list; nullopt if it couldn't be read.
     [[nodiscard]] std::optional<std::vector<QuestState>> read();
     [[nodiscard]] std::optional<std::vector<std::string>> readConditions(Address set);
-    [[nodiscard]] std::optional<Template> readTemplate(Address statusData, const std::string& questId);
+    // Everything but the texts (lookUpTexts).
+    [[nodiscard]] std::optional<Template> readTemplate(Address statusData);
     [[nodiscard]] std::optional<std::vector<QuestObjective>> readObjectives(Address conditionsDict);
-    [[nodiscard]] std::unordered_map<std::string, std::string> readTexts(Address localization);
+    // Fills in the name and objective texts of templates that have none yet, in one text-table scan.
+    void lookUpTexts(const std::vector<Entry*>& entries);
     // Condition id → counter value; empty if unreadable.
     [[nodiscard]] std::unordered_map<std::string, std::int32_t> readCounters(Address profile);
     [[nodiscard]] bool isA(Address object, std::string_view className);

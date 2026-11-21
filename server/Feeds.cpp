@@ -31,8 +31,8 @@ std::shared_ptr<const Snapshot> takeChange(const sched::Published<Snapshot>& sou
 
 }  // namespace
 
-void LiveFeed::send(const std::string& type, const std::string& message) {
-    hub_.broadcast(type, message);
+void LiveFeed::send(const std::string& type, std::uint64_t raid, const std::string& message) {
+    hub_.broadcast(type, message, raid);
     auto& s = typeStats_[type];
     ++s.messages;
     s.bytes += message.size();
@@ -44,7 +44,7 @@ int LiveFeed::forwardPlain(const std::string& type, const std::shared_ptr<const 
                            std::string (*encode)(const Snapshot&)) {
     if (!snapshot) return 0;
     const std::string message = encode(*snapshot);
-    send(type, message);
+    send(type, snapshot->raidId, message);
     if (sources_.recorder) sources_.recorder->onMessage(type, snapshot->raidId, message);
     return 1;
 }
@@ -54,7 +54,7 @@ int LiveFeed::pollStatus() {
     auto status = sources_.status();
     if (!status || (lastStatus_ && sameStatus(*status, *lastStatus_))) return 0;
     const auto message = encodeStatus(*status);
-    send("status", message);
+    send("status", status->raidId, message);
     if (sources_.recorder) sources_.recorder->onStatus(*status, message);
     lastStatus_ = std::move(status);
     return 1;
@@ -69,14 +69,14 @@ int LiveFeed::pollWorld() {
     // them than of the players), sent first: a client redraws on players, with the matching skeletons.
     if (const auto players = takeChange(w.players, lastSkeletonsFrom_)) {
         if (const auto message = encodeSkeletons(*players)) {
-            send("skeletons", *message);
+            send("skeletons", players->raidId, *message);
             if (recorder) recorder->onSkeletons(players->raidId, *message);
             ++sent;
         }
     }
     if (auto players = takeChange(w.players, lastPlayers_)) {
         const auto message = encodePlayers(*players);
-        send("players", message);
+        send("players", players->raidId, message);
         if (recorder) recorder->onPlayers(std::move(players), message);
         ++sent;
     }
@@ -85,7 +85,7 @@ int LiveFeed::pollWorld() {
     sent += forwardPlain("vehicles", takeChange(w.vehicles, lastVehicles_), encodeVehicles);
     if (auto loot = takeChange(w.loot, lastLoot_)) {
         const auto message = encodeLoot(*loot);
-        send("loot", message);
+        send("loot", loot->raidId, message);
         if (recorder) recorder->onLoot(std::move(loot), message);
         ++sent;
     }
@@ -94,7 +94,7 @@ int LiveFeed::pollWorld() {
     sent += forwardPlain("stash", takeChange(w.stash, lastStash_), encodeStash);
     if (const auto camera = takeChange(w.camera, lastCamera_)) {
         const auto message = encodeCamera(*camera);
-        send("camera", message);
+        send("camera", camera->raidId, message);
         if (recorder) recorder->onCamera(camera->raidId, message);
         ++sent;
     }

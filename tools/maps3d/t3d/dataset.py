@@ -368,8 +368,7 @@ def write(ds: Dataset, out_dir: Path) -> dict:
             name = f"texture-{i}.png"
             (out_dir / name).write_bytes(png(g.texture))
             textures[str(i)] = {"file": name, "rect": _round(g.texture_rect)}
-    chunk_meta = {"kind": "instanced", "level": 0, "error": 0, "cell": None,
-                  "meshNames": [g.name for g in ds.geoms], "meshTextures": textures}
+    chunk_meta = {"kind": "instanced", "meshNames": [g.name for g in ds.geoms], "meshTextures": textures}
     arrays = _chunk_arrays(ds)
     if ds.ground is not None:
         chunk_meta["ground"] = {"origin": _round(ds.ground.origin), "cell": ds.ground.cell}
@@ -395,8 +394,7 @@ def write(ds: Dataset, out_dir: Path) -> dict:
         "bounds": bounds,
         "focusBounds": {"min": _round(focus_lo), "max": _round(focus_hi)},
         "stats": stats(ds),
-        "chunks": [{"file": chunk_name, "kind": "instanced", "level": 0, "error": 0, "cell": None,
-                    "bounds": bounds, "byteLength": len(data)}],
+        "chunks": [{"file": chunk_name, "kind": "instanced", "bounds": bounds, "byteLength": len(data)}],
     }
     (out_dir / INDEX_NAME).write_text(json.dumps(index, separators=(",", ":")))
     return index

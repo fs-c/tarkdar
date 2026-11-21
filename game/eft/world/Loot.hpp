@@ -5,6 +5,7 @@
 
 #include <expected>
 #include <memory>
+#include <span>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -22,7 +23,8 @@ namespace radar::eft {
 // - Positions are read once, except airdrops (they fall), which are re-read every scan.
 //
 // - Corpses get their equipment (item trees). Read at resolve time and refreshed for
-//   kContentRefreshPerScan corpses per scan, round-robin (equipment changes when looted). Container
+//   kContentRefreshPerScan corpses per scan, round-robin (equipment changes when looted); each time
+//   all of them in one breadth-first ItemTreeReader call (a few batched reads per depth level). Container
 //   contents aren't read: that turned out to be infeasible.
 // - Address reuse: each scan re-reads every entry's class pointer; an entry whose class changed is
 //   dropped and resolved again (the address now belongs to a different object).
@@ -81,7 +83,8 @@ private:
     mutable std::unordered_set<Address> unknownClassesLogged_;  // "can't tell" is logged once per class
     void refreshAirdrops();
     void refreshContents();
-    std::vector<ItemNode> readContents(const Entry& e) const;
+    // Corpse equipment for each root (empty for a 0 root), all read together.
+    std::vector<std::vector<ItemNode>> readContents(std::span<const Address> roots) const;
     void publish();
 
     std::shared_ptr<const RaidSession> session_;

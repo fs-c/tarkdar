@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { parseMessage, withoutContainerContents } from "./protocol";
+import { parseMessage, normalizeLoot } from "./protocol";
 import { parseLine } from "../stream/recordings";
 
-describe("withoutContainerContents", () => {
+describe("normalizeLoot", () => {
   const entries = [
     { id: 1, kind: "container", tpl: "safe", obj: "", pos: [0, 0, 0], contents: [{ tpl: "rub" }] },
     { id: 2, kind: "corpse", tpl: "", obj: "", pos: [0, 0, 0], contents: [{ tpl: "m4" }] },
@@ -19,8 +19,18 @@ describe("withoutContainerContents", () => {
     expect(m?.type === "lootDiff" && m.data.added.map((l) => !!l.contents)).toEqual([false, true]);
   });
 
+  it("makes info documents ordinary items", () => {
+    const loot = [
+      { id: 3, kind: "quest", tpl: "a", obj: "item_barter_info_lighthouse", pos: [0, 0, 0] },
+      { id: 4, kind: "quest", tpl: "b", obj: "item_quest_flash_drive", pos: [0, 0, 0] },
+      { id: 5, kind: "quest", tpl: "c", obj: "item_barter_info_", pos: [0, 0, 0] },
+    ];
+    const m = parseMessage(JSON.stringify({ type: "loot", rev: 1, t: 0, raid: 1, data: { loot } }));
+    expect(m?.type === "loot" && m.data.loot.map((l) => l.kind)).toEqual(["item", "quest", "quest"]);
+  });
+
   it("leaves other messages alone", () => {
     const m = { type: "exfils", rev: 1, t: 0, raid: 1, data: { exfils: [] } } as const;
-    expect(withoutContainerContents(m as never)).toBe(m);
+    expect(normalizeLoot(m as never)).toBe(m);
   });
 });

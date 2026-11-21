@@ -37,8 +37,10 @@ JSON text frames, one message each, all with the same envelope:
 | `t` | Send time, ms since the Unix epoch. Used for replay timing. |
 | `data` | Type-specific payload. |
 
-On connect, the server sends `hello`, then the **latest message of every type**, so a client
-connecting mid-raid gets the full current state at once. After that, messages are sent when the data
+On connect, the server sends `hello`, then the **latest message of every type** (`status` first,
+the rest in the order they were sent), so a client connecting mid-raid gets the full current state
+at once. Messages of a raid that has ended (a `status` for another raid or none followed) aren't
+replayed. After that, messages are sent when the data
 changes, at most about 30 times per second.
 
 ### `hello`
@@ -157,14 +159,15 @@ The local player's quests in progress (`Profile.QuestsData`); `null` until they'
 - **`done`:** ids of the quest's conditions (objectives) already completed; `null` if unreadable.
 - From the quest's template in game memory (`QuestStatusData.Template`); `objectives` is `null` when
   it couldn't be read (and missing in older recordings), and then the other fields are missing too:
-  - **`name`:** English name, if the template has one (repeatables and most story steps don't).
+  - **`name`:** name in the player's language (the game's own texts), if it has one (repeatables and most
+    story steps don't).
   - **`trader`:** trader id; story quests belong to the story's pseudo-trader `67f7af56c117b6140af2a607`.
   - **`kind`:** `story` (1.0 storyline: main quests and the story trader's), `side`, `daily` or `weekly`
     (repeatables, by how long they run).
   - **`hidden`:** `true` for quests not in the quest list (hidden story steps).
   - **`objectives`:** the item objectives (conditions to hand the quest in): `find`, `handover` or
     `plant` any of `items` (template ids), `count` of them, `fir` if found in raid only. `progress`:
-    handed over so far (hand-over objectives the profile has a counter for). `text`: English text.
+    handed over so far (hand-over objectives the profile has a counter for). `text`: its text, in the player's language.
 - Sent when something changes (read every 2 s; templates once per quest).
 
 ### `stash`
@@ -215,7 +218,9 @@ behind it are unverified on SPT (`radar-diagnose`, section Camera).
 ```json
 { "loot": [ { "id": 7, "kind": "container", "tpl": "578f8782245977354405a1e3", "obj": "container_safe", "pos": [3.0, 1.0, 3.0] } ] }
 ```
-- **`kind`:** `item`, `quest` (quest item), `container`, `airdrop` or `corpse`.
+- **`kind`:** `item`, `quest` (quest item: the template's quest flag, as it is; the battle-pass info
+  documents, `obj` `item_barter_info_*`, carry it too and the frontend treats them as items),
+  `container`, `airdrop` or `corpse`.
 - **`tpl`:** the item or container template id (the key for item data); empty for airdrops and
   corpses.
 - **`obj`:** the GameObject name, for debugging.

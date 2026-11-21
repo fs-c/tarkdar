@@ -6,7 +6,11 @@
 #define CROW_DISABLE_STATIC_DIR  // we serve static files ourselves, with path checks
 #include <crow.h>
 
+#include <arpa/inet.h>
+#include <unistd.h>
+
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <future>
 #include <map>
@@ -34,11 +38,42 @@ std::optional<fs::path> resolveUnder(const fs::path& root, std::string_view requ
     return candidate;
 }
 
-bool originAllowed(std::string_view origin, std::string_view host) {
+namespace {
+bool equalsIgnoreCase(std::string_view a, std::string_view b) {
+    return std::ranges::equal(a, b, [](char x, char y) { return std::tolower(static_cast<unsigned char>(x)) ==
+                                                                std::tolower(static_cast<unsigned char>(y)); });
+}
+
+// Whether the Host header's name (without the port) can only mean this machine.
+bool trustedHost(std::string_view host, std::span<const std::string> localNames) {
+    std::string name;
+    if (host.starts_with('[')) {  // [v6]:port
+        const auto close = host.find(']');
+        if (close == std::string_view::npos) return false;
+        name = host.substr(1, close - 1);
+        in6_addr v6{};
+        return inet_pton(AF_INET6, name.c_str(), &v6) == 1;
+    }
+    name = host.substr(0, host.find(':'));
+    in_addr v4{};
+    if (inet_pton(AF_INET, name.c_str(), &v4) == 1) return true;
+    if (equalsIgnoreCase(name, "localhost")) return true;
+    if (name.size() > 10 && equalsIgnoreCase(std::string_view(name).substr(name.size() - 10), ".localhost")) return true;
+    return std::ranges::any_of(localNames, [&](const std::string& n) { return !n.empty() && equalsIgnoreCase(name, n); });
+}
+}  // namespace
+
+bool originAllowed(std::string_view origin, std::string_view host, std::span<const std::string> localNames) {
     if (origin.empty()) return true;  // not a browser (e.g. a script): nothing to protect against
     const auto scheme = origin.find("://");
     if (scheme == std::string_view::npos) return false;
-    return origin.substr(scheme + 3) == host;
+    return origin.substr(scheme + 3) == host && trustedHost(host, localNames);
+}
+
+std::vector<std::string> localHostNames() {
+    char name[256] = {};
+    if (gethostname(name, sizeof name - 1) != 0 || !name[0]) return {};
+    return {name, std::string(name) + ".local"};
 }
 
 std::string buildMapsIndex(const fs::path& mapsRoot) {
@@ -74,6 +109,7 @@ struct Server::Impl {
     RaidRecorder* recorder;
     Server::OverlaySink overlay;
     RecordingIndex recordings;
+    std::vector<std::string> localNames = localHostNames();
     crow::SimpleApp app;
     std::future<void> running;
     std::mutex connMutex;
@@ -93,9 +129,9 @@ struct Server::Impl {
     void routes() {
         CROW_WEBSOCKET_ROUTE(app, "/ws")
             // Only pages served from this host may connect: otherwise any website open in the
-            // browser could read the stream from 127.0.0.1.
-            .onaccept([](const crow::request& req, void**) {
-                const bool ok = originAllowed(req.get_header_value("Origin"), req.get_header_value("Host"));
+            // browser could read the stream from 127.0.0.1 (directly, or via DNS rebinding).
+            .onaccept([this](const crow::request& req, void**) {
+                const bool ok = originAllowed(req.get_header_value("Origin"), req.get_header_value("Host"), localNames);
                 if (!ok)
                     log::warn("server: rejected WebSocket from origin '{}' (host '{}')", req.get_header_value("Origin"),
                               req.get_header_value("Host"));

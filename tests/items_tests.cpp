@@ -20,7 +20,8 @@ namespace {
 struct ItemClasses {
     Address item, compound, weapon, equipment;
     explicit ItemClasses(FakeWorld& w) {
-        item = w.heap.klass("Item", "EFT.InventoryLogic");
+        // Rooted at System.Object, as in the game: complete ancestries are cached.
+        item = w.heap.klass("Item", "EFT.InventoryLogic", w.heap.klass("Object", "System"));
         compound = w.heap.klass("CompoundItem", "EFT.InventoryLogic", item);
         weapon = w.heap.klass("Weapon", "EFT.InventoryLogic", compound);
         equipment = w.heap.klass("InventoryEquipment", "EFT.InventoryLogic", compound);
@@ -143,6 +144,36 @@ TEST_CASE("ItemTreeReader reads grid contents, nested, after slot contents") {
     CHECK(contents[3].children[0].tpl == "bolts");
     CHECK(contents[3].children[0].count == 3);
     CHECK(reader.readContents(plain).empty());
+}
+
+TEST_CASE("ItemTreeReader reads many trees together, in a few reads per level") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 1);
+    ItemClasses c(w);
+    std::vector<eft::ItemRoot> roots;
+    for (int i = 0; i < 20; ++i) roots.push_back({eft::ItemRoot::Kind::Slots, makeLoadout(w, c)});
+    const Address container = makeItem(w, c.compound, u"container");
+    w.heap.put<Address>(container + off::LootItemMod::Slots, makeSlots(w, {{u"main", makeItem(w, c.item, u"key")}}));
+    roots.push_back({eft::ItemRoot::Kind::Contents, container});
+    roots.push_back({eft::ItemRoot::Kind::Contents, 0});
+    const auto game = w.attachGame();
+
+    eft::ItemTreeReader reader(game);
+    const auto trees = reader.read(roots);
+    REQUIRE(trees.size() == roots.size());
+    for (int i = 0; i < 20; ++i) checkLoadout(trees[i]);
+    REQUIRE(trees[20].size() == 1);
+    CHECK(trees[20][0].tpl == "key");
+    CHECK(trees[21].empty());
+
+    // Backend reads (classes are cached by now): 20 loadouts cost what one does.
+    const auto readsFor = [&](std::size_t n) {
+        const std::size_t before = w.fake.readCalls();
+        eft::ItemTreeReader r(game);
+        for (const auto& tree : r.read(std::span(roots).first(n))) checkLoadout(tree);
+        return w.fake.readCalls() - before;
+    };
+    CHECK(readsFor(20) == readsFor(1));
 }
 
 TEST_CASE("Players publishes equipment trees") {

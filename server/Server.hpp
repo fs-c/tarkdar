@@ -10,8 +10,10 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace radar::server {
 
@@ -63,9 +65,15 @@ private:
                                                                 std::string_view requestPath);
 
 // Whether a WebSocket upgrade with this Origin header may connect to a server reached as `host` (the
-// Host header): the origin's host[:port] must equal it. A missing Origin (non-browser client) is
-// allowed.
-[[nodiscard]] bool originAllowed(std::string_view origin, std::string_view host);
+// Host header): the origin's host[:port] must equal it, and the host must be a name an outside site
+// can't point at us (DNS rebinding): an IP address, localhost (or *.localhost), or one of
+// `localNames` (this machine's own names, compared case-insensitively). A missing Origin
+// (non-browser client) is allowed.
+[[nodiscard]] bool originAllowed(std::string_view origin, std::string_view host,
+                                 std::span<const std::string> localNames = {});
+
+// This machine's names for originAllowed: its hostname, and that with ".local" (mDNS).
+[[nodiscard]] std::vector<std::string> localHostNames();
 
 // JSON array of {"folder": name, "config": <contents of map.json>} for every subfolder of
 // mapsRoot/3d with a valid map.json, sorted by folder name.

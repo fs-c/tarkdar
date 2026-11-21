@@ -44,6 +44,78 @@ std::optional<std::string> Managed::readStringField(Address fieldAddress, std::s
     return s;
 }
 
+std::vector<std::optional<std::string>> Managed::readStringFields(std::span<const Address> fieldAddresses,
+                                                                  std::size_t maxChars, Freshness freshness) const {
+    maxChars = std::min(maxChars, kMaxChars);
+    const std::size_t n = fieldAddresses.size();
+    std::vector<Address> at(n);
+    for (std::size_t i = 0; i < n; ++i)
+        at[i] = mem::MemoryView::isUserPointer(fieldAddresses[i]) ? fieldAddresses[i] : 0;
+    const auto objects = mem::readEach<Address>(mem_, at, freshness);
+    for (std::size_t i = 0; i < n; ++i)
+        at[i] = objects[i] && mem::MemoryView::isUserPointer(*objects[i]) ? *objects[i] + layout_.stringLength : 0;
+    const auto lengths = mem::readEach<std::int32_t>(mem_, at, freshness);
+
+    std::vector<std::optional<std::string>> out(n);
+    std::vector<std::vector<char16_t>> chars(n);
+    std::vector<mem::ReadBatch::Handle> handles(n);
+    mem::ReadBatch batch(mem_);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!lengths[i] || *lengths[i] < 0 || static_cast<std::size_t>(*lengths[i]) > maxChars) continue;
+        if (*lengths[i] == 0) {
+            out[i] = std::string{};
+            continue;
+        }
+        chars[i].resize(static_cast<std::size_t>(*lengths[i]));
+        handles[i] = batch.addBytes(*objects[i] + layout_.stringChars, chars[i].data(), chars[i].size() * sizeof(char16_t));
+    }
+    batch.execute(freshness);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (chars[i].empty() || !batch.complete(handles[i])) continue;
+        std::string s = text::utf16ToUtf8(chars[i]);
+        const auto end = s.find_last_not_of(" \t\r\n");
+        s.erase(end == std::string::npos ? 0 : end + 1);
+        out[i] = std::move(s);
+    }
+    return out;
+}
+
+std::vector<Managed::Span> Managed::readListHeaders(std::span<const Address> listObjects, std::size_t maxElements,
+                                                    Freshness freshness) const {
+    const std::size_t n = listObjects.size();
+    std::vector<std::int32_t> sizes(n, 0);
+    std::vector<Address> items(n, 0);
+    std::vector<std::pair<mem::ReadBatch::Handle, mem::ReadBatch::Handle>> handles(n);
+    std::vector<bool> asked(n, false);
+    mem::ReadBatch batch(mem_);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!mem::MemoryView::isUserPointer(listObjects[i])) continue;
+        asked[i] = true;
+        handles[i] = {batch.add(listObjects[i] + layout_.listSize, sizes[i]),
+                      batch.add(listObjects[i] + layout_.listItems, items[i])};
+    }
+    batch.execute(freshness);
+
+    std::vector<Span> out(n);
+    std::vector<Address> capacityAt(n, 0);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!asked[i] || !batch.complete(handles[i].first) || sizes[i] < 0 ||
+            static_cast<std::size_t>(sizes[i]) > maxElements)
+            continue;
+        if (sizes[i] == 0) {
+            out[i] = {true, 0, 0};
+            continue;
+        }
+        if (batch.complete(handles[i].second) && mem::MemoryView::isUserPointer(items[i]))
+            capacityAt[i] = items[i] + layout_.arrayLength;
+    }
+    const auto capacities = mem::readEach<std::uint64_t>(mem_, capacityAt, freshness);
+    for (std::size_t i = 0; i < n; ++i)
+        if (capacityAt[i] && capacities[i] && *capacities[i] >= static_cast<std::uint64_t>(sizes[i]))  // _size never exceeds the array
+            out[i] = {true, items[i] + layout_.arrayData, static_cast<std::size_t>(sizes[i])};
+    return out;
+}
+
 std::optional<Managed::ListHeader> Managed::readListHeader(Address listObject, std::size_t maxElements,
                                                            Freshness freshness) const {
     std::int32_t size = 0;

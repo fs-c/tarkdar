@@ -3,20 +3,6 @@
     - (some) radio groups expand to fill the parent which looks odd
 - backend/memory read optimization; there's noticeably more lag while the backend is running
     - still open: cache transform hierarchy/index lookups (2 of the 3 read rounds per positions tick), move builds/bone resolves off the live thread, publish players only on change, slower tripwire scan
-- cleanup/review round: follow-ups (found 2026-11, not done)
-    - backend
-        - loot: quest "info" items are hidden in the backend by object-name prefix; the frontend can't override it
-        - loot resolve reads whole corpse item trees serially on the scan thread
-        - hub: a new client is replayed the latest messages in alphabetical type order, and the last raid's messages are never dropped; make the hub drop per-raid messages when a raid ends, then send status first
-        - `/ws` origin check passes a DNS-rebinding page (low risk, read-only)
-    - tools
-        - `t3d/unity.py` `extract_scene` is a 320-line closure forest; split it when the game files are at hand (verify with a byte-identical cache)
-        - dataset fields `chunks[].level/error/cell` are written but nothing reads them
-- quest text from the global locale table (`TODO(quest-locale)` in `game/eft/world/Quests.cpp`)
-    - quests read their own English-only dictionaries; exfil names already use the game's text table in the player's language
-    - check in a raid whether that table has `"<quest id> name"` and the condition ids; if so, drop the separate reader
+- cleanup/review round: follow-up (found 2026-11)
+    - `tools/maps3d/t3d/unity.py` `extract_scene` is a 320-line closure forest; split it when the game files are at hand (verify with a byte-identical cache)
 - more versatile highlighting; right now if you want something be always visible the only option is "ring"
-- quests tab
-    - allow selecting quests which "count" for things like "is this a quest item" (some quests are left in progress "forever", don't want their markers cluttering up everything)
-    - evaluate if it's possible to show future quests there (e.g. to already start collecting for a future collection quest)
-    - potential quest related bug: a quest required a certain equipment piece that several scavs had on, but with the default "highlight quest items" (but on the maximum visibility setting with "ring") the scavs (scav bodies at that point) didn't get special highlighting, only once manually typed into the highlight field 

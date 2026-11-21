@@ -122,13 +122,50 @@ TEST_CASE("MessageHub sends hello and the latest state on connect") {
 
     std::vector<std::string> received;
     const auto id = hub.connect([&](const std::string& m) { received.push_back(m); }, "hello");
-    CHECK(received == std::vector<std::string>{"hello", "p2", "s1"});  // latest per type
+    CHECK(received == std::vector<std::string>{"hello", "s1", "p2"});  // latest per type
     hub.broadcast("players", "p3");
     CHECK(received.back() == "p3");
     hub.disconnect(id);
     hub.broadcast("players", "p4");
     CHECK(received.back() == "p3");
     CHECK(tapped.size() == 5);
+}
+
+TEST_CASE("MessageHub replays status first, then in broadcast order") {
+    server::MessageHub hub;
+    hub.broadcast("skeletons", "k1", 1);
+    hub.broadcast("players", "p1", 1);
+    hub.broadcast("camera", "c1", 1);
+    hub.broadcast("status", "s1", 1);
+    hub.broadcast("skeletons", "k2", 1);
+    hub.broadcast("players", "p2", 1);
+    std::vector<std::string> received;
+    hub.connect([&](const std::string& m) { received.push_back(m); }, "hello");
+    CHECK(received == std::vector<std::string>{"hello", "s1", "c1", "k2", "p2"});
+}
+
+TEST_CASE("MessageHub drops a raid's messages when the raid ends") {
+    server::MessageHub hub;
+    auto replay = [&] {
+        std::vector<std::string> received;
+        hub.connect([&](const std::string& m) { received.push_back(m); }, "hello");
+        return received;
+    };
+    hub.broadcast("status", "s0");
+    hub.broadcast("players", "p1", 1);  // the raid's first snapshots can come before its status
+    hub.broadcast("status", "s1", 1);
+    hub.broadcast("loot", "l1", 1);
+    CHECK(replay() == std::vector<std::string>{"hello", "s1", "p1", "l1"});
+
+    hub.broadcast("status", "s2");  // raid 1 ends
+    CHECK(replay() == std::vector<std::string>{"hello", "s2"});
+    hub.broadcast("camera", "c1", 1);  // a late message of the ended raid: sent live, not replayed
+    hub.broadcast("stash", "x0");      // not raid-scoped: kept
+    CHECK(replay() == std::vector<std::string>{"hello", "s2", "x0"});
+
+    hub.broadcast("players", "p2", 2);  // the next raid, before its status: kept
+    hub.broadcast("status", "s3", 2);
+    CHECK(replay() == std::vector<std::string>{"hello", "s3", "x0", "p2"});
 }
 
 TEST_CASE("resolveUnder keeps requests inside the root") {
@@ -157,6 +194,19 @@ TEST_CASE("originAllowed: only pages from the same host may connect") {
     CHECK_FALSE(server::originAllowed("https://evil.example", "127.0.0.1:8080"));
     CHECK_FALSE(server::originAllowed("http://127.0.0.1:9999", "127.0.0.1:8080"));
     CHECK_FALSE(server::originAllowed("null", "127.0.0.1:8080"));
+    CHECK(server::originAllowed("http://[::1]:8080", "[::1]:8080"));
+    CHECK(server::originAllowed("http://192.168.1.5:8080", "192.168.1.5:8080"));  // LAN, by address
+    CHECK(server::originAllowed("http://radar.localhost:8080", "radar.localhost:8080"));
+}
+
+TEST_CASE("originAllowed: a DNS-rebinding page (origin and host agree on an outside name) is refused") {
+    CHECK_FALSE(server::originAllowed("http://evil.example:8080", "evil.example:8080"));
+    CHECK_FALSE(server::originAllowed("http://localhost.evil.example:8080", "localhost.evil.example:8080"));
+    CHECK_FALSE(server::originAllowed("http://[evil]:8080", "[evil]:8080"));
+    const std::vector<std::string> names{"gamebox", "gamebox.local"};
+    CHECK(server::originAllowed("http://GameBox:8080", "GameBox:8080", names));
+    CHECK(server::originAllowed("http://gamebox.local:8080", "gamebox.local:8080", names));
+    CHECK_FALSE(server::originAllowed("http://gamebox.evil.example:8080", "gamebox.evil.example:8080", names));
 }
 
 TEST_CASE("buildMapsIndex lists the valid map folders") {

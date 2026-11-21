@@ -40,7 +40,7 @@ private:
     int pollStatus();
     int pollWorld();
     // Broadcasts and counts the message for the report.
-    void send(const std::string& type, const std::string& message);
+    void send(const std::string& type, std::uint64_t raid, const std::string& message);
     // A changed snapshot that the recorder keeps as it is: encode once, send, record.
     template <class Snapshot>
     int forwardPlain(const std::string& type, const std::shared_ptr<const Snapshot>& snapshot,

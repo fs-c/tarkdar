@@ -1,6 +1,7 @@
 #include "game/eft/world/Quests.hpp"
 
 #include "core/mem/ReadBatch.hpp"
+#include "game/eft/Locale.hpp"
 #include "game/eft/Names.hpp"
 #include "game/eft/Read.hpp"
 
@@ -62,8 +63,12 @@ std::optional<std::vector<QuestState>> Quests::read() {
 
     const auto statuses = mem::readEach<std::int32_t>(game_.mem, *entries, off::QuestsData::Status, Freshness::Fresh);
 
-    std::optional<std::unordered_map<std::string, std::int32_t>> counters;  // read when first needed
-    std::vector<QuestState> out;
+    struct Active {
+        Address address;
+        std::int32_t status;
+        Entry* entry;
+    };
+    std::vector<Active> active;
     for (std::size_t i = 0; i < entries->size(); ++i) {
         const Address address = (*entries)[i];
         if (!mem::MemoryView::isUserPointer(address) || !statuses[i]) continue;
@@ -77,17 +82,26 @@ std::optional<std::vector<QuestState>> Quests::read() {
         Entry& entry = cached->second;
         if (!entry.tmpl && entry.attempts < kTemplateAttempts) {
             ++entry.attempts;
-            entry.tmpl = readTemplate(address, entry.id);
+            entry.tmpl = readTemplate(address);
         }
+        active.push_back({address, *statuses[i], &entry});
+    }
+    std::vector<Entry*> seen;
+    for (const auto& a : active) seen.push_back(a.entry);
+    lookUpTexts(seen);
+
+    std::optional<std::unordered_map<std::string, std::int32_t>> counters;  // read when first needed
+    std::vector<QuestState> out;
+    for (const auto& [address, status, entry] : active) {
         const Address set = readPointer(game_, address + off::QuestsData::CompletedConditions, Freshness::Fresh);
         auto completed = set ? readConditions(set) : std::nullopt;
-        QuestState q{.id = entry.id, .status = *statuses[i], .completedConditions = std::move(completed)};
-        if (entry.tmpl) {
-            q.name = entry.tmpl->name;
-            q.traderId = entry.tmpl->traderId;
-            q.kind = entry.tmpl->kind;
-            q.hidden = entry.tmpl->hidden;
-            q.objectives = entry.tmpl->objectives;
+        QuestState q{.id = entry->id, .status = status, .completedConditions = std::move(completed)};
+        if (entry->tmpl) {
+            q.name = entry->tmpl->name;
+            q.traderId = entry->tmpl->traderId;
+            q.kind = entry->tmpl->kind;
+            q.hidden = entry->tmpl->hidden;
+            q.objectives = entry->tmpl->objectives;
             for (auto& o : *q.objectives) {
                 if (o.type != QuestObjective::Type::Handover) continue;
                 if (!counters) counters = readCounters(profile);
@@ -100,6 +114,30 @@ std::optional<std::vector<QuestState>> Quests::read() {
     return out;
 }
 
+void Quests::lookUpTexts(const std::vector<Entry*>& entries) {
+    // The game's text table holds "<quest id> name" and each condition's text under its id, in the
+    // player's language. Some quests have none (story steps, SPT's dailies): looked for a few times.
+    std::vector<Entry*> pending;
+    std::vector<std::string> keys;
+    for (Entry* e : entries) {
+        if (!e->tmpl || e->texted || e->textAttempts >= kTextAttempts) continue;
+        ++e->textAttempts;
+        pending.push_back(e);
+        keys.push_back(e->id + " name");
+        for (const auto& o : e->tmpl->objectives) keys.push_back(o.id);
+    }
+    if (pending.empty()) return;
+    const auto texts = lookupTexts(game_, keys);
+    for (Entry* e : pending) {
+        if (auto n = texts.find(e->id + " name"); n != texts.end()) e->tmpl->name = n->second;
+        e->texted = !e->tmpl->name.empty();
+        for (auto& o : e->tmpl->objectives) {
+            if (auto x = texts.find(o.id); x != texts.end()) o.text = x->second;
+            e->texted |= !o.text.empty();
+        }
+    }
+}
+
 std::optional<std::vector<Quests::StatusSurvey>> Quests::surveyStatuses(std::size_t samplePerStatus) {
     const Address profile = readPointer(game_, session_->start.localPlayer + off::Player::Profile);
     const Address list = profile ? readPointer(game_, profile + off::Profile::QuestsData, Freshness::Fresh) : 0;
@@ -108,7 +146,14 @@ std::optional<std::vector<Quests::StatusSurvey>> Quests::surveyStatuses(std::siz
     if (!entries) return std::nullopt;
     const auto statuses = mem::readEach<std::int32_t>(game_.mem, *entries, off::QuestsData::Status, Freshness::Fresh);
 
-    std::map<std::int32_t, StatusSurvey> by;
+    std::map<std::int32_t, StatusSurvey> by;  // node-based: the pointers below stay valid
+    struct Sampled {
+        StatusSurvey* survey;
+        std::string id;
+        std::size_t objectives;
+    };
+    std::vector<Sampled> sampled;
+    std::vector<std::string> nameKeys;
     for (std::size_t i = 0; i < entries->size(); ++i) {
         const Address address = (*entries)[i];
         if (!mem::MemoryView::isUserPointer(address) || !statuses[i]) continue;
@@ -118,21 +163,27 @@ std::optional<std::vector<Quests::StatusSurvey>> Quests::surveyStatuses(std::siz
         if (s.sampled >= samplePerStatus) continue;
         ++s.sampled;
         const auto id = game_.managed.readStringField(address + off::QuestsData::Id, 64).value_or("?");
-        const auto t = readTemplate(address, id);
+        const auto t = readTemplate(address);
         if (!t) {
             s.examples.push_back(std::format("{}: no template", id));
             continue;
         }
         ++s.withTemplate;
         s.withItems += !t->objectives.empty();
-        s.examples.push_back(std::format("{} {}: {} item objectives", id, t->name.empty() ? "(unnamed)" : t->name, t->objectives.size()));
+        sampled.push_back({&s, id, t->objectives.size()});
+        nameKeys.push_back(id + " name");
+    }
+    const auto names = lookupTexts(game_, nameKeys);
+    for (const auto& [s, id, objectives] : sampled) {
+        const auto n = names.find(id + " name");
+        s->examples.push_back(std::format("{} {}: {} item objectives", id, n != names.end() ? n->second : "(unnamed)", objectives));
     }
     std::vector<StatusSurvey> out;
     for (auto& [_, s] : by) out.push_back(std::move(s));
     return out;
 }
 
-std::optional<Quests::Template> Quests::readTemplate(Address statusData, const std::string& questId) {
+std::optional<Quests::Template> Quests::readTemplate(Address statusData) {
     const Address t = readPointer(game_, statusData + off::QuestsData::Template);
     if (!t) return std::nullopt;
     const Address conditions = readPointer(game_, t + off::QuestTemplate::Conditions);
@@ -152,18 +203,6 @@ std::optional<Quests::Template> Quests::readTemplate(Address statusData, const s
         game_.mem.tryRead(statusData + off::QuestsData::StartTime, start);
         game_.mem.tryRead(t + off::RepeatableQuestTemplate::ExpirationTime, expiration);
         out.kind = expiration - start > kWeeklyAfterSeconds ? QuestKind::Weekly : QuestKind::Daily;
-    }
-
-    // TODO(quest-locale): quest text has its own reader (readTexts: the template's per-language
-    // dictionaries, English only), while exfil names come from the game's global text table in the
-    // player's language (Locale.hpp, lookupTexts). If that table also holds "<quest id> name" and
-    // the condition ids, look them up there and drop readTexts, QuestTemplate::Localization and
-    // kQuestLanguage. Needs checking against the running game.
-    if (const Address localization = readPointer(game_, t + off::QuestTemplate::Localization)) {
-        const auto texts = readTexts(localization);
-        if (auto n = texts.find(questId + " name"); n != texts.end()) out.name = n->second;
-        for (auto& o : out.objectives)
-            if (auto x = texts.find(o.id); x != texts.end()) o.text = x->second;
     }
     return out;
 }
@@ -200,25 +239,6 @@ std::optional<std::vector<QuestObjective>> Quests::readObjectives(Address condit
             if (isA(c, kConditionItemClass)) game_.mem.tryRead(c + off::ConditionItem::OnlyFoundInRaid, o.foundInRaid);
             out.push_back(std::move(o));
         }
-    }
-    return out;
-}
-
-std::unordered_map<std::string, std::string> Quests::readTexts(Address localization) {
-    // Dictionary<language, Dictionary<key, text>>; keys are "<quest id> name", condition ids, ….
-    std::unordered_map<std::string, std::string> out;
-    const auto languages = game_.managed.readDictionary<Address, Address>(localization, 64);
-    if (!languages) return out;
-    for (const auto& [language, texts] : *languages) {
-        if (game_.managed.readString(language, 16) != kQuestLanguage) continue;
-        const auto entries = game_.managed.readDictionary<Address, Address>(texts, 1024);
-        if (!entries) break;
-        for (const auto& [key, text] : *entries) {
-            auto k = game_.managed.readString(key, 128);
-            auto v = game_.managed.readString(text, 512, il2cpp::Managed::Overflow::Truncate);
-            if (k && v && !v->empty()) out.emplace(std::move(*k), std::move(*v));
-        }
-        break;
     }
     return out;
 }

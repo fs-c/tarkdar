@@ -982,15 +982,6 @@
     },
     {
       "group": "QuestTemplate",
-      "name": "Localization",
-      "class": "EFT.Quests.QuestTemplate",
-      "field": "<Localization>k__BackingField",
-      "static": false,
-      "required": false,
-      "value": "0xB0"
-    },
-    {
-      "group": "QuestTemplate",
       "name": "IsMainQuest",
       "class": "EFT.Quests.QuestTemplate",
       "field": "<IsMainQuest>k__BackingField",

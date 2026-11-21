@@ -75,6 +75,39 @@ struct QuestWorld {
     }
 };
 
+// The game's texts: EFT.LocalizationManager._instance._locales, culture → EFT.Locale (keys ignore case).
+struct TextEntry {
+    std::int32_t hashCode, next;
+    Address key, value;
+};
+TextEntry text(test::Heap& h, std::u16string_view k, std::u16string_view v) {
+    return {1, -1, h.managedString(k), h.managedString(v)};
+}
+Address textTable(test::Heap& h, const std::vector<TextEntry>& entries) {
+    const Address d = h.object(h.klass("Locale", "EFT"), 0x50);
+    h.put<Address>(d + kIl2Cpp.dictEntries, h.array(entries));
+    h.put<std::int32_t>(d + kIl2Cpp.dictCount, static_cast<std::int32_t>(entries.size()));
+    return d;
+}
+// The manager's class and its statics, without an instance yet.
+Address localizationStatics(FakeWorld& w) {
+    const Address managerClass = w.heap.klass("LocalizationManager", "EFT");
+    const Address statics = w.heap.alloc(0x20);
+    w.heap.put<Address>(managerClass + kIl2Cpp.classStaticFields, statics);
+    w.heap.put<Address>(w.typeInfoTable + static_cast<Address>(off::LocalizationManager::TypeIndex) * 8, managerClass);
+    return statics;
+}
+// A manager instance with the culture "en" and the given culture → table entries.
+void putLocales(FakeWorld& w, Address statics, std::vector<std::pair<std::u16string_view, Address>> cultures) {
+    auto& h = w.heap;
+    const Address manager = h.object(h.klass("LocalizationManager", "EFT"), 0x80);
+    h.put<Address>(statics + off::LocalizationManager::Instance, manager);
+    h.put<Address>(manager + off::LocalizationManager::Culture, h.managedString(u"en"));
+    std::vector<TextEntry> entries;
+    for (const auto& [culture, table] : cultures) entries.push_back({1, -1, h.managedString(culture), table});
+    h.put<Address>(manager + off::LocalizationManager::Locales, textTable(h, entries));
+}
+
 }  // namespace
 
 TEST_CASE("Exfils: eligibility, secret exfils, names, status") {
@@ -108,28 +141,10 @@ TEST_CASE("Exfils: eligibility, secret exfils, names, status") {
                    h.array(std::vector<Address>{mine, view.read<Address>(0) /*null entry*/, makeExfil(u"Other", {u"x"}, 4, {1, 1, 1})}));
     h.put<Address>(controller + off::ExfiltrationController::MSecretExfiltrationPoints, h.array(std::vector<Address>{secret}));
 
-    // The game's texts: EFT.LocalizationManager._instance._locales, culture → EFT.Locale (keys ignore case).
-    struct TextEntry {
-        std::int32_t hashCode, next;
-        Address key, value;
-    };
-    const auto textTable = [&](std::vector<TextEntry> entries) {
-        const Address d = h.object(h.klass("Locale", "EFT"), 0x50);
-        h.put<Address>(d + kIl2Cpp.dictEntries, h.array(entries));
-        h.put<std::int32_t>(d + kIl2Cpp.dictCount, static_cast<std::int32_t>(entries.size()));
-        return d;
-    };
-    const auto text = [&](std::u16string_view k, std::u16string_view v) { return TextEntry{1, -1, h.managedString(k), h.managedString(v)}; };
-    const Address english = textTable({text(u"Gate 3", u"Gate 3"), {-1, -1, 0, 0} /*freed*/, text(u"secret DOOR", u"Smugglers' Passage")});
-    const Address russian = textTable({text(u"Secret door", u"Проход контрабандистов")});
-    const Address managerClass = h.klass("LocalizationManager", "EFT");
-    const Address managerStatics = h.alloc(0x20), manager = h.object(managerClass, 0x80);
-    h.put<Address>(managerClass + kIl2Cpp.classStaticFields, managerStatics);
-    h.put<Address>(w.typeInfoTable + static_cast<Address>(off::LocalizationManager::TypeIndex) * 8, managerClass);
-    h.put<Address>(managerStatics + off::LocalizationManager::Instance, manager);
-    h.put<Address>(manager + off::LocalizationManager::Culture, h.managedString(u"en"));
-    h.put<Address>(manager + off::LocalizationManager::Locales,
-                   textTable({{1, -1, h.managedString(u"ru"), russian}, {1, -1, h.managedString(u"en"), english}}));
+    const Address english =
+        textTable(h, {text(h, u"Gate 3", u"Gate 3"), {-1, -1, 0, 0} /*freed*/, text(h, u"secret DOOR", u"Smugglers' Passage")});
+    const Address russian = textTable(h, {text(h, u"Secret door", u"Проход контрабандистов")});
+    putLocales(w, localizationStatics(w), {{u"ru", russian}, {u"en", english}});
 
     eft::WorldState world;
     {
@@ -175,20 +190,7 @@ TEST_CASE("Exfils: a name that couldn't be looked up yet resolves once the text 
     h.put<Address>(controller + off::ExfiltrationController::ExfiltrationPoints, h.array(std::vector<Address>{exfil}));
 
     // The text table isn't there yet: LocalizationManager has no instance.
-    struct TextEntry {
-        std::int32_t hashCode, next;
-        Address key, value;
-    };
-    const auto textTable = [&](std::vector<TextEntry> entries) {
-        const Address d = h.object(h.klass("Locale", "EFT"), 0x50);
-        h.put<Address>(d + kIl2Cpp.dictEntries, h.array(entries));
-        h.put<std::int32_t>(d + kIl2Cpp.dictCount, static_cast<std::int32_t>(entries.size()));
-        return d;
-    };
-    const Address managerClass = h.klass("LocalizationManager", "EFT");
-    const Address managerStatics = h.alloc(0x20);
-    h.put<Address>(managerClass + kIl2Cpp.classStaticFields, managerStatics);
-    h.put<Address>(w.typeInfoTable + static_cast<Address>(off::LocalizationManager::TypeIndex) * 8, managerClass);
+    const Address statics = localizationStatics(w);
 
     eft::WorldState world;
     eft::Exfils exfils(w.makeSession(5), world);
@@ -198,13 +200,7 @@ TEST_CASE("Exfils: a name that couldn't be looked up yet resolves once the text 
 
     // Too soon: not looked up again yet.
     const auto now = Clock::now();
-    const Address manager = h.object(managerClass, 0x80);
-    h.put<Address>(managerStatics + off::LocalizationManager::Instance, manager);
-    h.put<Address>(manager + off::LocalizationManager::Culture, h.managedString(u"en"));
-    const Address english =
-        textTable({{1, -1, h.managedString(u"zb-1011"), h.managedString(u"D-2 Exfil")}});
-    h.put<Address>(manager + off::LocalizationManager::Locales,
-                   textTable({{1, -1, h.managedString(u"en"), english}}));
+    putLocales(w, statics, {{u"en", textTable(h, {text(h, u"zb-1011", u"D-2 Exfil")})}});
     exfils.refreshStatus(now);
     CHECK(world.exfils.get()->exfils[0].name == "ZB-1011");
 
@@ -577,7 +573,7 @@ TEST_CASE("Quests: in-progress quests with their completed conditions") {
     CHECK_FALSE(world.quests.get()->known);  // cleared when the raid ends
 }
 
-TEST_CASE("Loot: battle-pass info documents are ordinary items despite the quest flag") {
+TEST_CASE("Loot: the template's quest flag is reported as it is (info documents included)") {
     FakeWorld w;
     w.newWorld(u"bigmap", 1);
     auto& h = w.heap;
@@ -595,8 +591,9 @@ TEST_CASE("Loot: battle-pass info documents are ordinary items despite the quest
     loot.scan(Clock::now());
     const auto snap = world.loot.get();
     REQUIRE(snap->loot.size() == 2);
-    for (const auto& l : snap->loot)
-        CHECK(l.kind == (l.templateId == "questtpl" ? eft::LootEntry::Kind::QuestItem : eft::LootEntry::Kind::Item));
+    // The frontend tells info documents apart by their object name (normalizeLoot).
+    for (const auto& l : snap->loot) CHECK(l.kind == eft::LootEntry::Kind::QuestItem);
+    CHECK(std::ranges::count(snap->loot, "Item_barter_info_streets(Clone)", &eft::LootEntry::objectName) == 1);
 }
 
 TEST_CASE("Quests: templates give objectives, names, kinds and hand-over progress") {
@@ -606,19 +603,6 @@ TEST_CASE("Quests: templates give objectives, names, kinds and hand-over progres
     const Address profile = qw.profile;
     const auto managedList = [&](const std::vector<Address>& items) { return qw.managedList(items); };
     const auto strings = [&](std::initializer_list<std::u16string_view> ss) { return qw.strings(ss); };
-    struct RefEntry {
-        std::int32_t hashCode, next;
-        Address key, value;
-    };
-    const auto stringDict = [&](std::vector<std::pair<std::u16string_view, Address>> kv) {
-        std::vector<RefEntry> entries;
-        for (auto& [k, v] : kv) entries.push_back({1, -1, h.managedString(k), v});
-        const Address d = h.alloc(0x50);
-        h.put<Address>(d + kIl2Cpp.dictEntries, h.array(entries));
-        h.put<std::int32_t>(d + kIl2Cpp.dictCount, static_cast<std::int32_t>(entries.size()));
-        return d;
-    };
-
     const Address findClass = qw.findClass;
     const Address handoverClass = h.klass("ConditionHandoverItem", "EFT.Quests", qw.item);
     const Address zone = h.klass("ConditionZone", "EFT.Quests", qw.multi);
@@ -662,7 +646,7 @@ TEST_CASE("Quests: templates give objectives, names, kinds and hand-over progres
         return std::pair{q, t};
     };
 
-    // A side quest with English text: find 3 FIR (any of two items), hand them over (1 done), a kill
+    // A side quest with texts: find 3 FIR (any of two items), hand them over (1 done), a kill
     // objective (not an item objective), a plant objective, and a fail condition that's left out.
     const Address find = cond(findClass, u"c_find", 3, {u"tpl_a", u"tpl_b"}, true);
     const Address handover = cond(handoverClass, u"c_hand", 3, {u"tpl_a", u"tpl_b"}, true);
@@ -671,11 +655,11 @@ TEST_CASE("Quests: templates give objectives, names, kinds and hand-over progres
     auto [side, sideTemplate] = quest(u"q_side", templateClass,
                                       conditionsDict({find, handover, kill, plant}, {cond(findClass, u"c_fail", 1, {u"tpl_x"})}),
                                       u"trader_1");
-    h.put<Address>(sideTemplate + off::QuestTemplate::Localization,
-                   stringDict({{u"ru", stringDict({{u"q_side name", h.managedString(u"Russian")}})},
-                               {u"en", stringDict({{u"q_side name", h.managedString(u"Shaking Up the Teller")},
-                                                   {u"c_find", h.managedString(u"Find the item in raid")},
-                                                   {u"q_side description", h.managedString(u"")}})}}));
+    // Texts: the game's table in the player's language, keys ignoring case.
+    const Address english = textTable(h, {text(h, u"q_side Name", u"Shaking Up the Teller"), text(h, u"c_find", u"Find the item in raid"),
+                                          text(h, u"q_side description", u"Thanks for the help")});
+    const Address russian = textTable(h, {text(h, u"q_side name", u"Russian")});
+    putLocales(w, localizationStatics(w), {{u"ru", russian}, {u"en", english}});
     // Story: by the story trader, hidden. Daily and weekly: repeatables by how long they run.
     auto [story, storyTemplate] = quest(u"q_story", templateClass, conditionsDict({}), u"67f7af56c117b6140af2a607");
     h.put<bool>(storyTemplate + off::QuestTemplate::IsInvisible, true);
@@ -729,4 +713,15 @@ TEST_CASE("Quests: templates give objectives, names, kinds and hand-over progres
                                       [](const auto& q) { return q.id == "q_side"; });
     CHECK((*again.objectives)[1].progress == 2);
     CHECK(again.traderId == "trader_1");
+
+    // A quest without texts is looked for again (a few times): here the table gains its name.
+    const Address statics = localizationStatics(w);
+    putLocales(w, statics, {{u"en", textTable(h, {text(h, u"q_side name", u"Changed"), text(h, u"q_story name", u"Tour")})}});
+    quests.update();
+    const auto byIdNow = [&](std::string_view id) -> const eft::QuestState& {
+        const auto& qs = world.quests.get()->quests;
+        return *std::find_if(qs.begin(), qs.end(), [&](const auto& q) { return q.id == id; });
+    };
+    CHECK(byIdNow("q_story").name == "Tour");
+    CHECK(byIdNow("q_side").name == "Shaking Up the Teller");  // found once: not looked up again
 }

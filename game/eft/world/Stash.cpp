@@ -98,20 +98,25 @@ std::optional<Stash::Contents> Stash::readContents(const Game& game, Address pro
 
     Contents c;
     c.profileId = game.managed.readStringField(profile + off::Profile::Id, 64).value_or("");
-    ItemTreeReader reader(game, kLimits);
-    std::map<std::string, OwnedItem> owned;
-    tallyInto(reader.readContents(stash), owned);
+    // Every container, then the equipment, in one breadth-first read.
+    std::vector<ItemRoot> roots{{ItemRoot::Kind::Contents, stash}};
     for (const std::uint32_t offset : {off::Inventory::SortingTable, off::Inventory::QuestStashItems})
-        if (const Address container = field(offset)) tallyInto(reader.readContents(container), owned);
+        if (const Address container = field(offset)) roots.push_back({ItemRoot::Kind::Contents, container});
     // Dictionary<area, stash>: whatever the key, the value sits at the same entry offset.
     if (const Address dict = field(off::Inventory::HideoutAreaStashes))
         if (const auto areas = game.managed.readDictionary<std::uint64_t, Address>(dict, 256, Freshness::Fresh))
             for (const auto& [key, container] : *areas)
-                if (container) tallyInto(reader.readContents(container), owned);
-    c.stash = sorted(std::move(owned));
-
+                if (container) roots.push_back({ItemRoot::Kind::Contents, container});
+    const std::size_t containers = roots.size();
     if (const Address equipment = field(off::Inventory::Equipment))
-        c.equipment = tally(reader.readSlots(readPointer(game, equipment + off::InventoryEquipment::_cachedSlots)));
+        roots.push_back({ItemRoot::Kind::Slots, readPointer(game, equipment + off::InventoryEquipment::_cachedSlots)});
+
+    ItemTreeReader reader(game, kLimits);
+    const auto trees = reader.read(roots);
+    std::map<std::string, OwnedItem> owned;
+    for (std::size_t i = 0; i < containers; ++i) tallyInto(trees[i], owned);
+    c.stash = sorted(std::move(owned));
+    if (trees.size() > containers) c.equipment = tally(trees[containers]);
     c.truncated = reader.truncated();
     return c;
 }

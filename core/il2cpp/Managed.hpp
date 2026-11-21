@@ -2,11 +2,13 @@
 
 #include "core/il2cpp/Layout.hpp"
 #include "core/mem/MemoryView.hpp"
+#include "core/mem/ReadBatch.hpp"
 
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -76,6 +78,40 @@ public:
         if (!header) return std::nullopt;
         if (header->size == 0) return std::vector<T>{};
         return readElements<T>(header->items + layout_.arrayData, header->size, freshness);
+    }
+
+    // ---- batched forms -------------------------------------------------------------------------
+    // The same results as the readers above, element for element, but for many inputs at once: one
+    // batched read per step (2-3 in total) instead of a few reads per input.
+
+    // readStringField for every field address.
+    [[nodiscard]] std::vector<std::optional<std::string>> readStringFields(std::span<const Address> fieldAddresses,
+                                                                           std::size_t maxChars = kDefaultMaxChars,
+                                                                           Freshness freshness = Freshness::Cached) const;
+
+    template <class T>
+    [[nodiscard]] std::vector<std::optional<std::vector<T>>> readArrays(std::span<const Address> arrayObjects,
+                                                                        std::size_t maxElements = kDefaultMaxElements,
+                                                                        Freshness freshness = Freshness::Cached) const {
+        static_assert(std::is_trivially_copyable_v<T>);
+        const std::size_t n = arrayObjects.size();
+        std::vector<Address> at(n);
+        for (std::size_t i = 0; i < n; ++i)
+            at[i] = mem::MemoryView::isUserPointer(arrayObjects[i]) ? arrayObjects[i] + layout_.arrayLength : 0;
+        const auto lengths = mem::readEach<std::uint64_t>(mem_, at, freshness);
+        std::vector<Span> spans(n);
+        for (std::size_t i = 0; i < n; ++i)
+            if (lengths[i] && *lengths[i] <= maxElements)
+                spans[i] = {true, arrayObjects[i] + layout_.arrayData, static_cast<std::size_t>(*lengths[i])};
+        return readElementsEach<T>(spans, freshness);
+    }
+
+    template <class T>
+    [[nodiscard]] std::vector<std::optional<std::vector<T>>> readLists(std::span<const Address> listObjects,
+                                                                       std::size_t maxElements = kDefaultMaxElements,
+                                                                       Freshness freshness = Freshness::Cached) const {
+        static_assert(std::is_trivially_copyable_v<T>);
+        return readElementsEach<T>(readListHeaders(listObjects, maxElements, freshness), freshness);
     }
 
     // Dictionary<K,V> → (key, value) pairs of the occupied slots, in slot order.
@@ -189,6 +225,33 @@ private:
         std::vector<T> out(count);
         if (count == 0) return out;
         if (!mem_.readBytes(first, std::as_writable_bytes(std::span{out}), freshness)) return std::nullopt;
+        return out;
+    }
+
+    // Where a container's elements are: `ok` false means the container is unreadable (nullopt).
+    struct Span {
+        bool ok = false;
+        Address first = 0;
+        std::size_t count = 0;
+    };
+    [[nodiscard]] std::vector<Span> readListHeaders(std::span<const Address> listObjects, std::size_t maxElements,
+                                                    Freshness freshness) const;
+
+    template <class T>
+    [[nodiscard]] std::vector<std::optional<std::vector<T>>> readElementsEach(std::span<const Span> spans,
+                                                                              Freshness freshness) const {
+        std::vector<std::vector<T>> values(spans.size());
+        std::vector<mem::ReadBatch::Handle> handles(spans.size());
+        mem::ReadBatch batch(mem_);
+        for (std::size_t i = 0; i < spans.size(); ++i) {
+            if (!spans[i].ok || spans[i].count == 0) continue;
+            values[i].resize(spans[i].count);
+            handles[i] = batch.addBytes(spans[i].first, values[i].data(), spans[i].count * sizeof(T));
+        }
+        batch.execute(freshness);
+        std::vector<std::optional<std::vector<T>>> out(spans.size());
+        for (std::size_t i = 0; i < spans.size(); ++i)
+            if (spans[i].ok && (spans[i].count == 0 || batch.complete(handles[i]))) out[i] = std::move(values[i]);
         return out;
     }
 

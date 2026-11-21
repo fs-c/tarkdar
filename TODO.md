@@ -6,12 +6,8 @@
         - `gc --delete` can remove blobs referenced only by a manifest that isn't in this machine's git history yet
         - proposal: record the last-synced hash per file (three-way: fast-forward / local edit / real conflict, with `resolve --ours|--theirs`), and snapshot a file before any overwrite; optionally a git merge driver for `assets.json`
 - minor improvements
-    - don't give bear/usec any special status in visuals, everything should be encoded in changeable settings
-        - not started; drawing is already rule-driven (`rules/defaults.ts`), what's still code:
-        - the player type taxonomy in `model/roles.ts` (closed `PlayerType` union, labels, `SPECIAL_TYPES`)
-        - the `is:usec` / `is:bear` / `is:pmc` vocabulary (`highlight/query.ts`) and presets (`highlight/suggest.ts`)
-        - bold for bosses in the list (`list/columns.tsx`), a separate side-colour table in `components/PovPage.tsx`
-        - vehicles are the one marker kind not driven by rules (`draw/render.ts`)
+    - player types are still code, not settings: the taxonomy in `model/roles.ts`, the `is:usec` / `is:bear` / `is:pmc` words and presets (visuals are all rule-driven since 2026-11: POV page, bold in the list, vehicles)
+    - POV page: applies the stored rules only (no pinned rules or highlights), and still shows BTR gunners, which the map filters out
 - backend/memory read optimization; there's noticeably more lag while the backend is running
     - also noticed that frontend seems to be very delayed at times (maybe already backend, hard to tell)
     - candidates from the review (unmeasured): no per-client coalescing in the hub (a slow tab replays stale frames in order), Nagle is on (`websocket_tcp_nodelay`), two Crow IO threads that also do blocking file scans, `Players` publishes at ~100 Hz whether or not anything changed, tripwire types re-read every 20 ms

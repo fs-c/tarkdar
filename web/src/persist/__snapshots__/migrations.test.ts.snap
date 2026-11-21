@@ -295,6 +295,18 @@ exports[`radar.rules > from version 0 1`] = `
         "ring": "#ffd84d",
       },
     },
+    {
+      "category": "Vehicles",
+      "id": "vehicle",
+      "label": "Vehicles",
+      "on": true,
+      "origin": "vehicle",
+      "query": "is:vehicle",
+      "style": {
+        "color": "#f2c14e",
+        "show": 0,
+      },
+    },
   ],
 }
 `;
@@ -313,6 +325,50 @@ exports[`radar.rules > from version 1 1`] = `
         "label": "always",
         "labelFrom": 2,
         "show": null,
+      },
+    },
+    {
+      "category": "Vehicles",
+      "id": "vehicle",
+      "label": "Vehicles",
+      "on": true,
+      "origin": "vehicle",
+      "query": "is:vehicle",
+      "style": {
+        "color": "#f2c14e",
+        "show": 0,
+      },
+    },
+  ],
+}
+`;
+
+exports[`radar.rules > from version 2 1`] = `
+{
+  "hidden": [],
+  "rules": [
+    {
+      "category": "Loot",
+      "id": "r:abc1",
+      "label": "GPUs",
+      "on": true,
+      "query": "gpu",
+      "style": {
+        "label": "always",
+        "labelFrom": 2,
+        "show": null,
+      },
+    },
+    {
+      "category": "Vehicles",
+      "id": "vehicle",
+      "label": "Vehicles",
+      "on": true,
+      "origin": "vehicle",
+      "query": "is:vehicle",
+      "style": {
+        "color": "#f2c14e",
+        "show": 0,
       },
     },
   ],

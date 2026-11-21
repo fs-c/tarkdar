@@ -168,7 +168,7 @@ for a raid → in raid → cooldown → waiting for a raid.
   matches sets its properties on top, later rules winning property by property. Only players are shown
   by their base style; everything else is shown by a rule (each kind's catch-all default: "Items",
   "Containers", ...), so switching off the rules that match a thing hides it. Bottom to top: the
-  rules by category (Players, Loot, Containers, Exfils, Explosives, then General, which spans kinds),
+  rules by category (Players, Loot, Containers, Exfils, Explosives, Vehicles, then General, which spans kinds),
   pinned rules, then highlights from the global search. Last, categories switched off (the old map
   layers) hide their kinds of thing, except what's ringed: so highlights, and any rule that rings,
   beat hiding. Map, figures, trails, picking and the list all read the result; the details panel shows

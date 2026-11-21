@@ -65,7 +65,10 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
   }
   drawExplosives(ctx, pr, scene.explosives, (kind, id) => styleOf(`${kind}:${id}`, kind));
 
-  for (const v of scene.vehicles) drawVehicle(ctx, pr, v, labels);
+  for (const v of scene.vehicles) {
+    const style = styleOf(`vehicle:${v.id}`, "vehicle");
+    if (isShown(style, pr.detail)) drawVehicle(ctx, pr, v, style, labels);
+  }
 
   if (scene.trails) drawTrails(ctx, pr, scene);
 
@@ -604,6 +607,7 @@ function drawRings(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene, s
   for (const e of scene.exfils) ring(e.pos, styleOf(`exfil:${e.id}`, "exfil"), 12);
   for (const g of scene.explosives.grenades) ring(g.pos, styleOf(`grenade:${g.id}`, "grenade"), 10);
   for (const w of scene.explosives.tripwires) ring(midpoint(w.from, w.to), styleOf(`tripwire:${w.id}`, "tripwire"), 10);
+  for (const v of scene.vehicles) ring(v.pos, styleOf(`vehicle:${v.id}`, "vehicle"), 14);
   for (const p of scene.players) if (!p.local) ring(p.pos, styleOf(`player:${p.id}`, "player"), 12);
 }
 
@@ -637,8 +641,9 @@ const BTR_HALF_SIZE = [1.45, 3.8] as const;
 /** Zoomed out, the hull is drawn at least this long (px). */
 const VEHICLE_MIN_LENGTH_PX = 22;
 
-/** The hull's footprint, turned to its heading, with a notch at the front; labelled with who's aboard. */
-function drawVehicle(ctx: CanvasRenderingContext2D, pr: Projector, v: Vehicle, labels: LabelRequest[]): void {
+/** The hull's footprint, turned to its heading, with a notch at the front; labelled with who's aboard.
+ *  Its size is the vehicle's real one, so the style's emphasis doesn't change it. */
+function drawVehicle(ctx: CanvasRenderingContext2D, pr: Projector, v: Vehicle, style: Style, labels: LabelRequest[]): void {
   const [cx, cy] = pr.toScreen(v.pos);
   if (!onScreen(pr, cx, cy, 100)) return;
   const yaw = (v.yaw * Math.PI) / 180;
@@ -661,18 +666,21 @@ function drawVehicle(ctx: CanvasRenderingContext2D, pr: Projector, v: Vehicle, l
   ctx.beginPath();
   points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
   ctx.closePath();
-  ctx.fillStyle = COLORS.vehicle;
+  const color = style.color ?? COLORS.vehicle;
+  ctx.fillStyle = color;
   ctx.globalAlpha = 0.25;
   ctx.fill();
   ctx.globalAlpha = 1;
-  ctx.strokeStyle = COLORS.vehicle;
+  ctx.strokeStyle = color;
   ctx.lineWidth = 2;
   ctx.stroke();
 
+  const shown = labelAt(style, pr.detail);
+  if (!shown) return;
   const aboard = v.occupants.filter((o) => o.seat === "passenger").length;
   const name = v.state === 2 ? "BTR" : "BTR (stopped)";
   const texts = aboard ? [`${name} · ${aboard} aboard`, `BTR · ${aboard}`] : [name, "BTR"];
-  labels.push({ x: cx, y: cy, height: v.pos[1], texts, font: { size: 11, bold: true }, color: COLORS.vehicle, gap: 14, rank: LABEL_RANK.exfil, priority: 1, forced: true, fixed: true });
+  labels.push({ x: cx, y: cy, height: v.pos[1], texts, font: { size: 11, bold: true }, color, gap: 14, rank: LABEL_RANK.exfil, priority: 1, forced: shown.forced, fixed: true });
 }
 
 function drawExplosives(ctx: CanvasRenderingContext2D, pr: Projector, ex: ExplosivesData, styleOf: (kind: "grenade" | "tripwire", id: number) => Style): void {

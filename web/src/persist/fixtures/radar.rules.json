@@ -1,4 +1,5 @@
 {
   "0": { "version": 3, "rules": [{ "id": "player.usec", "origin": "player.usec", "category": "Players", "label": "USEC", "query": "is:usec", "style": { "color": "#4c8dff" }, "on": true }, { "id": "r:abc1", "category": "Loot", "label": "GPUs", "query": "gpu", "style": { "ring": "#ffd84d", "emphasis": "strong" }, "on": false }], "hidden": ["Loot"] },
-  "1": { "$v": 1, "data": { "rules": [{ "id": "r:abc1", "category": "Loot", "label": "GPUs", "query": "gpu", "style": { "show": null, "label": "always", "labelFrom": 2 }, "on": true }], "hidden": [] } }
+  "1": { "$v": 1, "data": { "rules": [{ "id": "r:abc1", "category": "Loot", "label": "GPUs", "query": "gpu", "style": { "show": null, "label": "always", "labelFrom": 2 }, "on": true }], "hidden": [] } },
+  "2": { "$v": 2, "data": { "rules": [{ "id": "r:abc1", "category": "Loot", "label": "GPUs", "query": "gpu", "style": { "show": null, "label": "always", "labelFrom": 2 }, "on": true }, { "id": "vehicle", "origin": "vehicle", "category": "Vehicles", "label": "Vehicles", "query": "is:vehicle", "style": { "color": "#f2c14e", "show": 0 }, "on": true }], "hidden": [] } }
 }

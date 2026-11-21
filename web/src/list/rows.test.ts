@@ -28,6 +28,7 @@ const state = {
   ],
   exfils: [{ id: 1, kind: "regular" as const, name: "Gate 3", status: 4, pos: null }],
   explosives: { grenades: [{ id: 1, pos: [1, 0, 1] as [number, number, number] }], tripwires: [{ id: 1, from: [0, 0, 0] as [number, number, number], to: [4, 0, 0] as [number, number, number] }] },
+  vehicles: [],
   equipment: new Map([[3, { id: 3, slots: [{ tpl: "m4", slot: "FirstPrimaryWeapon" }] }]]),
 };
 

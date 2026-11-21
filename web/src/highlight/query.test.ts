@@ -38,6 +38,7 @@ const rows = allRows(
       ],
       exfils: [],
       explosives: { grenades: [], tripwires: [] },
+      vehicles: [],
       equipment: new Map([[1, { id: 1, slots: [{ tpl: "m4" }] }], [3, { id: 3, slots: [{ tpl: "m4" }, { tpl: "m995" }] }]]),
     },
     catalog,

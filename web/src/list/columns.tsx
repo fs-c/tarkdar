@@ -13,6 +13,7 @@ import {
 import { useContext } from "react";
 import { formatHeightDiff, formatPrice } from "../model/items";
 import { COLORS, DEFAULT_COLOR } from "../draw/style";
+import type { Style } from "../rules/rules";
 import { RowStyles } from "./RowStyles";
 import { PLAYER_TYPES } from "../model/roles";
 import { Price } from "../ui";
@@ -68,9 +69,13 @@ function PlayerDot({ row }: { row: PlayerRow }) {
   return <span className={s.dot} style={{ background: usePlayerColor(row, true) }} />;
 }
 
+/** Bold in the list: the loudest emphasis (the default rules give it to bosses). */
+export const isLoud = (style: Style | undefined): boolean => style?.emphasis === "loud";
+
 function PlayerType({ row }: { row: PlayerRow }) {
+  const style = useContext(RowStyles).get(row.key);
   return (
-    <span title={row.typeDetail} className={row.type === "boss" ? s.boss : undefined} style={{ color: usePlayerColor(row) }}>
+    <span title={row.typeDetail} className={isLoud(style) ? s.loud : undefined} style={{ color: usePlayerColor(row) }}>
       {row.typeLabel}
     </span>
   );

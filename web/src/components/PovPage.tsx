@@ -4,10 +4,15 @@
 // game's view should line up with what's drawn here.
 // While scoped, the marks are drawn through the scope's view over the whole canvas (pov/projection.ts).
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Connection, type RadarState, wsUrl } from "../stream/connection";
 import { type ScopeView, mainView, project, scopeView, toPixels } from "../pov/projection";
 import type { CameraData, WorldPos } from "../model/protocol";
+import { playerRows } from "../list/rows";
+import { useCatalog } from "../model/useCatalog";
+import { type PovPlayerLook, povPlayerLook } from "../pov/playerLook";
+import { applyRules } from "../rules/rules";
+import { hiddenKinds, storedRules, useRuleStore } from "../rules/store";
 import { canvasFont } from "../theme/font";
 import { getTheme, useTheme } from "../theme";
 import s from "./PovPage.module.css";
@@ -37,6 +42,15 @@ export function PovPage() {
   const camera = useSyncExternalStore(conn.subscribeCamera, conn.getCamera);
   const [layers, setLayers] = useState<Layers>({ grid: true, loot: true });
 
+  // Players look as the display rules make them look on the map (not the pinned ones and highlights).
+  const { catalog } = useCatalog();
+  const [ruleStore] = useRuleStore();
+  const looks = useMemo(() => {
+    const rows = playerRows(state.players, state.equipment, catalog);
+    const styles = applyRules(rows, storedRules(ruleStore), catalog, hiddenKinds(ruleStore)).styles;
+    return new Map(rows.flatMap((r) => { const look = povPlayerLook(r, styles.get(r.key)); return look ? [[r.sel.id, look] as const] : []; }));
+  }, [state.players, state.equipment, catalog, ruleStore]);
+
   const theme = useTheme(); // a new theme redraws
   const canvas = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -51,9 +65,9 @@ export function PovPage() {
   useEffect(() => {
     const c = canvas.current;
     if (!c || !size.w || !size.h) return;
-    const frame = requestAnimationFrame(() => draw(c, size, state, camera, layers));
+    const frame = requestAnimationFrame(() => draw(c, size, state, camera, layers, looks));
     return () => cancelAnimationFrame(frame);
-  }, [size, state, camera, layers, theme]);
+  }, [size, state, camera, layers, looks, theme]);
 
   return (
     <div className={s.page}>
@@ -117,9 +131,8 @@ interface Mark {
   label?: string;
 }
 
-function marks(state: RadarState, camera: CameraData, layers: Layers): Mark[] {
+function marks(state: RadarState, camera: CameraData, layers: Layers, looks: ReadonlyMap<number, PovPlayerLook>): Mark[] {
   const ui = getTheme().colors;
-  const sideColors: Record<string, string> = { usec: ui.link, bear: ui.danger, savage: ui.gold };
   const eye = camera.fps?.pos;
   const near = (p: WorldPos, range: number) => !eye || Math.hypot(p[0] - eye[0], p[2] - eye[2]) <= range;
   const out: Mark[] = [];
@@ -139,7 +152,8 @@ function marks(state: RadarState, camera: CameraData, layers: Layers): Mark[] {
   for (const e of state.exfils) if (e.pos) out.push({ pos: e.pos, color: ui.accent, kind: "exfil", label: e.name });
   for (const p of state.players) {
     if (p.local || !p.pos || p.absent) continue;
-    out.push({ pos: p.pos, color: p.dead ? ui.faint : (sideColors[p.side] ?? ui.text), kind: "player", label: p.dead ? "dead" : p.ai ? p.side : `${p.side} (human)` });
+    const look = looks.get(p.id);
+    if (look) out.push({ pos: p.pos, color: look.color, kind: "player", label: look.label });
   }
   return out;
 }
@@ -204,7 +218,7 @@ function label(ctx: CanvasRenderingContext2D, m: Mark, at: ScreenPoint, size: nu
   ctx.fillText(`${m.label} ${Math.round(at.depth)} m`, at.x + size + 3, at.y);
 }
 
-function draw(c: HTMLCanvasElement, size: { w: number; h: number }, state: RadarState, camera: CameraData | null, layers: Layers) {
+function draw(c: HTMLCanvasElement, size: { w: number; h: number }, state: RadarState, camera: CameraData | null, layers: Layers, looks: ReadonlyMap<number, PovPlayerLook>) {
   const dpr = window.devicePixelRatio || 1;
   // The game's aspect, letterboxed into the available space.
   const aspect = camera?.fps?.aspect ?? 16 / 9;
@@ -229,7 +243,7 @@ function draw(c: HTMLCanvasElement, size: { w: number; h: number }, state: Radar
     ctx.fillText("No camera: waiting for the backend's camera message.", 16, 28);
     return;
   }
-  const all = marks(state, camera, layers);
+  const all = marks(state, camera, layers, looks);
   const margin = 0.1; // NDC: a little past the edges, so labels of marks just outside still show
   drawMarks(ctx, all, {
     toScreen: (p) => {

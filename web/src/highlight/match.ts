@@ -27,7 +27,7 @@ export function nextColor(highlights: readonly { color: string }[]): string {
 }
 
 export function allRows(rows: TabRows): AnyRow[] {
-  return [...rows.players, ...rows.items, ...rows.containers, ...rows.exfils, ...rows.explosives];
+  return [...rows.players, ...rows.items, ...rows.containers, ...rows.exfils, ...rows.explosives, ...rows.vehicles];
 }
 
 export function matchingRows(rows: readonly AnyRow[], query: string, catalog: ItemCatalog): AnyRow[] {

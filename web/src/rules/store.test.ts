@@ -8,6 +8,9 @@ import {
   normalizeStore, removeRule, resetCategory, categoryChanged, restoreDefaults, ruleStore, storedRules, updateRule,
 } from "./store";
 import { decode } from "../persist/store";
+import { COLORS } from "../draw/style";
+import type { Vehicle } from "../model/protocol";
+import { stylesFor } from "./rules.fixture";
 
 const row = (key: string, subject: SubjectKind, extra: Record<string, unknown> = {}) =>
   ({ key, subject, tpls: [], search: "", pos: null, sel: { kind: "loot", id: 0 }, ...extra }) as unknown as AnyRow;
@@ -94,8 +97,28 @@ describe("stored rules", () => {
     expect(n.hidden).toEqual(["Loot"]);
     expect(normalizeStore("garbage")).toEqual(defaultStore());
     expect(decode(ruleStore, JSON.stringify({ edits: {}, hidden: [], mine: [] }))).toMatchObject({ value: defaultStore(), status: "failed" }); // an old format
-    expect(decode(ruleStore, JSON.stringify({ version: 3, rules: [], hidden: ["Loot"] }))).toMatchObject({ value: { rules: [], hidden: ["Loot"] }, status: "migrated" });
+    expect(decode(ruleStore, JSON.stringify({ version: 3, rules: [], hidden: ["Loot"] }))).toMatchObject({ value: { rules: [expect.objectContaining({ id: "vehicle" })], hidden: ["Loot"] }, status: "migrated" });
     expect(defaultStore().rules).toHaveLength(DEFAULT_RULES.length);
+  });
+
+  it("give vehicles the default rule; switching the Vehicles category off hides them; a changed colour applies", () => {
+    const btr: Vehicle = { id: 1, kind: "btr", state: 2, pos: [0, 0, 0], yaw: 0, occupants: [] };
+    const s = store();
+    expect(stylesFor({ vehicles: [btr] }, s).get("vehicle:1")).toMatchObject({ show: 0, color: COLORS.vehicle, label: "always" });
+    expect(stylesFor({ vehicles: [btr] }, { ...s, hidden: ["Vehicles"] }).get("vehicle:1")!.show).toBeNull();
+    s.rules = updateRule(s.rules, "vehicle", { style: { color: "#123456", show: 0 } });
+    expect(stylesFor({ vehicles: [btr] }, s).get("vehicle:1")!.color).toBe("#123456");
+  });
+
+  it("add the vehicle rule to stored lists that predate it, once", () => {
+    const old = { $v: 1, data: { rules: [{ id: "r:1", category: "Loot", label: "GPUs", query: "gpu", style: {}, on: true }], hidden: ["Loot"] } };
+    const d = decode(ruleStore, JSON.stringify(old));
+    expect(d.status).toBe("migrated");
+    expect(d.value.rules.map((r) => r.id)).toEqual(["r:1", "vehicle"]);
+    expect(d.value.rules[1]).toEqual(defaultStore().rules.find((r) => r.id === "vehicle"));
+    expect(d.value.hidden).toEqual(["Loot"]);
+    expect(missingDefaults(d.value.rules)).toBe(DEFAULT_RULES.length - 1); // the vehicle rule is no longer missing
+    expect(decode(ruleStore, JSON.stringify({ $v: 2, data: d.value })).value.rules.map((r) => r.id)).toEqual(["r:1", "vehicle"]);
   });
 
   it("use the default rules when there's no list of them (an empty one stays empty)", () => {

@@ -45,6 +45,7 @@ const HINTS: Record<Category, string> = {
   Containers: "Containers, airdrops and corpses",
   Exfils: "Extraction points; their colour tells their status",
   Explosives: "Grenades and tripwires",
+  Vehicles: "The BTR",
 };
 
 /** Shown top to bottom: what wins first. */

@@ -3,9 +3,9 @@ import type { ItemCatalog } from "../model/items";
 import { emptyCatalog } from "../model/items";
 import type { AnyRow, SubjectKind } from "../list/rows";
 import type { PlayerType } from "../model/roles";
-import { EMPHASIS_SCALE, MARKER_SIZE } from "../draw/style";
+import { COLORS, EMPHASIS_SCALE, MARKER_SIZE } from "../draw/style";
 import { DEFAULT_RULES } from "./defaults";
-import { type Emphasis, type Style, applyRules } from "./rules";
+import { BASE, type Emphasis, type Style, applyRules } from "./rules";
 
 // The looks as they were before they became rules (style.ts, f2193bc): the default rules must give
 // exactly these (loose items: by value per slot now).
@@ -74,6 +74,12 @@ describe("default rules", () => {
     expect(styleOf(row("loot:1", "item", { value: 20_000 })).show).toBe(0.4);
     expect(styleOf(row("loot:1", "item", { value: 500_000 })).show).toBe(0);
     expect(styleOf(row("loot:1", "quest")).show).toBe(0);
+  });
+
+  it("draw the BTR as it was drawn: the same colour, always shown, always labelled", () => {
+    expect(styleOf(row("vehicle:1", "vehicle"))).toEqual({ ...BASE.vehicle, color: COLORS.vehicle, show: 0 });
+    expect(BASE.vehicle).toMatchObject({ label: "always", labelFrom: 0 });
+    expect(DEFAULT_RULES.find((r) => r.id === "vehicle")).toMatchObject({ category: "Vehicles", query: "is:vehicle" });
   });
 
   it("have unique ids", () => {

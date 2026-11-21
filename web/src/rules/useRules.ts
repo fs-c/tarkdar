@@ -36,7 +36,7 @@ export function useRules(all: TabRows, rules: readonly Rule[], catalog: ItemCata
   const players = useMemo(() => applyRules(all.players, rules, catalog, hidden), [all.players, rules, catalog, hidden]);
   const items = useMemo(() => applyRules(all.items, rules, catalog, hidden), [all.items, rules, catalog, hidden]);
   const containers = useMemo(() => applyRules(all.containers, rules, catalog, hidden), [all.containers, rules, catalog, hidden]);
-  const rest = useMemo(() => applyRules([...all.exfils, ...all.explosives], rules, catalog, hidden), [all.exfils, all.explosives, rules, catalog, hidden]);
+  const rest = useMemo(() => applyRules([...all.exfils, ...all.explosives, ...all.vehicles], rules, catalog, hidden), [all.exfils, all.explosives, all.vehicles, rules, catalog, hidden]);
   return useMemo(() => {
     const parts = [players, items, containers, rest];
     const styles = new Map<string, Style>();

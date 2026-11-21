@@ -52,6 +52,7 @@ const PRESETS: Preset[] = [
   things("Containers", "is:container", "crates"),
   things("Exfils", "is:exfil", "extracts exits"),
   things("Explosives", "is:explosive", "grenades tripwires mines"),
+  things("Vehicles", "is:vehicle", "btr"),
 ];
 
 const CONTAINER_TYPES = containerTypes();

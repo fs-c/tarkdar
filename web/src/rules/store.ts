@@ -4,7 +4,7 @@
 // (defaults.ts CATEGORIES), then the pinned ones. Highlights go on top of all of them (useRules.ts).
 //
 // Stored rules of format version 3 (the first with every rule stored) become settings version 1;
-// older ones are dropped for the defaults.
+// older ones are dropped for the defaults. Version 2 added the Vehicles category's rule.
 
 import { useEffect } from "react";
 import { defineStore, isObject, usePersisted } from "../persist";
@@ -177,7 +177,7 @@ export function normalizeStore(stored: unknown): RuleStore {
 
 export const ruleStore = defineStore<RuleStore>({
   key: "radar.rules",
-  version: 1,
+  version: 2,
   scope: "user",
   defaults: defaultStore,
   migrations: {
@@ -186,6 +186,12 @@ export const ruleStore = defineStore<RuleStore>({
       if (!isObject(d) || d.version !== 3) throw new Error("rules of an older format");
       const { version: _, ...rest } = d;
       return rest;
+    },
+    // The Vehicles category: the BTR used to be drawn without a rule, so stored lists get its rule.
+    1: (d) => {
+      if (!isObject(d) || !Array.isArray(d.rules)) return d;
+      const vehicle = { id: "vehicle", origin: "vehicle", category: "Vehicles", label: "Vehicles", query: "is:vehicle", style: { color: "#f2c14e", show: 0 }, on: true };
+      return { ...d, rules: [...d.rules, vehicle] };
     },
   },
   normalize: normalizeStore,

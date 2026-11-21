@@ -20,6 +20,7 @@ import {
   lootRows,
   normalizeFilters,
   playerRows,
+  vehicleRows,
 } from "./rows";
 
 export interface ListPrefs {
@@ -85,8 +86,9 @@ export function useListRows(
   const loot = useMemo(() => lootRows(state.loot, catalog, questLabels, questNeeds), [state.loot, catalog, questLabels, questNeeds]);
   const exfils = useMemo(() => exfilRows(state.exfils), [state.exfils]);
   const explosives = useMemo(() => explosiveRows(state.explosives), [state.explosives]);
+  const vehicles = useMemo(() => vehicleRows(state.vehicles), [state.vehicles]);
   return useMemo(() => {
-    const all: TabRows = { players, items: loot.items, containers: loot.containers, exfils, explosives };
+    const all: TabRows = { players, items: loot.items, containers: loot.containers, exfils, explosives, vehicles };
     return {
       all,
       rows: {
@@ -95,6 +97,7 @@ export function useListRows(
         containers: filterRows("containers", loot.containers, filters.containers),
         exfils: filterRows("exfils", exfils, filters.exfils),
         explosives,
+        vehicles,
       },
       totals: {
         players: players.length,
@@ -103,5 +106,5 @@ export function useListRows(
         exfils: exfils.length,
       },
     };
-  }, [players, loot, exfils, explosives, filters]);
+  }, [players, loot, exfils, explosives, vehicles, filters]);
 }

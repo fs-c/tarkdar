@@ -1,5 +1,5 @@
 // The default rules: how things look out of the box, as rules (rules.ts) instead of tables in code.
-// Players by type, loose items by value per slot, the other kinds of loot, exfils, explosives. The rule
+// Players by type, loose items by value per slot, the other kinds of loot, exfils, explosives, vehicles. The rule
 // store (rules/store.ts) starts from these; each can be changed, moved, duplicated and removed there,
 // and reset by category to (or restored from) its default.
 //
@@ -14,8 +14,8 @@ import type { Emphasis, Rule, StyleProps } from "./rules";
  * the category off hides, for the hideable ones); the cascade goes by category in this order, bottom to
  * top, so General (rules that span kinds of thing) wins over the others.
  */
-export type Category = "Players" | "Loot" | "Containers" | "Exfils" | "Explosives" | "General";
-export const CATEGORIES: readonly Category[] = ["Players", "Loot", "Containers", "Exfils", "Explosives", "General"];
+export type Category = "Players" | "Loot" | "Containers" | "Exfils" | "Explosives" | "Vehicles" | "General";
+export const CATEGORIES: readonly Category[] = ["Players", "Loot", "Containers", "Exfils", "Explosives", "Vehicles", "General"];
 
 /** Categories that can be switched off as a whole (the old map layers), and what that hides. */
 export const HIDEABLE: Partial<Record<Category, SubjectKind[]>> = {
@@ -23,6 +23,7 @@ export const HIDEABLE: Partial<Record<Category, SubjectKind[]>> = {
   Containers: ["container", "airdrop", "corpse"],
   Exfils: ["exfil"],
   Explosives: ["grenade", "tripwire"],
+  Vehicles: ["vehicle"],
 };
 
 /** Where a rule about these kinds of thing belongs. */
@@ -81,6 +82,7 @@ export const DEFAULT_RULES: readonly DefaultRule[] = [
   rule("Containers", "corpse", "Corpses", "is:corpse", { color: "#9a9a9a", show: SHOW_LEVELS.always }),
   rule("Exfils", "exfil", "Exfils", "is:exfil", { show: SHOW_LEVELS.always }),
   rule("Explosives", "explosive", "Grenades and tripwires", "is:explosive", { color: "#ff3b30", show: SHOW_LEVELS.always }),
+  rule("Vehicles", "vehicle", "Vehicles", "is:vehicle", { color: "#f2c14e", show: SHOW_LEVELS.always }),
 ];
 
 /** Categories hidden out of the box (the map's loot and container layers were off by default). */

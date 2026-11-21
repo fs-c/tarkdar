@@ -7,7 +7,7 @@ import { isObject } from "../persist/store";
 import { type ItemCatalog, containerName, equipmentValue, slotValue } from "../model/items";
 import { exfilStatus } from "../model/exfils";
 import { type Selection, midpoint, selectionKey } from "../draw/pick";
-import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, QuestKind, WorldPos } from "../model/protocol";
+import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, QuestKind, Vehicle, WorldPos } from "../model/protocol";
 import { type QuestNeed, formatQuestNeed, neededKinds } from "../model/quests";
 import { type PlayerType, SPECIAL_TYPES, bossGroups, identityText, playerType } from "../model/roles";
 
@@ -15,7 +15,7 @@ export type TabId = "players" | "items" | "containers" | "exfils";
 export const TAB_IDS: readonly TabId[] = ["players", "items", "containers", "exfils"];
 
 /** What a thing is, across tabs. */
-export type SubjectKind = "player" | "item" | "quest" | "container" | "airdrop" | "corpse" | "exfil" | "grenade" | "tripwire";
+export type SubjectKind = "player" | "item" | "quest" | "container" | "airdrop" | "corpse" | "exfil" | "grenade" | "tripwire" | "vehicle";
 
 export interface RowBase {
   /** Stable id: selection kind + id. */
@@ -85,6 +85,10 @@ export interface ExplosiveRow extends RowBase {
   length?: number;
 }
 
+export interface VehicleRow extends RowBase {
+  kind: Vehicle["kind"];
+}
+
 export interface TabRows {
   players: PlayerRow[];
   items: ItemRow[];
@@ -92,6 +96,8 @@ export interface TabRows {
   exfils: ExfilRow[];
   /** Not a tab (no list of their own), but on the map and matched by highlights. */
   explosives: ExplosiveRow[];
+  /** Likewise: the BTR is on the map and matched by rules and highlights, but isn't listed. */
+  vehicles: VehicleRow[];
 }
 
 export type AnyRow = TabRows[keyof TabRows][number];
@@ -105,7 +111,8 @@ export function tabOf(sel: Selection, state: Pick<RadarState, "loot">): TabId | 
     case "player": return "players";
     case "exfil": return "exfils";
     case "grenade":
-    case "tripwire": return undefined;
+    case "tripwire":
+    case "vehicle": return undefined;
     case "loot": {
       const l = state.loot.find((x) => x.id === sel.id);
       return l ? (isContainerKind(l.kind) ? "containers" : "items") : undefined;
@@ -141,12 +148,13 @@ export function carried(nodes: ItemNode[] | undefined, catalog: ItemCatalog): { 
 
 /** Rows without distances, for all tabs. The per-category builders below let callers memoize each
  *  on its own input (loot changes rarely, players many times a second). */
-export function buildRows(state: Pick<RadarState, "players" | "loot" | "exfils" | "explosives" | "equipment">, catalog: ItemCatalog): TabRows {
+export function buildRows(state: Pick<RadarState, "players" | "loot" | "exfils" | "explosives" | "vehicles" | "equipment">, catalog: ItemCatalog): TabRows {
   return {
     players: playerRows(state.players, state.equipment, catalog),
     ...lootRows(state.loot, catalog),
     exfils: exfilRows(state.exfils),
     explosives: explosiveRows(state.explosives),
+    vehicles: vehicleRows(state.vehicles),
   };
 }
 
@@ -231,6 +239,9 @@ export function explosiveRows(explosives: ExplosivesData): ExplosiveRow[] {
     })),
   ];
 }
+
+export const vehicleRows = (vehicles: Vehicle[]): VehicleRow[] =>
+  vehicles.map((v): VehicleRow => ({ ...base({ kind: "vehicle", id: v.id }, "vehicle", v.pos, text(v.kind, "vehicle")), kind: v.kind }));
 
 /** Adds distance and height difference to the local player (a new array; rows are shared). */
 export function withDistances<R extends RowBase>(rows: R[], local: WorldPos | null): R[] {

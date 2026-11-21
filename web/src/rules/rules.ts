@@ -72,6 +72,7 @@ export const BASE: Record<SubjectKind, Style> = {
   exfil: { show: null, emphasis: "normal", label: "always", labelFrom: 0 },
   grenade: { show: null, emphasis: "normal", label: "never", labelFrom: 0 },
   tripwire: { show: null, emphasis: "normal", label: "never", labelFrom: 0 },
+  vehicle: { show: null, emphasis: "normal", label: "always", labelFrom: 0 },
 };
 
 /** Shown at this level of detail. */

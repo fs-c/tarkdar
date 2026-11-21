@@ -4,7 +4,7 @@
 import { allRows } from "../highlight/match";
 import { type ItemCatalog, emptyCatalog } from "../model/items";
 import { buildRows } from "../list/rows";
-import type { Exfil, ExplosivesData, LootEntry, Player } from "../model/protocol";
+import type { Exfil, ExplosivesData, LootEntry, Player, Vehicle } from "../model/protocol";
 import type { Category } from "./defaults";
 import { SHOW_LEVELS } from "./defaults";
 import { type Rule, type Style, applyRules } from "./rules";
@@ -15,6 +15,7 @@ export interface Things {
   loot?: LootEntry[];
   exfils?: Exfil[];
   explosives?: ExplosivesData;
+  vehicles?: Vehicle[];
 }
 
 /** What the old Map panel set: layers, loot density, label threshold. */
@@ -49,6 +50,7 @@ export function stylesFor(things: Things, store: RuleStore = storeFrom(), extra:
       loot: things.loot ?? [],
       exfils: things.exfils ?? [],
       explosives: things.explosives ?? { grenades: [], tripwires: [] },
+      vehicles: things.vehicles ?? [],
       equipment: new Map(),
     },
     catalog,

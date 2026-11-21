@@ -51,6 +51,7 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
       containers: withDistances(list.rows.containers, local),
       exfils: withDistances(list.rows.exfils, local),
       explosives: withDistances(list.rows.explosives, local),
+      vehicles: withDistances(list.rows.vehicles, local),
     }),
     [list.rows, local],
   );

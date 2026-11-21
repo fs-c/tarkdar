@@ -21,6 +21,7 @@ const rows = buildRows(
     loot: [loot(10, "item", "ledx"), loot(11, "item", "bolts"), loot(12, "quest", "x"), loot(13, "airdrop", "")],
     exfils: [{ id: 1, kind: "regular", name: "Gate 3", status: 4, pos: [1, 2, 3] }],
     explosives: { grenades: [], tripwires: [] },
+    vehicles: [],
     equipment: new Map(),
   },
   catalog,

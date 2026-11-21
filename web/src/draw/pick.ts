@@ -10,7 +10,8 @@ export type Selection =
   | { kind: "loot"; id: number }
   | { kind: "exfil"; id: number }
   | { kind: "grenade"; id: number }
-  | { kind: "tripwire"; id: number };
+  | { kind: "tripwire"; id: number }
+  | { kind: "vehicle"; id: number };
 
 export const selectionKey = (sel: Selection): string => `${sel.kind}:${sel.id}`;
 
@@ -80,6 +81,7 @@ export function selectedPosition(sel: Selection | null, src: Pickable): WorldPos
       const w = src.explosives.tripwires.find((x) => x.id === sel.id);
       return w ? midpoint(w.from, w.to) : null;
     }
+    case "vehicle": return null; // not selectable
   }
 }
 

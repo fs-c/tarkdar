@@ -61,6 +61,7 @@ const IS_VALUES: Record<string, RowTest> = {
   grenade: subject("grenade"),
   tripwire: subject("tripwire"),
   explosive: subject("grenade", "tripwire"),
+  vehicle: subject("vehicle"),
   usec: types("usec"),
   bear: types("bear"),
   pmc: types("usec", "bear"),
@@ -84,7 +85,7 @@ const IS_VALUES: Record<string, RowTest> = {
 /** Plurals and other names `is:` takes too. */
 const IS_ALIASES: Record<string, string> = {
   players: "player", items: "item", containers: "container", airdrops: "airdrop", corpses: "corpse", body: "corpse", bodies: "corpse",
-  exfils: "exfil", extract: "exfil", extracts: "exfil", grenades: "grenade", tripwires: "tripwire", explosives: "explosive", pmcs: "pmc",
+  exfils: "exfil", extract: "exfil", extracts: "exfil", grenades: "grenade", tripwires: "tripwire", explosives: "explosive", vehicles: "vehicle", btr: "vehicle", pmcs: "pmc",
   scavs: "scav", bosses: "boss", guards: "guard", follower: "guard", followers: "guard", raiders: "raider", rogues: "rogue",
   cultists: "cultist", zombie: "infected", zombies: "infected", quests: "quest",
 };

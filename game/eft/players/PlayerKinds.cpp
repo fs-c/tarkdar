@@ -75,8 +75,10 @@ Result buildObserved(const Game& game, Address instance, PlayerLayout layout) {
     if (!health) return std::unexpected("ObservedPlayerController.HealthController is null");
     const Address movement = readPointer(game, controller + off::ObservedPlayerController::MovementController, kFresh);
     if (!movement) return std::unexpected("ObservedPlayerController.MovementController is null");
-    const Address state = readPointer(game, movement + off::ObservedMovementController::ObservedPlayerStateContext, kFresh);
-    if (!state) return std::unexpected("ObservedMovementController.ObservedPlayerStateContext is null");
+    // Only the rotation is in the state context. It can stay null for minutes (2026-11: one of the
+    // Goons on Lighthouse, never shown): build without it, the rotation follows (Players::rosterTick).
+    const Address stateField = movement + off::ObservedMovementController::ObservedPlayerStateContext;
+    const Address state = readPointer(game, stateField, kFresh);
     std::uint8_t isAi = 0;
     std::int32_t side = 0;
     if (!game.mem.tryRead(instance + off::ObservedPlayerView::IsAI, isAi, kFresh) ||
@@ -90,7 +92,8 @@ Result buildObserved(const Game& game, Address instance, PlayerLayout layout) {
     layout.nickname = readString(game, instance + off::ObservedPlayerView::NickName);
     layout.groupId = readString(game, instance + off::ObservedPlayerView::GroupId);
     layout.role = readObservedRole(game, instance);
-    layout.rotationField = state + off::ObservedPlayerStateContext::Rotation;
+    if (state) layout.rotationField = state + off::ObservedPlayerStateContext::Rotation;
+    else layout.stateField = stateField;
     layout.corpseField = health + off::ObservedHealthController::PlayerCorpse;
     layout.bodyField = instance + off::ObservedPlayerView::PlayerBody;
     layout.inventoryControllerField = controller + off::ObservedPlayerController::InventoryController;
@@ -103,6 +106,11 @@ bool isClientClass(const Game& game, Address instance, std::string_view name) {
 }
 
 }  // namespace
+
+Address readObservedRotationField(const Game& game, Address stateField) {
+    const Address state = readPointer(game, stateField, kFresh);
+    return state ? state + off::ObservedPlayerStateContext::Rotation : 0;
+}
 
 std::optional<std::int32_t> readObservedRole(const Game& game, Address instance) {
     const Address aiData = readPointer(game, instance + off::ObservedPlayerView::AIData, kFresh);

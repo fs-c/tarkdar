@@ -398,3 +398,35 @@ TEST_CASE("Players reads observed players' role, nickname and group, also once t
     for (const auto& q : snap->players)
         if (q.id == guardId) CHECK(q.role == 5);
 }
+
+TEST_CASE("Players shows an observed player whose state context is null, and finds its rotation later") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 0);
+    const Address boss = newObservedPlayer(w, 4, true, u"BossBigPipe", Vec3{-20, 1, 30});
+    w.setRosterList({w.localPlayer, boss});
+    w.setRotation(boss, 45.0f, 2.0f);
+
+    const auto session = w.makeSession(7);
+    const auto& mem = session->game.mem;
+    const Address controller = mem.read<Address>(boss + off::ObservedPlayerView::ObservedPlayerController);
+    const Address movement = mem.read<Address>(controller + off::ObservedPlayerController::MovementController);
+    const Address stateField = movement + off::ObservedMovementController::ObservedPlayerStateContext;
+    const Address state = mem.read<Address>(stateField);
+    w.heap.put<Address>(stateField, Address{0});
+
+    eft::WorldState world;
+    eft::Players players(session, world);
+    const auto t = Clock::now();
+    players.rosterTick(t);
+    players.positionsTick(t);
+    const auto* b = byPosition(*world.players.get(), {-20, 1, 30});
+    REQUIRE(b);  // built and positioned (from the skeleton), only the rotation is missing
+    CHECK(b->voice == "BossBigPipe");
+    CHECK(b->yaw == doctest::Approx(0.0f));
+
+    w.heap.put<Address>(stateField, state);
+    players.rosterTick(t + std::chrono::seconds(1));
+    b = byPosition(*world.players.get(), {-20, 1, 30});
+    REQUIRE(b);
+    CHECK(b->yaw == doctest::Approx(45.0f));
+}

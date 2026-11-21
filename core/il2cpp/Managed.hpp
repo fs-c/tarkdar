@@ -160,6 +160,12 @@ public:
     // by class pointer (classes don't move or change for the life of the process).
     [[nodiscard]] bool isInstanceOf(Address object, std::string_view name) const;
     [[nodiscard]] bool classIsA(Address klass, std::string_view name) const;
+    // The same, but nullopt where "no" can't be told: the ancestry couldn't be read up to
+    // System.Object (a class name or parent pointer was unreadable), so the name might be further up.
+    [[nodiscard]] std::optional<bool> classIsAKnown(Address klass, std::string_view name) const;
+    // The ancestry as read, for logs: "ObservedLootItem < LootItem < … < System.Object", with "?" for
+    // unreadable names and " (incomplete)" when the walk stopped before System.Object.
+    [[nodiscard]] std::string describeAncestry(Address klass) const;
 
     // UnityEngine.Object → native engine object (m_CachedPtr).
     [[nodiscard]] std::optional<Address> nativePointer(Address unityObject,
@@ -194,7 +200,11 @@ private:
         std::mutex mutex;
         std::unordered_map<Address, std::vector<ClassNames>> ancestry;
     };
-    [[nodiscard]] std::vector<ClassNames> ancestry(Address klass) const;
+    struct Ancestry {
+        std::vector<ClassNames> chain;
+        bool complete = false;  // read up to System.Object, every name readable
+    };
+    [[nodiscard]] Ancestry ancestry(Address klass) const;
 
     mem::MemoryView mem_;
     Layout layout_;

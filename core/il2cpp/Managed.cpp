@@ -9,6 +9,7 @@ namespace radar::il2cpp {
 namespace {
 constexpr std::size_t kClassNameMax = 256;
 constexpr std::size_t kMaxChars = 4096;  // hard cap on readString's maxChars
+constexpr std::string_view kRootClass = "System.Object";
 constexpr int kMaxClassDepth = 32;       // ancestry walk limit (guards against corrupt parent cycles)
 }
 
@@ -98,13 +99,14 @@ std::string Managed::classNameOf(Address object) const {
     return klass ? className(*klass) : std::string{};
 }
 
-std::vector<Managed::ClassNames> Managed::ancestry(Address klass) const {
+Managed::Ancestry Managed::ancestry(Address klass) const {
     {
         std::lock_guard lock(classCache_->mutex);
-        if (auto it = classCache_->ancestry.find(klass); it != classCache_->ancestry.end()) return it->second;
+        if (auto it = classCache_->ancestry.find(klass); it != classCache_->ancestry.end())
+            return Ancestry{it->second, true};
     }
-    std::vector<ClassNames> chain;
-    bool complete = false, namesComplete = true;
+    Ancestry out;
+    bool namesComplete = true;
     std::optional<Address> k = klass;
     for (int depth = 0; k && depth < kMaxClassDepth; ++depth) {
         ClassNames names{className(*k), fullClassName(*k)};
@@ -112,27 +114,47 @@ std::vector<Managed::ClassNames> Managed::ancestry(Address klass) const {
         // count (e.g. Vest < <unnamed> < CompoundItem). Keep walking, but don't cache the chain
         // in case the name read was transient.
         if (names.shortName.empty()) namesComplete = false;
-        chain.push_back(std::move(names));
-        const Address parentField = mem_.read<Address>(*k + layout_.classParent);
+        const bool isRoot = names.fullName == kRootClass;
+        out.chain.push_back(std::move(names));
+        Address parentField = 0;
+        const bool parentRead = mem_.tryRead(*k + layout_.classParent, parentField);
+        // Only System.Object has no parent. Anywhere else a zero is a read that failed (failed reads
+        // come back as zeros, even "successful" ones of pages VMM can't read): the chain is cut short.
         if (parentField == 0) {
-            complete = true;  // reached the root (System.Object has no parent)
+            out.complete = parentRead && isRoot;
             break;
         }
         if (!mem::MemoryView::isUserPointer(parentField) || parentField == *k) break;  // unreadable or corrupt
         k = parentField;
     }
-    if (complete && namesComplete) {
+    out.complete = out.complete && namesComplete;
+    if (out.complete) {
         std::lock_guard lock(classCache_->mutex);
-        classCache_->ancestry.emplace(klass, chain);
+        classCache_->ancestry.emplace(klass, out.chain);
     }
-    return chain;
+    return out;
 }
 
-bool Managed::classIsA(Address klass, std::string_view name) const {
+bool Managed::classIsA(Address klass, std::string_view name) const { return classIsAKnown(klass, name).value_or(false); }
+
+std::optional<bool> Managed::classIsAKnown(Address klass, std::string_view name) const {
     const bool full = name.find('.') != std::string_view::npos;
-    for (const auto& c : ancestry(klass))
+    const auto a = ancestry(klass);
+    for (const auto& c : a.chain)
         if ((full ? c.fullName : c.shortName) == name) return true;
+    if (!a.complete) return std::nullopt;
     return false;
+}
+
+std::string Managed::describeAncestry(Address klass) const {
+    const auto a = ancestry(klass);
+    std::string out;
+    for (const auto& c : a.chain) {
+        if (!out.empty()) out += " < ";
+        out += c.fullName.empty() ? "?" : c.fullName;
+    }
+    if (!a.complete) out += " (incomplete)";
+    return out;
 }
 
 bool Managed::isInstanceOf(Address object, std::string_view name) const {

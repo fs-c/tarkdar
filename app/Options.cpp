@@ -52,7 +52,7 @@ void printUsage(const char* argv0) {
                  "                        (to compare)\n"
                  "  --overlay-test        draw a test pattern and why nothing else shows (implies --overlay)\n"
                  "\n"
-                 "  --verbose             debug logging\n",
+                 "  -v, --verbose         debug logging\n",
                  argv0, argv0);
 }
 
@@ -80,7 +80,7 @@ std::optional<Options> parseOptions(int argc, char** argv, std::string& error) {
             opt.vmm.extraArgs.push_back(*v);
         } else if (arg == "--vmm-printf") {
             opt.vmm.vmmPrintf = true;
-        } else if (arg == "--verbose") {
+        } else if (arg == "--verbose" || arg == "-v") {
             opt.verbose = true;
         } else if (arg == "--listen") {
             const auto v = value();

@@ -278,7 +278,8 @@ TEST_CASE("Loot: classification, positions, removal") {
     FakeWorld w;
     w.newWorld(u"bigmap", 1);
     auto& h = w.heap;
-    const Address interactive = h.klass("InteractableObject", "EFT.Interactive");
+    const Address objectClass = h.klass("Object", "System");
+    const Address interactive = h.klass("InteractableObject", "EFT.Interactive", objectClass);
     const Address lootItemClass = h.klass("LootItem", "EFT.Interactive", interactive);
     const Address observedItemClass = h.klass("ObservedLootItem", "EFT.Interactive", lootItemClass);
     const Address corpseClass = h.klass("Corpse", "EFT.Interactive", lootItemClass);
@@ -362,6 +363,46 @@ TEST_CASE("Loot: classification, positions, removal") {
         loot.scan(t + std::chrono::seconds(6));
         CHECK(world.loot.get()->loot.size() == 4);
     }
+}
+
+TEST_CASE("Loot: classes whose ancestry can't be read") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 1);
+    auto& h = w.heap;
+    const Address objectClass = h.klass("Object", "System");
+    const Address interactive = h.klass("InteractableObject", "EFT.Interactive", objectClass);
+    const Address lootItemClass = h.klass("LootItem", "EFT.Interactive", interactive);
+    // Parent pointers that read as zero: the walk stops before LootItem (and System.Object).
+    const Address observedItemClass = h.klass("ObservedLootItem", "EFT.Interactive");
+    const Address observedCorpseClass = h.klass("ObservedCorpse", "EFT.Interactive");
+    const Address mysteryClass = h.klass("Mystery", "EFT.Interactive");
+
+    const Address item = h.object(observedItemClass, 0x200);
+    h.put<Address>(item + off::InteractiveLootItem::Item, itemWithTemplate(w, u"5449016a4bdc2d6f028b456f"));
+    place(w, item, {1, 1, 1}, "item_roubles");
+    const Address corpse = h.object(observedCorpseClass, 0x200);
+    place(w, corpse, {2, 1, 2}, "corpse");
+    const Address mystery = h.object(mysteryClass, 0x200);
+    h.put<Address>(mystery + off::InteractiveLootItem::Item, itemWithTemplate(w, u"later"));
+    place(w, mystery, {3, 1, 3}, "item_later");
+    h.put<Address>(w.world + off::ClientLocalGameWorld::LootList, h.list(std::vector<Address>{item, corpse, mystery}, 64));
+
+    eft::WorldState world;
+    eft::Loot loot(w.makeSession(5), world);
+    const auto t = Clock::now();
+    loot.scan(t);
+    // The online replicas are known by name; the unknown class isn't ignored for good...
+    auto snap = world.loot.get();
+    REQUIRE(snap->loot.size() == 2);
+    CHECK(snap->loot[0].kind == eft::LootEntry::Kind::Item);
+    CHECK(snap->loot[1].kind == eft::LootEntry::Kind::Corpse);
+
+    // ...but tried again, and taken once its ancestry reads as a LootItem.
+    h.put<Address>(mysteryClass + kIl2Cpp.classParent, lootItemClass);
+    loot.resolve(t + std::chrono::seconds(3));
+    snap = world.loot.get();
+    REQUIRE(snap->loot.size() == 3);
+    CHECK(snap->loot[2].templateId == "later");
 }
 
 TEST_CASE("Loot: a sudden drop to under half the cache isn't treated as removals") {

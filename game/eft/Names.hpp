@@ -15,11 +15,12 @@ inline constexpr std::string_view kUnityPlayer = "UnityPlayer.dll";    // Unity 
 inline constexpr std::array kRequiredModules = {kGameAssembly, kUnityPlayer};
 
 // Loot classification by runtime class (matched against the class and its base classes, by short
-// name, so live-EFT replicas like ObservedLootItem and offline classes both match). Order matters:
-// a Corpse is also a LootItem.
-inline constexpr std::string_view kLootClassCorpse = "Corpse";
-inline constexpr std::string_view kLootClassContainer = "LootableContainer";
-inline constexpr std::string_view kLootClassItem = "LootItem";
+// name). Order matters: a Corpse is also a LootItem. The online replicas are listed by name too: their
+// ancestry can be unreadable (on Lighthouse, 2026-11, every ObservedLootItem and ObservedCorpse failed
+// the walk up to LootItem in three fresh runs, while LootableContainer resolved).
+inline constexpr std::array kLootClassesCorpse = {std::string_view("Corpse"), std::string_view("ObservedCorpse")};
+inline constexpr std::array kLootClassesContainer = {std::string_view("LootableContainer")};
+inline constexpr std::array kLootClassesItem = {std::string_view("LootItem"), std::string_view("ObservedLootItem")};
 
 // Items that can hold other items (slots and/or grids): weapons, mods, armour, rigs, containers.
 inline constexpr std::string_view kCompoundItemClass = "CompoundItem";

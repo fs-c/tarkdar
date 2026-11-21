@@ -42,6 +42,8 @@ public:
         return e.size != 0 && e.bytesRead == e.size;
     }
     [[nodiscard]] std::size_t bytesRead(Handle h) const { return entries_.at(h).bytesRead; }
+    // Requests added so far (the next add() returns this as its handle).
+    [[nodiscard]] std::size_t size() const { return entries_.size(); }
 
 private:
     struct Entry {

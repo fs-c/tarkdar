@@ -10,6 +10,7 @@
 #include <eft_offsets.hpp>
 
 #include <algorithm>
+#include <span>
 #include <cmath>
 
 namespace radar::eft {
@@ -109,10 +110,22 @@ std::expected<Loot::Resolved, Loot::Unresolved> Loot::resolveOne(Address instanc
         return tmpl ? readMongoId(game_, tmpl + off::ItemTemplate::_id) : std::nullopt;
     };
 
-    if (game_.managed.isInstanceOf(instance, kLootClassCorpse)) {
+    // Yes / no / can't tell (part of the ancestry unreadable: try again later, it may be a LootItem).
+    const auto klass = r.entry.klass;
+    bool unknown = false;
+    const auto is = [&](std::span<const std::string_view> names) {
+        for (const auto name : names) {
+            const auto match = game_.managed.classIsAKnown(klass, name);
+            if (match.value_or(false)) return true;
+            unknown |= !match.has_value();
+        }
+        return false;
+    };
+
+    if (is(kLootClassesCorpse)) {
         loot.kind = LootEntry::Kind::Corpse;
         r.entry.contentsRoot = readPointer(game_, instance + off::InteractiveLootItem::Item);
-    } else if (game_.managed.isInstanceOf(instance, kLootClassContainer)) {
+    } else if (is(kLootClassesContainer)) {
         if (text::containsIgnoreCase(loot.objectName, "loot_collider")) {
             loot.kind = LootEntry::Kind::Airdrop;
         } else {
@@ -127,7 +140,7 @@ std::expected<Loot::Resolved, Loot::Unresolved> Loot::resolveOne(Address instanc
             }
             loot.templateId = std::move(*id);
         }
-    } else if (game_.managed.isInstanceOf(instance, kLootClassItem)) {
+    } else if (is(kLootClassesItem)) {
         const Address item = readPointer(game_, instance + off::InteractiveLootItem::Item);
         const Address tmpl = item ? readPointer(game_, item + off::Item::Template) : 0;
         auto id = tmpl ? readMongoId(game_, tmpl + off::ItemTemplate::_id) : std::nullopt;
@@ -137,7 +150,13 @@ std::expected<Loot::Resolved, Loot::Unresolved> Loot::resolveOne(Address instanc
             game_.mem.read<std::uint8_t>(tmpl + off::ItemTemplate::QuestItem) != 0 && !isInfoDocument(loot.objectName);
         loot.kind = questItem ? LootEntry::Kind::QuestItem : LootEntry::Kind::Item;
     } else {
-        log::debug("loot: ignoring {:#x} of class {}", instance, game_.managed.classNameOf(instance));
+        if (unknown) {
+            if (unknownClassesLogged_.insert(klass).second)
+                    log::debug("loot: {:#x}: can't tell whether it's loot yet (retrying; logged once per class), "
+                           "ancestry {}", instance, game_.managed.describeAncestry(klass));
+            return unexpected(Unresolved::Retry);
+        }
+        log::debug("loot: ignoring {:#x} of class {}", instance, game_.managed.describeAncestry(klass));
         return unexpected(Unresolved::Permanent);
     }
     r.entry.transform = game_.scene.transform(*gameObject).value_or(0);

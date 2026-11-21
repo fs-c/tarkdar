@@ -51,31 +51,62 @@ std::optional<Pose> Transforms::compose(std::int32_t index, std::span<const TrsX
     return pose;
 }
 
-std::optional<Pose> Transforms::composeByChain(std::int32_t index, Address localTransforms, Address parentIndices,
-                                               Freshness freshness) const {
-    // Parent indices one hop at a time, then the TRS of each chain slot.
-    std::vector<std::int32_t> chain{index};
-    while (true) {
-        std::int32_t parent = 0;
-        if (!mem_.tryRead(parentIndices + static_cast<Address>(chain.back()) * sizeof(std::int32_t), parent,
-                          freshness))
-            return std::nullopt;
-        if (parent < 0) break;
-        if (parent >= kMaxIndex || chain.size() >= kMaxDepth) return std::nullopt;  // garbage or a cycle
-        chain.push_back(parent);
+void Transforms::composeByChains(std::span<ChainWalk> walks, std::span<std::optional<Pose>> out,
+                                 Freshness freshness) const {
+    // Parent indices one hop at a time for every chain together (one batch per hop: a chain is at
+    // most kMaxDepth long, but the batches are few, where reading each hop of each chain on its own
+    // took thousands of calls per tick while players spawned), then the TRS of every chain slot.
+    std::vector<ChainWalk*> active;
+    for (auto& w : walks) {
+        w.chain.assign(1, w.index);
+        active.push_back(&w);
     }
-    std::vector<TrsX> local(chain.size());
+    while (!active.empty()) {
+        std::vector<std::int32_t> parents(active.size());
+        mem::ReadBatch batch(mem_);
+        for (std::size_t i = 0; i < active.size(); ++i) {
+            const auto* w = active[i];
+            batch.add(w->parentIndices + static_cast<Address>(w->chain.back()) * sizeof(std::int32_t), parents[i]);
+        }
+        batch.execute(freshness);
+        std::vector<ChainWalk*> next;
+        for (std::size_t i = 0; i < active.size(); ++i) {
+            ChainWalk& w = *active[i];
+            const std::int32_t parent = parents[i];
+            if (!batch.complete(i) || parent >= kMaxIndex || (parent >= 0 && w.chain.size() >= kMaxDepth)) {
+                w.chain.clear();  // unreadable, garbage or a cycle
+            } else if (parent >= 0) {
+                w.chain.push_back(parent);
+                next.push_back(&w);
+            }
+        }
+        active = std::move(next);
+    }
+
+    std::vector<std::vector<TrsX>> locals(walks.size());
     mem::ReadBatch batch(mem_);
-    for (std::size_t k = 0; k < chain.size(); ++k)
-        batch.add(localTransforms + static_cast<Address>(chain[k]) * sizeof(TrsX), local[k]);
+    std::vector<std::pair<std::size_t, std::size_t>> firstLast(walks.size());  // handle range per walk
+    for (std::size_t i = 0; i < walks.size(); ++i) {
+        const auto& w = walks[i];
+        locals[i].resize(w.chain.size());
+        firstLast[i].first = batch.size();
+        for (std::size_t k = 0; k < w.chain.size(); ++k)
+            batch.add(w.localTransforms + static_cast<Address>(w.chain[k]) * sizeof(TrsX), locals[i][k]);
+        firstLast[i].second = batch.size();
+    }
     batch.execute(freshness);
-    for (std::size_t k = 0; k < chain.size(); ++k)
-        if (!batch.complete(k)) return std::nullopt;
-    // Compact form for compose(): slot k's parent is k + 1, the root is last.
-    std::vector<std::int32_t> parents(chain.size());
-    for (std::size_t k = 0; k < chain.size(); ++k)
-        parents[k] = k + 1 < chain.size() ? static_cast<std::int32_t>(k + 1) : -1;
-    return compose(0, local, parents);
+    for (std::size_t i = 0; i < walks.size(); ++i) {
+        const auto& w = walks[i];
+        if (w.chain.empty()) continue;
+        bool complete = true;
+        for (std::size_t h = firstLast[i].first; h < firstLast[i].second; ++h) complete = complete && batch.complete(h);
+        if (!complete) continue;
+        // Compact form for compose(): slot k's parent is k + 1, the root is last.
+        std::vector<std::int32_t> parents(w.chain.size());
+        for (std::size_t k = 0; k < w.chain.size(); ++k)
+            parents[k] = k + 1 < w.chain.size() ? static_cast<std::int32_t>(k + 1) : -1;
+        out[w.out] = compose(0, locals[i], parents);
+    }
 }
 
 std::vector<std::optional<Pose>> Transforms::worldPoses(std::span<const Address> transforms,
@@ -144,8 +175,9 @@ std::vector<std::optional<Pose>> Transforms::worldPoses(std::span<const Address>
     }
 
     // Stage 4: compose from the bulk-read prefix. Parents usually sit at lower indices than their
-    // children, so the prefix holds every ancestor; if not (or for large hierarchies), walk just this
-    // transform's parent chain with individual reads.
+    // children, so the prefix holds every ancestor; if not (or for large hierarchies, or when the bulk
+    // read failed), walk just these transforms' parent chains.
+    std::vector<ChainWalk> walks;
     for (std::size_t i = 0; i < n; ++i) {
         auto it = groups.find(hierarchies[i]);
         if (it == groups.end() || indices[i] < 0 || indices[i] >= kMaxIndex) continue;
@@ -155,8 +187,10 @@ std::vector<std::optional<Pose>> Transforms::worldPoses(std::span<const Address>
             if (out[i]) continue;
         }
         if (!MemoryView::isUserPointer(g.localTransforms) || !MemoryView::isUserPointer(g.parentIndices)) continue;
-        out[i] = composeByChain(indices[i], g.localTransforms, g.parentIndices, freshness);
+        walks.push_back(ChainWalk{.out = i, .index = indices[i], .localTransforms = g.localTransforms,
+                                  .parentIndices = g.parentIndices, .chain = {}});
     }
+    if (!walks.empty()) composeByChains(walks, out, freshness);
     return out;
 }
 

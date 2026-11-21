@@ -27,7 +27,10 @@ struct PlayerLayout {
     std::string nickname;
     std::string groupId;
     // Fields read later:
-    Address rotationField = 0;             // Vector2 (yaw, pitch) in degrees
+    Address rotationField = 0;             // Vector2 (yaw, pitch) in degrees; 0 until known (see stateField)
+    // Observed players only: where the pointer to the state context (which has the rotation) is, while
+    // it's still null; rotationField is filled in once it isn't. 0 once known.
+    Address stateField = 0;
     Address corpseField = 0;               // pointer; non-null once the player is dead
     Address bodyField = 0;                 // pointer to the PlayerBody (skeleton)
     Address inventoryControllerField = 0;  // pointer to the InventoryController (equipment)
@@ -40,6 +43,10 @@ struct PlayerLayout {
 //  - anything else → Observed.
 [[nodiscard]] std::expected<PlayerLayout, std::string> buildPlayerLayout(const Game& game, Address instance,
                                                                        bool isLocal);
+
+// Where an observed player's rotation is, from PlayerLayout::stateField; 0 while the state context is
+// still null.
+[[nodiscard]] Address readObservedRotationField(const Game& game, Address stateField);
 
 // The role of an observed player: ObservedPlayerView.AIData (StubAIData on observers, AIData if
 // simulated here) → BotHostilityData._role. nullopt while any link is missing (the AI data may be set

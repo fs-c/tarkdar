@@ -156,6 +156,35 @@ TEST_CASE("Transforms::worldPoses walks the parent chain for large hierarchies")
     CHECK(near(pose->position, {11, 2, 103}));
 }
 
+TEST_CASE("Transforms::worldPoses walks many parent chains in a few batched reads") {
+    SETUP;
+    unity::Transforms transforms(view, kUnity);
+    // Slots 5000 → 5001 → … → 5010 (the root): too large for the bulk read, so every transform walks.
+    const Address hierarchy = heap.alloc(0x100);
+    const Address trsArray = 0x2'0000'0000, parentArray = 0x3'0000'0000;
+    heap.put<Address>(hierarchy + kUnity.hierarchyLocalTransforms, trsArray);
+    heap.put<Address>(hierarchy + kUnity.hierarchyParentIndices, parentArray);
+    std::vector<Address> ts;
+    for (int k = 0; k <= 10; ++k) {
+        const int slot = 5000 + k;
+        heap.put(trsArray + static_cast<Address>(slot) * sizeof(unity::TrsX), trs({1, 0, 0}));
+        heap.put<std::int32_t>(parentArray + static_cast<Address>(slot) * 4, k == 10 ? -1 : slot + 1);
+        const Address t = heap.alloc(0x100);
+        heap.put<Address>(t + kUnity.transformHierarchy, hierarchy);
+        heap.put<std::int32_t>(t + kUnity.transformIndex, slot);
+        ts.push_back(t);
+    }
+
+    const auto before = fake.readCalls();
+    const auto poses = transforms.worldPoses(ts);
+    // 3 bulk stages + one batch per hop (10) + the TRS batch; one read per hop and chain was ~70.
+    CHECK(fake.readCalls() - before <= 15);
+    for (int k = 0; k <= 10; ++k) {
+        REQUIRE(poses[static_cast<std::size_t>(k)]);
+        CHECK(near(poses[static_cast<std::size_t>(k)]->position, {static_cast<float>(11 - k), 0, 0}));
+    }
+}
+
 namespace {
 struct FakeGom {
     Address gom;

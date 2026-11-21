@@ -78,6 +78,7 @@ private:
 
     // Classifies and reads one entry (everything but the position).
     std::expected<Resolved, Unresolved> resolveOne(Address instance) const;
+    mutable std::unordered_set<Address> unknownClassesLogged_;  // "can't tell" is logged once per class
     void refreshAirdrops();
     void refreshContents();
     std::vector<ItemNode> readContents(const Entry& e) const;

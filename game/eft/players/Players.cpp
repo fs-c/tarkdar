@@ -67,11 +67,11 @@ void Players::rosterTick(Clock::time_point now) {
             entry.local = isLocal;
             entry.layout = std::move(*layout);
             failures_.erase(instance);
-            log::debug("players: +#{} {:#x} {} ({}) side {} ai {}{}{} nick '{}' group '{}'", entry.id, instance,
+            log::debug("players: +#{} {:#x} {} ({}) side {} ai {}{}{} nick '{}' group '{}'{}", entry.id, instance,
                        kindName(entry.layout.kind), entry.layout.className, static_cast<int>(entry.layout.side),
                        entry.layout.ai, entry.layout.voice.empty() ? "" : " voice " + entry.layout.voice,
                        entry.layout.role ? std::format(" role {}", *entry.layout.role) : "", entry.layout.nickname,
-                       entry.layout.groupId);
+                       entry.layout.groupId, entry.layout.stateField ? " (no rotation yet)" : "");
             entries_.emplace(instance, std::move(entry));
         } else {
             failure.error = std::move(layout.error());
@@ -94,6 +94,17 @@ void Players::rosterTick(Clock::time_point now) {
         e.nextRoleRead = now + kRoleRetry;
         if ((e.layout.role = readObservedRole(game_, instance)))
             log::debug("players: #{} role {} (after {} attempts)", e.id, *e.layout.role, e.roleAttempts);
+    }
+
+    // Observed players built before their state context was set: look for the rotation again.
+    for (auto& [instance, e] : entries_) {
+        if (!e.layout.stateField || now < e.nextRotationRead || !registered_.contains(instance)) continue;
+        e.nextRotationRead = now + kRoleRetry;
+        if (const Address field = readObservedRotationField(game_, e.layout.stateField)) {
+            e.layout.rotationField = field;
+            e.layout.stateField = 0;
+            log::debug("players: #{} rotation found", e.id);
+        }
     }
 
     // Local flag follows GameWorld.MainPlayer for every entry (it can change, e.g. after death). Of the
@@ -207,7 +218,7 @@ void Players::refresh(Clock::time_point now) {
         Entry* entry = nullptr;
         Vec2 rotation{};
         Address corpse = 0;
-        mem::ReadBatch::Handle rotationHandle = 0;
+        std::optional<mem::ReadBatch::Handle> rotationHandle;
         std::optional<mem::ReadBatch::Handle> corpseHandle;
     };
     std::vector<Pending> pending;
@@ -221,7 +232,7 @@ void Players::refresh(Clock::time_point now) {
 
     mem::ReadBatch batch(game_.mem);
     for (auto& p : pending) {
-        p.rotationHandle = batch.add(p.entry->layout.rotationField, p.rotation);
+        if (p.entry->layout.rotationField) p.rotationHandle = batch.add(p.entry->layout.rotationField, p.rotation);
         if (now >= p.entry->nextCorpseCheck) {
             p.corpseHandle = batch.add(p.entry->layout.corpseField, p.corpse);
             p.entry->nextCorpseCheck = now + kCorpseInterval;
@@ -230,7 +241,7 @@ void Players::refresh(Clock::time_point now) {
     batch.execute(Freshness::Fresh);
 
     for (auto& p : pending) {
-        if (batch.complete(p.rotationHandle) && std::isfinite(p.rotation.x) && std::isfinite(p.rotation.y)) {
+        if (p.rotationHandle && batch.complete(*p.rotationHandle) && std::isfinite(p.rotation.x) && std::isfinite(p.rotation.y)) {
             p.entry->yaw = p.rotation.x;
             p.entry->pitch = p.rotation.y;
         }

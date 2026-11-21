@@ -105,6 +105,7 @@ private:
         PlayerLayout layout;  // kind, identity and field addresses, resolved at build time
         // Observed players: re-reads of a role missing at build time.
         int roleAttempts = 0;
+        sched::Clock::time_point nextRotationRead{};
         sched::Clock::time_point nextRoleRead{};
         // Dynamic state.
         float yaw = 0, pitch = 0;

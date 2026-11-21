@@ -216,6 +216,24 @@ TEST_CASE("inheritance walks past an unnamed class") {
     CHECK(managed.isInstanceOf(obj, "System.Object"));
 }
 
+TEST_CASE("an ancestry cut short by an unreadable parent is no \"no\", and isn't cached") {
+    SETUP;
+    const Address objectClass = heap.klass("Object", "System");
+    const Address lootItem = heap.klass("LootItem", "EFT.Interactive", objectClass);
+    const Address observed = heap.klass("ObservedLootItem", "EFT.Interactive");  // parent reads as 0
+
+    CHECK(managed.classIsAKnown(observed, "ObservedLootItem") == true);
+    CHECK(managed.classIsAKnown(observed, "LootItem") == std::nullopt);
+    CHECK_FALSE(managed.classIsA(observed, "LootItem"));
+    CHECK(managed.describeAncestry(observed) == "EFT.Interactive.ObservedLootItem (incomplete)");
+
+    heap.put<Address>(observed + kIl2Cpp.classParent, lootItem);  // readable now
+    CHECK(managed.classIsAKnown(observed, "LootItem") == true);
+    CHECK(managed.classIsAKnown(observed, "Door") == false);  // complete: a real "no"
+    CHECK(managed.describeAncestry(observed) ==
+          "EFT.Interactive.ObservedLootItem < EFT.Interactive.LootItem < System.Object");
+}
+
 TEST_CASE("TypeInfoTable static fields") {
     SETUP;
     const Address gameAssembly = 0x7FF6'0000'0000;

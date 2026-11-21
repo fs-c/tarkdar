@@ -33,8 +33,8 @@ static_assert(sizeof(TrsX) == 48);
 // two parallel arrays: local TRS per slot, and the parent slot per slot (-1 for the root). Unity
 // normally keeps parents at lower slot indices than their children, so slots [0, index] contain
 // every ancestor of `index`: a whole hierarchy prefix can be read in two bulk reads and everything
-// computed locally. When that doesn't hold (or the hierarchy is huge), the parent chain is walked
-// with individual reads instead.
+// computed locally. When that doesn't hold (or the hierarchy is huge), the parent chains are walked
+// instead, one batched read per hop for all of them.
 class Transforms {
 public:
     static constexpr std::int32_t kMaxIndex = 1'000'000;
@@ -64,8 +64,15 @@ public:
                                                      std::span<const std::int32_t> parents);
 
 private:
-    [[nodiscard]] std::optional<Pose> composeByChain(std::int32_t index, Address localTransforms, Address parentIndices,
-                                                     mem::Freshness freshness) const;
+    struct ChainWalk {
+        std::size_t out;  // index into the result
+        std::int32_t index;
+        Address localTransforms, parentIndices;
+        std::vector<std::int32_t> chain;  // slots from `index` to the root; empty on failure
+    };
+    // Walks the parent chains of all `walks` together and composes their poses into out[w.out].
+    void composeByChains(std::span<ChainWalk> walks, std::span<std::optional<Pose>> out,
+                         mem::Freshness freshness) const;
 
     mem::MemoryView mem_;
     Layout layout_;

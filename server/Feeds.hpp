@@ -31,6 +31,9 @@ public:
     int poll();
 
 private:
+    int pollStatus();
+    int pollWorld();
+
     Sources sources_;
     MessageHub& hub_;
     std::chrono::milliseconds period_;

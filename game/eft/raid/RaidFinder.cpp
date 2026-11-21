@@ -118,7 +118,7 @@ std::optional<WorldCheck> RaidFinder::viaSceneScan(sched::Clock::time_point now)
     if (!gom) return std::nullopt;
     std::optional<WorldCheck> pending;
     for (const auto& object : game_.scene.findByName(*gom, "GameWorld")) {
-        const auto world = game_.scene.findManagedComponent(object.native, "EFT.GameWorld", game_.managed);
+        const auto world = findManagedComponent(game_, object.native, "EFT.GameWorld");
         if (!world) continue;
         WorldCheck wc = check(now, *world, 0, object.native);
         if (wc.status == WorldCheck::Status::Ready) return wc;

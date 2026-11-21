@@ -1,6 +1,5 @@
 #pragma once
 
-#include "core/il2cpp/Managed.hpp"
 #include "core/math/Math.hpp"
 #include "core/mem/MemoryView.hpp"
 #include "core/unity/Layout.hpp"
@@ -45,9 +44,9 @@ public:
 
     Transforms(const mem::MemoryView& mem, const Layout& layout) : mem_(mem), layout_(layout) {}
 
-    // Accepts a managed UnityEngine.Transform or a native Transform, returns the native one.
-    // Structural check only (hierarchy pointer and index look plausible).
-    [[nodiscard]] std::optional<Address> resolveNative(Address transform, const il2cpp::Managed& managed) const;
+    // True if `transform` looks like a native Transform: a user pointer whose hierarchy pointer
+    // and slot index are plausible. Structural check only.
+    [[nodiscard]] bool isNative(Address transform) const;
 
     // World poses for many native transforms at once. nullopt per entry when unreadable or
     // implausible (non-finite, outside ±1e6, or exactly at the origin, which in practice means

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "core/il2cpp/Managed.hpp"
 #include "core/mem/MemoryView.hpp"
 #include "core/unity/Layout.hpp"
 
@@ -48,11 +47,6 @@ public:
     [[nodiscard]] std::optional<Address> transform(Address gameObject) const;
     [[nodiscard]] std::optional<Address> managedObject(Address component) const;
     [[nodiscard]] std::optional<Address> gameObjectOf(Address component) const;
-
-    // First component whose managed object is an instance of `className` (class or base class,
-    // see il2cpp::Managed::isInstanceOf). Returns the managed object.
-    [[nodiscard]] std::optional<Address> findManagedComponent(Address gameObject, std::string_view className,
-                                                              const il2cpp::Managed& managed) const;
 
 private:
     mem::MemoryView mem_;

@@ -1,5 +1,6 @@
 #include "TestMemory.hpp"
 
+#include "game/eft/Read.hpp"
 #include "core/unity/Scene.hpp"
 #include "core/unity/Transforms.hpp"
 
@@ -112,9 +113,12 @@ TEST_CASE("Transforms::worldPoses reads hierarchies in bulk") {
     SUBCASE("resolveNative accepts managed or native transforms") {
         const Address managedTransform = heap.alloc(0x40);
         heap.put<Address>(managedTransform + kIl2Cpp.unityObjectCachedPtr, skeleton[1]);
-        CHECK(transforms.resolveNative(managedTransform, managed) == skeleton[1]);
-        CHECK(transforms.resolveNative(skeleton[1], managed) == skeleton[1]);
-        CHECK_FALSE(transforms.resolveNative(heap.alloc(0x100), managed));
+        const eft::Game game{.mem = view, .managed = managed, .scene = unity::Scene(view, kUnity), .transforms = transforms};
+        CHECK(transforms.isNative(skeleton[1]));
+        CHECK_FALSE(transforms.isNative(managedTransform));
+        CHECK(eft::resolveNativeTransform(game, managedTransform) == skeleton[1]);
+        CHECK(eft::resolveNativeTransform(game, skeleton[1]) == skeleton[1]);
+        CHECK_FALSE(eft::resolveNativeTransform(game, heap.alloc(0x100)));
     }
 }
 
@@ -234,8 +238,9 @@ TEST_CASE("Scene components and managed component lookup") {
     CHECK(scene.transform(go) == transform);
     CHECK(scene.gameObjectOf(worldComp) == go);
     // Found by base class, regardless of its index in the component array.
-    CHECK(scene.findManagedComponent(go, "EFT.GameWorld", managed) == worldObj);
-    CHECK_FALSE(scene.findManagedComponent(go, "Player", managed));
+    const eft::Game game{.mem = view, .managed = managed, .scene = scene, .transforms = unity::Transforms(view, kUnity)};
+    CHECK(eft::findManagedComponent(game, go, "EFT.GameWorld") == worldObj);
+    CHECK_FALSE(eft::findManagedComponent(game, go, "Player"));
 
     heap.put<std::uint64_t>(go + kUnity.gameObjectComponentCount, 100000);
     CHECK(scene.components(go).empty());

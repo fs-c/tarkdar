@@ -4,6 +4,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 
 // Small read helpers shared by the game subsystems.
 namespace radar::eft {
@@ -23,6 +24,18 @@ namespace radar::eft {
     const auto gameObject = native ? game.scene.gameObjectOf(*native) : std::nullopt;
     return gameObject ? game.scene.transform(*gameObject) : std::nullopt;
 }
+
+// Native Transform for a managed UnityEngine.Transform or an already-native one, or nullopt.
+[[nodiscard]] inline std::optional<Address> resolveNativeTransform(const Game& game, Address transform) {
+    const auto native = game.managed.nativePointer(transform);
+    if (native && game.transforms.isNative(*native)) return native;
+    if (game.transforms.isNative(transform)) return transform;
+    return std::nullopt;
+}
+
+// First component of a GameObject whose managed object is an instance of `className` (the class
+// or a base class). Returns the managed object.
+[[nodiscard]] std::optional<Address> findManagedComponent(const Game& game, Address gameObject, std::string_view className);
 
 // EFT's MongoID struct (inline in templates and profiles) → its string form.
 [[nodiscard]] std::optional<std::string> readMongoId(const Game& game, Address mongoId);

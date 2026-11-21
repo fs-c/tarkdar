@@ -85,7 +85,7 @@ CameraTracker::Found CameraTracker::resolve() const {
     // The OpticCameraManager knows the optic camera for sure, and which sight is looked through.
     auto componentOf = [&](Address camera, std::string_view className) -> Address {
         const auto object = camera ? game_.scene.gameObjectOf(camera) : std::nullopt;
-        return object ? game_.scene.findManagedComponent(*object, className, game_.managed).value_or(0) : 0;
+        return object ? findManagedComponent(game_, *object, className).value_or(0) : 0;
     };
     f.opticManager = componentOf(f.optic, "OpticCameraManager");
     if (!f.opticManager)

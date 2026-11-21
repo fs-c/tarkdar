@@ -23,16 +23,11 @@ bool plausible(const Pose& pose) {
 
 }  // namespace
 
-std::optional<Address> Transforms::resolveNative(Address transform, const il2cpp::Managed& managed) const {
-    auto looksNative = [&](Address c) {
-        if (!MemoryView::isUserPointer(c)) return false;
-        const Address hierarchy = mem_.read<Address>(c + layout_.transformHierarchy);
-        const auto index = mem_.read<std::int32_t>(c + layout_.transformIndex);
-        return MemoryView::isUserPointer(hierarchy) && index >= 0 && index < kMaxIndex;
-    };
-    if (auto native = managed.nativePointer(transform); native && looksNative(*native)) return native;
-    if (looksNative(transform)) return transform;
-    return std::nullopt;
+bool Transforms::isNative(Address transform) const {
+    if (!MemoryView::isUserPointer(transform)) return false;
+    const Address hierarchy = mem_.read<Address>(transform + layout_.transformHierarchy);
+    const auto index = mem_.read<std::int32_t>(transform + layout_.transformIndex);
+    return MemoryView::isUserPointer(hierarchy) && index >= 0 && index < kMaxIndex;
 }
 
 std::optional<Pose> Transforms::compose(std::int32_t index, std::span<const TrsX> local,

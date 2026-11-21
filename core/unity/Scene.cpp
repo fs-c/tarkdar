@@ -127,13 +127,4 @@ std::optional<Address> Scene::gameObjectOf(Address component) const {
     return go;
 }
 
-std::optional<Address> Scene::findManagedComponent(Address gameObject, std::string_view className,
-                                                   const il2cpp::Managed& managed) const {
-    for (Address component : components(gameObject)) {
-        const auto object = managedObject(component);
-        if (object && managed.isInstanceOf(*object, className)) return object;
-    }
-    return std::nullopt;
-}
-
 }  // namespace radar::unity

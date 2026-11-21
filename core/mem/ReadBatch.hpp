@@ -3,6 +3,9 @@
 #include "core/mem/MemoryView.hpp"
 
 #include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <span>
 #include <type_traits>
 #include <vector>
 
@@ -51,5 +54,32 @@ private:
     MemoryView mem_;
     std::vector<Entry> entries_;
 };
+
+// One T from each address, in a single batch. Result[i] is empty if the read of addresses[i]
+// failed (or was a null address); results line up with the input.
+template <class T>
+[[nodiscard]] std::vector<std::optional<T>> readEach(const MemoryView& mem, std::span<const Address> addresses,
+                                                     Freshness freshness = Freshness::Cached) {
+    std::vector<T> values(addresses.size());
+    std::vector<ReadBatch::Handle> handles;
+    handles.reserve(addresses.size());
+    ReadBatch batch(mem);
+    for (std::size_t i = 0; i < addresses.size(); ++i) handles.push_back(batch.add(addresses[i], values[i]));
+    batch.execute(freshness);
+    std::vector<std::optional<T>> out(addresses.size());
+    for (std::size_t i = 0; i < addresses.size(); ++i)
+        if (batch.complete(handles[i])) out[i] = values[i];
+    return out;
+}
+
+// The same for a field at `offset` inside each object. A null object stays a null address
+// (a failed read) instead of becoming a read at `offset`.
+template <class T>
+[[nodiscard]] std::vector<std::optional<T>> readEach(const MemoryView& mem, std::span<const Address> objects,
+                                                     std::uint32_t offset, Freshness freshness = Freshness::Cached) {
+    std::vector<Address> addresses(objects.size());
+    for (std::size_t i = 0; i < objects.size(); ++i) addresses[i] = objects[i] ? objects[i] + offset : 0;
+    return readEach<T>(mem, addresses, freshness);
+}
 
 }  // namespace radar::mem

@@ -92,7 +92,10 @@ private:
     std::uint64_t raidId_ = 0;
     std::int64_t lastFlush_ = 0;
 
-    // Latest message per type, so a recording that starts after a raid's first snapshots still gets them.
+    // Latest message per type, with the raid it belongs to. A recording starts when the status says
+    // "in raid", which can come after the raid's first snapshots; this backfills them into the file.
+    // (MessageHub keeps the latest per type too, for clients that connect later, but without raid
+    // ids, and the recorder has to work without a hub.)
     std::map<std::string, Latest> latest_;
 
     // Players throttling.

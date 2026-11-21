@@ -58,17 +58,14 @@ std::optional<std::vector<QuestState>> Quests::read() {
     const auto entries = game_.managed.readList<Address>(list, kMaxQuests, Freshness::Fresh);
     if (!entries) return std::nullopt;
 
-    std::vector<std::int32_t> statuses(entries->size(), 0);
-    mem::ReadBatch batch(game_.mem);
-    for (std::size_t i = 0; i < entries->size(); ++i) batch.add((*entries)[i] + off::QuestsData::Status, statuses[i]);
-    batch.execute(Freshness::Fresh);
+    const auto statuses = mem::readEach<std::int32_t>(game_.mem, *entries, off::QuestsData::Status, Freshness::Fresh);
 
     std::optional<std::unordered_map<std::string, std::int32_t>> counters;  // read when first needed
     std::vector<QuestState> out;
     for (std::size_t i = 0; i < entries->size(); ++i) {
         const Address address = (*entries)[i];
-        if (!mem::MemoryView::isUserPointer(address) || !batch.complete(i)) continue;
-        if (statuses[i] != kQuestStarted && statuses[i] != kQuestAvailableForFinish) continue;
+        if (!mem::MemoryView::isUserPointer(address) || !statuses[i]) continue;
+        if (*statuses[i] != kQuestStarted && *statuses[i] != kQuestAvailableForFinish) continue;
         auto cached = entries_.find(address);
         if (cached == entries_.end()) {
             auto id = game_.managed.readStringField(address + off::QuestsData::Id, 64);
@@ -82,7 +79,7 @@ std::optional<std::vector<QuestState>> Quests::read() {
         }
         const Address set = readPointer(game_, address + off::QuestsData::CompletedConditions, Freshness::Fresh);
         auto completed = set ? readConditions(set) : std::nullopt;
-        QuestState q{.id = entry.id, .status = statuses[i], .completedConditions = std::move(completed)};
+        QuestState q{.id = entry.id, .status = *statuses[i], .completedConditions = std::move(completed)};
         if (entry.tmpl) {
             q.name = entry.tmpl->name;
             q.traderId = entry.tmpl->traderId;
@@ -199,20 +196,20 @@ std::unordered_map<std::string, std::int32_t> Quests::readCounters(Address profi
     const auto entries = dict ? game_.managed.readDictionary<MongoId, Address>(dict, kMaxCounters, Freshness::Fresh)
                               : std::nullopt;
     if (!entries) return out;
-    std::vector<std::int32_t> values(entries->size(), 0);
-    mem::ReadBatch batch(game_.mem);
-    for (std::size_t i = 0; i < entries->size(); ++i) batch.add((*entries)[i].second + off::TaskConditionCounter::Value, values[i]);
-    batch.execute(Freshness::Fresh);
+    std::vector<Address> counters;
+    counters.reserve(entries->size());
+    for (const auto& entry : *entries) counters.push_back(entry.second);
+    const auto values = mem::readEach<std::int32_t>(game_.mem, counters, off::TaskConditionCounter::Value, Freshness::Fresh);
     for (std::size_t i = 0; i < entries->size(); ++i) {
         const Address str = (*entries)[i].first.stringId;
-        if (!batch.complete(i) || !mem::MemoryView::isUserPointer(str)) continue;
+        if (!values[i] || !mem::MemoryView::isUserPointer(str)) continue;
         auto cached = counterIds_.find(str);
         if (cached == counterIds_.end()) {
             auto id = game_.managed.readString(str, 64);
             if (!id) continue;
             cached = counterIds_.emplace(str, std::move(*id)).first;
         }
-        out[cached->second] = values[i];
+        out[cached->second] = *values[i];
     }
     return out;
 }

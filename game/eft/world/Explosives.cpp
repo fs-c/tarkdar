@@ -60,15 +60,13 @@ void Explosives::updateGrenades() {
     }
 
     // Destroyed flags, then positions of the live ones.
-    std::vector<std::pair<Address, std::uint8_t>> destroyed;
-    for (const auto& [g, e] : grenades_) destroyed.emplace_back(g, 0);
-    mem::ReadBatch batch(game_.mem);
-    for (auto& [g, flag] : destroyed) batch.add(g + off::Throwable::_isDestroyed, flag);
-    batch.execute(Freshness::Fresh);
-    for (const auto& [g, flag] : destroyed) {
-        if (flag == 0) continue;
-        changed |= grenades_.erase(g) > 0;
-        destroyed_.insert(g);
+    std::vector<Address> tracked;
+    for (const auto& [g, e] : grenades_) tracked.push_back(g);
+    const auto flags = mem::readEach<std::uint8_t>(game_.mem, tracked, off::Throwable::_isDestroyed, Freshness::Fresh);
+    for (std::size_t i = 0; i < tracked.size(); ++i) {
+        if (flags[i].value_or(0) == 0) continue;
+        changed |= grenades_.erase(tracked[i]) > 0;
+        destroyed_.insert(tracked[i]);
     }
 
     std::vector<GrenadeEntry*> live;
@@ -109,34 +107,30 @@ void Explosives::updateTripwires() {
     candidates = distinctValid(candidates);
 
     // Type, then state and endpoints of the tripwires.
-    std::vector<std::int32_t> types(candidates.size());
-    mem::ReadBatch typeBatch(game_.mem);
-    for (std::size_t i = 0; i < candidates.size(); ++i)
-        typeBatch.add(candidates[i] + off::SynchronizableObject::Type, types[i]);
-    typeBatch.execute(Freshness::Fresh);
+    const auto types = mem::readEach<std::int32_t>(game_.mem, candidates, off::SynchronizableObject::Type, Freshness::Fresh);
 
     struct Wire {
         Address object;
         std::int32_t state = 0;
         Vec3 from, to;
+        mem::ReadBatch::Handle stateRead = 0, fromRead = 0, toRead = 0;
     };
     std::vector<Wire> wires;
     for (std::size_t i = 0; i < candidates.size(); ++i)
-        if (typeBatch.complete(i) && types[i] == kTripwireType)
+        if (types[i] == kTripwireType)
             wires.push_back(Wire{.object = candidates[i], .state = 0, .from = {}, .to = {}});
     if (wires.size() > kMaxObjects) return;
     mem::ReadBatch batch(game_.mem);
     for (auto& w : wires) {
-        batch.add(w.object + off::TripwireSynchronizableObject::_tripwireState, w.state);
-        batch.add(w.object + off::TripwireSynchronizableObject::FromPosition, w.from);
-        batch.add(w.object + off::TripwireSynchronizableObject::ToPosition, w.to);
+        w.stateRead = batch.add(w.object + off::TripwireSynchronizableObject::_tripwireState, w.state);
+        w.fromRead = batch.add(w.object + off::TripwireSynchronizableObject::FromPosition, w.from);
+        w.toRead = batch.add(w.object + off::TripwireSynchronizableObject::ToPosition, w.to);
     }
     batch.execute(Freshness::Fresh);
 
     std::unordered_map<Address, Tripwire> next;
-    for (std::size_t i = 0; i < wires.size(); ++i) {
-        Wire& w = wires[i];
-        const bool read = batch.complete(i * 3) && batch.complete(i * 3 + 1) && batch.complete(i * 3 + 2);
+    for (Wire& w : wires) {
+        const bool read = batch.complete(w.stateRead) && batch.complete(w.fromRead) && batch.complete(w.toRead);
         if (!read || (w.state != kTripwireWait && w.state != kTripwireActive)) continue;
         w.from.y += kTripwireYOffset;
         w.to.y += kTripwireYOffset;

@@ -80,19 +80,16 @@ std::optional<Vehicle> Vehicles::readBtr() {
     const Address gunner = turret ? readPointer(game_, turret + off::BTRTurretView::attachedBot, Freshness::Fresh) : 0;
 
     const auto refs = players_.refs();
-    std::vector<std::int32_t> states(refs->size(), 0);
-    mem::ReadBatch batch(game_.mem);
-    for (std::size_t i = 0; i < refs->size(); ++i) {
-        const auto& r = (*refs)[i];
-        batch.add(r.instance + (r.kind == PlayerKind::Observed ? off::ObservedPlayerView::BtrState : off::Player::_btrState),
-                  states[i]);
-    }
-    batch.execute(Freshness::Fresh);
+    std::vector<Address> stateAddresses;
+    for (const auto& r : *refs)
+        stateAddresses.push_back(
+            r.instance + (r.kind == PlayerKind::Observed ? off::ObservedPlayerView::BtrState : off::Player::_btrState));
+    const auto states = mem::readEach<std::int32_t>(game_.mem, stateAddresses, Freshness::Fresh);
     for (std::size_t i = 0; i < refs->size(); ++i) {
         const auto& r = (*refs)[i];
         if (r.dead) continue;
         if (gunner && r.instance == gunner) btr.occupants.push_back({r.id, VehicleOccupant::Seat::Gunner});
-        else if (batch.complete(i) && states[i] >= kGoIn && states[i] <= kGoOut)
+        else if (states[i] && *states[i] >= kGoIn && *states[i] <= kGoOut)
             btr.occupants.push_back({r.id, VehicleOccupant::Seat::Passenger});
     }
     // refs are ordered by id, so occupants are too.

@@ -1,6 +1,7 @@
 #include "FakeBackend.hpp"
 #include "core/mem/MemoryView.hpp"
 #include "core/mem/Pe.hpp"
+#include "core/mem/ReadBatch.hpp"
 #include "core/mem/Target.hpp"
 
 #include <doctest/doctest.h>
@@ -165,6 +166,40 @@ TEST_CASE("Target attach state machine") {
         CHECK(target.generation() == 2);
         CHECK(target.pid().value_or(0) == newPid);
     }
+}
+
+TEST_CASE("readEach reads one value per address and reports failures per slot") {
+    OPEN_FAKE(fake);
+    MemoryView mem(fake, kPid);
+    fake.writeValue<std::int32_t>(kPid, 0x20000, 7);
+    fake.writeValue<std::int32_t>(kPid, 0x30000, -3);
+
+    const std::array<Address, 4> addresses{0x20000, 0x90000 /* unmapped */, 0, 0x30000};
+    const auto values = readEach<std::int32_t>(mem, addresses, Freshness::Fresh);
+    REQUIRE(values.size() == 4);
+    CHECK(values[0] == 7);
+    CHECK_FALSE(values[1].has_value());
+    CHECK_FALSE(values[2].has_value());
+    CHECK(values[3] == -3);
+
+    CHECK(readEach<std::int32_t>(mem, std::span<const Address>{}).empty());
+}
+
+TEST_CASE("readEach with an offset reads a field of each object and keeps null objects failed") {
+    OPEN_FAKE(fake);
+    MemoryView mem(fake, kPid);
+    fake.writeValue<std::uint64_t>(kPid, 0x20010, 0xAAAA);
+    fake.writeValue<std::uint64_t>(kPid, 0x30010, 0xBBBB);
+    fake.writeValue<std::uint64_t>(kPid, 0x10, 0xCCCC);  // what a null object + offset would hit
+
+    const std::array<Address, 3> objects{0x20000, 0, 0x30000};
+    const auto before = fake.readCalls();
+    const auto values = readEach<std::uint64_t>(mem, objects, 0x10);
+    REQUIRE(values.size() == 3);
+    CHECK(values[0] == 0xAAAA);
+    CHECK_FALSE(values[1].has_value());
+    CHECK(values[2] == 0xBBBB);
+    CHECK(fake.readCalls() - before == 1);  // one batch, not one read per object
 }
 
 #undef OPEN_FAKE

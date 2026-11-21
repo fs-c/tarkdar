@@ -67,16 +67,13 @@ void Loot::scan(Clock::time_point now) {
     }
     // Address reuse: an entry whose class changed is now a different object.
     {
-        std::vector<std::pair<Address, Address>> classes;
+        std::vector<Address> objects;
         for (const auto& [a, e] : entries_)
-            if (live_.contains(a)) classes.emplace_back(a, 0);
-        mem::ReadBatch batch(game_.mem);
-        for (auto& [a, klass] : classes) batch.add(a + game_.managed.layout().objectKlass, klass);
-        batch.execute(Freshness::Fresh);
-        for (std::size_t i = 0; i < classes.size(); ++i) {
-            const auto& [a, klass] = classes[i];
-            if (batch.complete(i) && klass != entries_.at(a).klass) {
-                entries_.erase(a);
+            if (live_.contains(a)) objects.push_back(a);
+        const auto classes = mem::readEach<Address>(game_.mem, objects, game_.managed.layout().objectKlass, Freshness::Fresh);
+        for (std::size_t i = 0; i < objects.size(); ++i) {
+            if (classes[i] && *classes[i] != entries_.at(objects[i]).klass) {
+                entries_.erase(objects[i]);
                 dirty_ = true;
             }
         }

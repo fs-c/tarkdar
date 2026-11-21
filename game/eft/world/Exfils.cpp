@@ -178,17 +178,17 @@ bool Exfils::retryNames() {
 
 bool Exfils::readStatus() {
     if (entries_.empty()) return false;
-    std::vector<std::pair<Entry*, std::int32_t>> reads;
-    reads.reserve(entries_.size());
-    for (auto& [instance, e] : entries_) reads.emplace_back(&e, 0);
-    mem::ReadBatch batch(game_.mem);
-    for (auto& [e, status] : reads) batch.add(e->instance + off::ExfiltrationPoint::Status, status);
-    batch.execute(Freshness::Fresh);
+    std::vector<Entry*> exits;
+    std::vector<Address> instances;
+    for (auto& [instance, e] : entries_) {
+        exits.push_back(&e);
+        instances.push_back(e.instance);
+    }
+    const auto statuses = mem::readEach<std::int32_t>(game_.mem, instances, off::ExfiltrationPoint::Status, Freshness::Fresh);
     bool changed = false;
-    for (std::size_t i = 0; i < reads.size(); ++i) {
-        auto& [e, status] = reads[i];
-        if (batch.complete(i) && status != e->exfil.status) {
-            e->exfil.status = status;
+    for (std::size_t i = 0; i < exits.size(); ++i) {
+        if (statuses[i] && *statuses[i] != exits[i]->exfil.status) {
+            exits[i]->exfil.status = *statuses[i];
             changed = true;
         }
     }

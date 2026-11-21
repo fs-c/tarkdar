@@ -72,13 +72,13 @@ std::unordered_map<std::string, std::string> lookupTexts(const Game& game, std::
     std::vector<std::int32_t> length(entries->size(), 0);  // 0: unreadable
     std::size_t noLength = 0;
     {
-        mem::ReadBatch batch(game.mem);
-        std::vector<std::pair<std::size_t, mem::ReadBatch::Handle>> reads;
-        for (std::size_t i = 0; i < entries->size(); ++i)
-            if (mem::MemoryView::isUserPointer((*entries)[i].first))
-                reads.emplace_back(i, batch.add((*entries)[i].first + L.stringLength, length[i]));
-        batch.execute();
-        for (const auto& [i, h] : reads) noLength += !batch.complete(h);
+        std::vector<Address> keyStrings;  // 0 where the key isn't a pointer: not read
+        for (const auto& entry : *entries) keyStrings.push_back(mem::MemoryView::isUserPointer(entry.first) ? entry.first : 0);
+        const auto lengths = mem::readEach<std::int32_t>(game.mem, keyStrings, L.stringLength);
+        for (std::size_t i = 0; i < lengths.size(); ++i) {
+            if (lengths[i]) length[i] = *lengths[i];
+            else noLength += keyStrings[i] != 0;
+        }
     }
     std::vector<std::size_t> candidates;
     for (std::size_t i = 0; i < entries->size(); ++i)

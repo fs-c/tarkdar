@@ -7,11 +7,11 @@
 
 import { type Ref, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { Map3D, type MapStats, type MapView } from "../map3d/Map3D";
-import type { MapSettings } from "../map3d/settings";
+import { type MapSettings, mapColors } from "../map3d/settings";
 import type { Projector } from "../draw/projector";
 import type { WorldPos } from "../model/protocol";
 import { type Scene, renderMarkers } from "../draw/render";
-import { ui } from "../draw/theme";
+import { useTheme } from "../theme";
 import { FloorPicker } from "./FloorPicker";
 import { NorthButton } from "./NorthButton";
 import s from "./Radar.module.css";
@@ -74,6 +74,7 @@ const FLY_ZOOM_ABOVE = 600;
 
 
 export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, onTurn, onTap, onStats, ref }: Props) {
+  const theme = useTheme(); // a new theme: the map's colours below, the markers with the render it causes
   const hostRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const mapRef = useRef<Map3D | null>(null);
@@ -121,7 +122,7 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
   // The map: created once per dataset.
   useEffect(() => {
     const host = hostRef.current!;
-    const map = new Map3D(host, Number.parseInt(ui.bg.slice(1), 16));
+    const map = new Map3D(host, mapColors(theme));
     mapRef.current = map;
     // A new scene: following moves the camera to it first, then map and markers are drawn.
     map.onFrame = (now) => {
@@ -174,6 +175,10 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- draw only reads refs
   }, [url, up]);
+
+  useEffect(() => {
+    mapRef.current?.setColors(mapColors(theme));
+  }, [theme]);
 
   useEffect(() => {
     if (status.progress === null) mapRef.current?.setSettings(settings);

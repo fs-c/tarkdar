@@ -1,9 +1,11 @@
-// Settings view of the side panel: the overlay, then debugging tools (DebugPanel). (How the map looks: MapPanel.)
+// Settings view of the side panel: the theme, the overlay, then debugging tools (DebugPanel). (How the map looks: MapPanel.)
 
 import type { OverlayPrefs } from "../overlay/marks";
 import { DebugSections, type DebugProps } from "./DebugPanel";
-import { PanelBody, Section, SliderRow, ToggleRow } from "../ui";
+import { PanelBody, Section, Segmented, SliderRow, ToggleRow } from "../ui";
 import type { SetStored } from "../persist";
+import { useThemePrefs } from "../persist/prefs";
+import { THEMES } from "../theme";
 
 interface Props {
   /** The overlay: whether the backend runs it, its settings, and how many things it's told to mark. */
@@ -14,9 +16,20 @@ interface Props {
 export function SettingsPanel(p: Props) {
   return (
     <PanelBody>
+      <AppearanceSection />
       <OverlaySection {...p.overlay} />
       <DebugSections {...p.debug} />
     </PanelBody>
+  );
+}
+
+/** The theme: applied at once (theme/sync.ts follows the stored choice). */
+function AppearanceSection() {
+  const [{ id }, setPrefs] = useThemePrefs();
+  return (
+    <Section title="Appearance">
+      <Segmented label="Theme" options={THEMES.map((t) => ({ value: t.id, label: t.name }))} value={id} onChange={(next) => setPrefs({ id: next })} />
+    </Section>
   );
 }
 

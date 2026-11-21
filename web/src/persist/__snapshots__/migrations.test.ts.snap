@@ -355,6 +355,18 @@ exports[`radar.sidebarSize > from version 1 1`] = `
 }
 `;
 
+exports[`radar.theme > from version 0 1`] = `
+{
+  "id": "light",
+}
+`;
+
+exports[`radar.theme > from version 1 1`] = `
+{
+  "id": "amber",
+}
+`;
+
 exports[`radar.trails > from version 0 1`] = `
 {
   "all": true,

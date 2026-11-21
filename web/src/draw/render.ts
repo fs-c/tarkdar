@@ -6,6 +6,8 @@ import { exfilStatus } from "../model/exfils";
 import { type Exfil, type ExplosivesData, Joint, type LootEntry, type Player, type Vehicle, type WorldPos } from "../model/protocol";
 import { type PlayerTypeInfo, bossGroups, playerType } from "../model/roles";
 import { COLORS, DEFAULT_COLOR, EMPHASIS_SCALE, MARKER_SIZE, type PlayerLook, exfilColor, playerLook } from "./style";
+import { getTheme } from "../theme/current";
+import { type CanvasFont, canvasFont, textBoxHeight, textWidth } from "../theme/font";
 import { EXFIL_STATUS_DETAIL, LABEL_RANK } from "./declutter";
 import { BASE, type Style, isShown, labelAt } from "../rules/rules";
 import type { SubjectKind } from "../list/rows";
@@ -81,8 +83,9 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
   drawRings(ctx, pr, scene, styleOf);
   drawLabels(ctx, labels, local?.pos?.[1] ?? null);
 
+  const { canvas: tc } = getTheme();
   if (scene.marked?.length) {
-    ctx.strokeStyle = "#ffffff";
+    ctx.strokeStyle = tc.selection;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([2, 3]);
     for (const pos of scene.marked) {
@@ -97,8 +100,8 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
 
   if (scene.hovered) {
     const [x, y] = pr.toScreen(scene.hovered);
-    ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
-    ctx.strokeStyle = "#ffffff";
+    ctx.fillStyle = tc.hoverFill;
+    ctx.strokeStyle = tc.selection;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(x, y, 18, 0, Math.PI * 2);
@@ -108,7 +111,7 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
 
   if (scene.selected) {
     const [x, y] = pr.toScreen(scene.selected);
-    ctx.strokeStyle = "#ffffff";
+    ctx.strokeStyle = tc.selection;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
@@ -128,7 +131,7 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
     ctx.moveTo(x, y - 7);
     ctx.lineTo(x, y + 7);
     ctx.stroke();
-    ctx.font = "bold 11px sans-serif";
+    ctx.font = canvasFont({ size: 11, bold: true });
     ctx.fillText(String(i + 1), x + 6, y - 6);
   });
 }
@@ -262,7 +265,7 @@ function drawPlayer(
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "#000";
+    ctx.strokeStyle = getTheme().canvas.outline;
     ctx.lineWidth = 1;
     ctx.stroke();
     drawHalo(ctx, x, y, r, look);
@@ -374,7 +377,7 @@ function drawBody(
   ctx.lineCap = "round";
   // One outline around the whole figure (all outlines first: none cuts across a joint), then the
   // limbs far to near, the far ones darker.
-  ctx.strokeStyle = ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+  ctx.strokeStyle = ctx.fillStyle = getTheme().canvas.bodyOutline;
   for (const part of parts) part.draw(true);
   for (const part of parts) {
     const shade = far > near ? ((part.depth - near) / (far - near)) * BODY_FAR_SHADE : 0;
@@ -405,7 +408,7 @@ interface LabelRequest {
   x: number;
   y: number;
   texts: string[];
-  font: string;
+  font: CanvasFont;
   color: string;
   alpha?: number;
   /** Distance from the marker's centre. */
@@ -428,23 +431,8 @@ export function heightTag(height: number | undefined, localY: number | null): st
   return text && ` ${text}`;
 }
 
-const LOOT_FONT = "10px sans-serif";
+const LOOT_FONT: CanvasFont = { size: 10 };
 const LABEL_GAP = 6;
-const textWidths = new Map<string, number>();
-
-function textWidth(ctx: CanvasRenderingContext2D, font: string, text: string): number {
-  const key = `${font}|${text}`;
-  let w = textWidths.get(key);
-  if (w === undefined) {
-    ctx.font = font;
-    w = ctx.measureText(text).width;
-    textWidths.set(key, w);
-  }
-  return w;
-}
-
-/** Box height for a font: its size in px, plus a little. */
-const labelHeight = (font: string) => Number(/(\d+)px/.exec(font)?.[1] ?? 10) + 2;
 
 function drawLoot(ctx: CanvasRenderingContext2D, pr: Projector, scene: Scene, labels: LabelRequest[]): void {
   const { loot, catalog, questLabels, styles } = scene;
@@ -543,14 +531,14 @@ function drawLabels(ctx: CanvasRenderingContext2D, labels: LabelRequest[], local
   ctx.strokeStyle = COLORS.labelHalo;
   const placer = new LabelPlacer();
   const draw = (req: LabelRequest, text: string, rect: Rect) => {
-    ctx.font = req.font;
+    ctx.font = canvasFont(req.font);
     ctx.globalAlpha = req.alpha ?? 1;
     ctx.fillStyle = req.color;
     ctx.strokeText(text, rect.x, rect.y + rect.h / 2);
     ctx.fillText(text, rect.x, rect.y + rect.h / 2);
   };
   const spots = (req: LabelRequest, text: string) => {
-    const all = candidatesAround(req.x, req.y, textWidth(ctx, req.font, text), labelHeight(req.font), req.gap);
+    const all = candidatesAround(req.x, req.y, textWidth(ctx, req.font, text), textBoxHeight(req.font), req.gap);
     return req.fixed ? [all[0]] : all;
   };
   for (const req of labels) {
@@ -641,7 +629,7 @@ function drawExfil(ctx: CanvasRenderingContext2D, pr: Projector, e: Exfil, style
   // Zoomed out: just the name (the colour still tells the status).
   const full = `${e.name}${e.kind === "secret" ? " (secret)" : ` · ${status.label}`}`;
   const texts = pr.detail >= EXFIL_STATUS_DETAIL ? [full, e.name] : [e.name];
-  labels.push({ x, y, height: e.pos[1], texts, font: "11px sans-serif", color, gap: 10, rank: LABEL_RANK.exfil, priority: 0, forced: shown.forced, fixed: true });
+  labels.push({ x, y, height: e.pos[1], texts, font: { size: 11 }, color, gap: 10, rank: LABEL_RANK.exfil, priority: 0, forced: shown.forced, fixed: true });
 }
 
 /** BTR hull footprint (m): half width, half length. */
@@ -684,7 +672,7 @@ function drawVehicle(ctx: CanvasRenderingContext2D, pr: Projector, v: Vehicle, l
   const aboard = v.occupants.filter((o) => o.seat === "passenger").length;
   const name = v.state === 2 ? "BTR" : "BTR (stopped)";
   const texts = aboard ? [`${name} · ${aboard} aboard`, `BTR · ${aboard}`] : [name, "BTR"];
-  labels.push({ x: cx, y: cy, height: v.pos[1], texts, font: "bold 11px sans-serif", color: COLORS.vehicle, gap: 14, rank: LABEL_RANK.exfil, priority: 1, forced: true, fixed: true });
+  labels.push({ x: cx, y: cy, height: v.pos[1], texts, font: { size: 11, bold: true }, color: COLORS.vehicle, gap: 14, rank: LABEL_RANK.exfil, priority: 1, forced: true, fixed: true });
 }
 
 function drawExplosives(ctx: CanvasRenderingContext2D, pr: Projector, ex: ExplosivesData, styleOf: (kind: "grenade" | "tripwire", id: number) => Style): void {

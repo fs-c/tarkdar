@@ -18,7 +18,7 @@ import type { Projector } from "../draw/projector";
 import type { WorldPos } from "../model/protocol";
 import { type Bounds, loadMapData, type MapData } from "./dataset";
 import { InstanceRenderer } from "./instances";
-import { DEFAULT_MAP_SETTINGS, type MapSettings, PLAN_PALETTES } from "./settings";
+import { DEFAULT_MAP_SETTINGS, type MapColors, type MapSettings, PLAN_PALETTES } from "./settings";
 import { Stage } from "./stage";
 
 /** Where the camera is (map debugging). */
@@ -62,8 +62,6 @@ const NO_MAP_BOUNDS = { min: [-500, 0, -500], max: [500, 0, 500] } as const;
 const GRID_SIZE = 10_000;
 const GRID_STEP = 50;
 const GRID_MAJOR = 250;
-const GRID_COLOR = 0x1f2a33;
-const GRID_MAJOR_COLOR = 0x2b3945;
 
 /** a - b, in (-pi, pi]. */
 function angleDifference(a: number, b: number): number {
@@ -118,7 +116,7 @@ export class Map3D {
 
   constructor(
     private readonly container: HTMLElement,
-    private readonly background: number,
+    private colors: MapColors,
   ) {
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(container);
@@ -164,7 +162,7 @@ export class Map3D {
     const data = await loadMapData(base, onProgress, abort.signal);
     if (abort.signal.aborted) return;
 
-    const stage = new Stage(this.container, data.index.categories, this.background, () => this.requestRender());
+    const stage = new Stage(this.container, data.index.categories, this.colors.background, () => this.requestRender());
     const terrain = data.categoryId("terrain");
     let low = Infinity;
     let high = -Infinity;
@@ -183,18 +181,36 @@ export class Map3D {
     this.start(stage, data.index.focusBounds);
   }
 
-  /** No map: lines along world x and z, at ground level. */
-  private showGrid(): void {
-    const stage = new Stage(this.container, [], this.background, () => this.requestRender());
-    stage.tileCache = false; // a few hundred lines: nothing to save
+  private addGrid(stage: Stage): void {
     const grid = (step: number, color: number) => {
       const helper = new THREE.GridHelper(GRID_SIZE, GRID_SIZE / step, color, color);
       (helper.material as THREE.LineBasicMaterial).toneMapped = false;
       return helper;
     };
-    this.grid = [grid(GRID_STEP, GRID_COLOR), grid(GRID_MAJOR, GRID_MAJOR_COLOR)];
+    this.grid = [grid(GRID_STEP, this.colors.grid), grid(GRID_MAJOR, this.colors.gridMajor)];
     this.grid[1]!.renderOrder = 1; // over the minor lines it shares
     stage.overlay.add(...this.grid);
+  }
+
+  /** A new theme: the background and the grid change in place, the map stays. */
+  setColors(colors: MapColors): void {
+    this.colors = colors;
+    const stage = this.stage;
+    if (!stage) return;
+    stage.setBackground(colors.background);
+    if (this.grid.length) {
+      stage.overlay.remove(...this.grid);
+      for (const g of this.grid) g.dispose();
+      this.addGrid(stage);
+    }
+    this.requestRender();
+  }
+
+  /** No map: lines along world x and z, at ground level. */
+  private showGrid(): void {
+    const stage = new Stage(this.container, [], this.colors.background, () => this.requestRender());
+    stage.tileCache = false; // a few hundred lines: nothing to save
+    this.addGrid(stage);
     this.start(stage, { min: [...NO_MAP_BOUNDS.min], max: [...NO_MAP_BOUNDS.max] });
   }
 

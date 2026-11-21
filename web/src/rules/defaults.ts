@@ -2,11 +2,11 @@
 // Players by type, loose items by value per slot, the other kinds of loot, exfils, explosives. The rule
 // store (rules/store.ts) starts from these; each can be changed, moved, duplicated and removed there,
 // and reset by category to (or restored from) its default.
+//
+// Colours are plain hex: rules are not themed (theme/), a marker looks the same in every theme.
 
 import { VALUE_TIERS, formatPrice } from "../model/items";
 import type { SubjectKind } from "../list/rows";
-import { COLORS } from "../draw/style";
-import { ui } from "../draw/theme";
 import type { Emphasis, Rule, StyleProps } from "./rules";
 
 /**
@@ -58,12 +58,12 @@ const k = (v: number) => formatPrice(v).toLowerCase();
  * first as you zoom out (unpriced ones count as cheap).
  */
 export const DEFAULT_RULES: readonly DefaultRule[] = [
-  player("usec", "usec", "USEC", ui.link),
-  player("bear", "bear", "BEAR", ui.danger),
-  player("pscav", "p-scav", "Player scavs", ui.gold),
-  player("scav", "ai-scav", "AI scavs", ui.gold, "faint"),
+  player("usec", "usec", "USEC", "#4aa3ff"),
+  player("bear", "bear", "BEAR", "#ff5a52"),
+  player("pscav", "p-scav", "Player scavs", "#f5c542"),
+  player("scav", "ai-scav", "AI scavs", "#f5c542", "faint"),
   player("boss", "boss", "Bosses", "#ff4fd8", "loud"),
-  player("guard", "follower", "Guards", ui.warn, "strong"),
+  player("guard", "follower", "Guards", "#ff9f40", "strong"),
   player("raider", "raider", "Raiders", "#4de1ff", "strong"),
   player("rogue", "rogue", "Rogues", "#38e8c0", "strong"),
   player("cultist", "cultist", "Cultists", "#b26bff", "strong"),
@@ -72,15 +72,15 @@ export const DEFAULT_RULES: readonly DefaultRule[] = [
   player("other", "other", "Other players", "#c0c0c0"),
   rule("Loot", "item.all", "Items", "is:item", { color: "#e8eef2", emphasis: "normal", show: SHOW_LEVELS.unlessFar }),
   rule("Loot", "item.cheap", "Cheap items", `is:item value<${k(VALUE_TIERS.mid)}`, { color: "#8b969f", emphasis: "faint", show: SHOW_LEVELS.mid }),
-  rule("Loot", "item.valuable", "Valuable items", `is:item value>=${k(VALUE_TIERS.high)}`, { color: ui.gold, emphasis: "strong", show: SHOW_LEVELS.always }),
-  rule("Loot", "quest", "Quest items", "is:quest", { color: ui.quest, show: SHOW_LEVELS.always }),
+  rule("Loot", "item.valuable", "Valuable items", `is:item value>=${k(VALUE_TIERS.high)}`, { color: "#f5c542", emphasis: "strong", show: SHOW_LEVELS.always }),
+  rule("Loot", "quest", "Quest items", "is:quest", { color: "#ffd84d", show: SHOW_LEVELS.always }),
   // Ordinary items a started quest still needs (to find, hand over or plant): over the value rules.
-  rule("Loot", "item.quest-needed", "Needed for quests", "is:item is:needed", { color: ui.quest, emphasis: "strong", show: SHOW_LEVELS.always }),
+  rule("Loot", "item.quest-needed", "Needed for quests", "is:item is:needed", { color: "#ffd84d", emphasis: "strong", show: SHOW_LEVELS.always }),
   rule("Containers", "container", "Containers", "is:container", { color: "#b08a5a", show: SHOW_LEVELS.always }),
   rule("Containers", "airdrop", "Airdrops", "is:airdrop", { color: "#4de1ff", show: SHOW_LEVELS.always }),
   rule("Containers", "corpse", "Corpses", "is:corpse", { color: "#9a9a9a", show: SHOW_LEVELS.always }),
   rule("Exfils", "exfil", "Exfils", "is:exfil", { show: SHOW_LEVELS.always }),
-  rule("Explosives", "explosive", "Grenades and tripwires", "is:explosive", { color: COLORS.danger, show: SHOW_LEVELS.always }),
+  rule("Explosives", "explosive", "Grenades and tripwires", "is:explosive", { color: "#ff3b30", show: SHOW_LEVELS.always }),
 ];
 
 /** Categories hidden out of the box (the map's loot and container layers were off by default). */

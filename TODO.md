@@ -31,13 +31,9 @@
     - tools
         - `t3d/unity.py` `extract_scene` is a 320-line closure forest; split it when the game files are at hand (verify with a byte-identical cache)
         - dataset fields `chunks[].level/error/cell` are written but nothing reads them
-- make frontend themeable
-    - want to play around with some different colors/fonts
-    - not started; what's in the way (2026-11 review):
-        - the palette (`draw/theme.ts`) is a compile-time constant read at module load by `draw/style.ts`, `rules/defaults.ts`, `Radar.tsx` (map background) and `PovPage.tsx`; needs a runtime theme that canvas and map follow
-        - fonts and other tokens live in `styles/global.css` only; canvas fonts are literals (`"11px sans-serif"`) in `draw/style.ts`, `draw/render.ts`, `PovPage.tsx`; the text-width cache is keyed by font string and never cleared
-        - stored rules copy their colours as hex (`rules/store.ts`), so a theme can't recolour them and changed defaults never reach existing users: decide whether rule colours become theme tokens
-        - colours outside the palette: `rules/defaults.ts`, `draw/style.ts`, `draw/render.ts`, `highlight/match.ts`, `map3d/Map3D.ts` (grid), `map3d/stage.ts` (`LOOKS`), `StyleSwitch.tsx`, `RuleRow.tsx`; shadows and some radii are literals in CSS; `color-scheme: dark` is fixed
+- themes (`web/src/theme/themes.ts`, picker in Settings): play around with colors/fonts
+    - a theme covers the chrome, fonts and the canvas's label/halo/selection/outline colours; rule colours, highlight colours and the map's plan palettes are deliberately not themed
+    - in the light theme, labels drawn in a fixed marker colour (neutral exfils, `#e8eef2`) are low-contrast
 - quest text from the global locale table (`TODO(quest-locale)` in `game/eft/world/Quests.cpp`)
     - quests read their own English-only dictionaries; exfil names already use the game's text table in the player's language
     - check in a raid whether that table has `"<quest id> name"` and the condition ids; if so, drop the separate reader

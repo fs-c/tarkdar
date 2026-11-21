@@ -4,12 +4,13 @@ import { emptyCatalog } from "../model/items";
 import type { AnyRow, SubjectKind } from "../list/rows";
 import type { PlayerType } from "../model/roles";
 import { EMPHASIS_SCALE, MARKER_SIZE } from "../draw/style";
-import { ui } from "../draw/theme";
 import { DEFAULT_RULES } from "./defaults";
 import { type Emphasis, type Style, applyRules } from "./rules";
 
 // The looks as they were before they became rules (style.ts, f2193bc): the default rules must give
 // exactly these (loose items: by value per slot now).
+// What the colours were when they came from the UI palette.
+const ui = { link: "#4aa3ff", danger: "#ff5a52", gold: "#f5c542", warn: "#ff9f40", quest: "#ffd84d" };
 const OLD_PLAYER_TYPES_LOOK: Record<Exclude<PlayerType, "self">, { color: string; prominence: "minor" | "normal" | "special" | "boss" }> = {
   usec: { color: ui.link, prominence: "normal" },
   bear: { color: ui.danger, prominence: "normal" },

@@ -536,6 +536,13 @@ export class Stage {
     this.content++;
   }
 
+  /** The page behind the map (a new theme). */
+  setBackground(background: number): void {
+    (this.scene.background as THREE.Color).set(background); // the tiles' scene shares this colour
+    this.outline.uniforms.uBackground!.value.set(background);
+    this.invalidate(); // tiles were painted on the old one
+  }
+
   /** The area (x and z) outside of which there is no map. */
   setExtent(bounds: Bounds): void {
     this.extent = bounds;

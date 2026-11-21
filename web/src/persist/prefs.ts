@@ -7,6 +7,7 @@
 import { DEFAULT_EVENT_GROUPS, type EventGroup } from "../stream/events";
 import { DEFAULT_MAP_SETTINGS, type MapSettings, type MapStyle, type PlanPalette } from "../map3d/settings";
 import { DEFAULT_OVERLAY_PREFS, type OverlayPrefs } from "../overlay/marks";
+import { DEFAULT_THEME_ID, THEME_IDS } from "../theme/themes";
 import { defineStore, flatNormalize, isHexColor, isObject, oneOf, usePersisted } from "./";
 
 
@@ -186,3 +187,14 @@ export const sidebarSizeStore = defineStore<{ width: number }>({
 });
 
 export const useSidebarSize = () => usePersisted(sidebarSizeStore);
+
+/** The theme (theme/themes.ts), by id: this screen's. An id that isn't a theme (any more) is the default. */
+export const themeStore = defineStore<{ id: string }>({
+  key: "radar.theme",
+  version: 1,
+  scope: "device",
+  defaults: () => ({ id: DEFAULT_THEME_ID }),
+  normalize: (data) => ({ id: oneOf(isObject(data) ? data.id : undefined, THEME_IDS, DEFAULT_THEME_ID) }),
+});
+
+export const useThemePrefs = () => usePersisted(themeStore);

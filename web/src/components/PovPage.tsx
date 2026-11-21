@@ -8,7 +8,8 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Connection, type RadarState, wsUrl } from "../stream/connection";
 import { type ScopeView, mainView, project, scopeView, toPixels } from "../pov/projection";
 import type { CameraData, WorldPos } from "../model/protocol";
-import { ui } from "../draw/theme";
+import { canvasFont } from "../theme/font";
+import { getTheme, useTheme } from "../theme";
 import s from "./PovPage.module.css";
 
 /** Player height drawn (m). */
@@ -20,7 +21,6 @@ const GRID_STEP = 5;
 /** Radius of the lens outline drawn while scoped, as a share of the view's height. */
 const SCOPE_RADIUS = 0.36;
 
-const SIDE_COLORS: Record<string, string> = { usec: ui.link, bear: ui.danger, savage: ui.gold };
 
 interface Layers {
   grid: boolean;
@@ -37,6 +37,7 @@ export function PovPage() {
   const camera = useSyncExternalStore(conn.subscribeCamera, conn.getCamera);
   const [layers, setLayers] = useState<Layers>({ grid: true, loot: true });
 
+  const theme = useTheme(); // a new theme redraws
   const canvas = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   useEffect(() => {
@@ -52,7 +53,7 @@ export function PovPage() {
     if (!c || !size.w || !size.h) return;
     const frame = requestAnimationFrame(() => draw(c, size, state, camera, layers));
     return () => cancelAnimationFrame(frame);
-  }, [size, state, camera, layers]);
+  }, [size, state, camera, layers, theme]);
 
   return (
     <div className={s.page}>
@@ -117,6 +118,8 @@ interface Mark {
 }
 
 function marks(state: RadarState, camera: CameraData, layers: Layers): Mark[] {
+  const ui = getTheme().colors;
+  const sideColors: Record<string, string> = { usec: ui.link, bear: ui.danger, savage: ui.gold };
   const eye = camera.fps?.pos;
   const near = (p: WorldPos, range: number) => !eye || Math.hypot(p[0] - eye[0], p[2] - eye[2]) <= range;
   const out: Mark[] = [];
@@ -136,7 +139,7 @@ function marks(state: RadarState, camera: CameraData, layers: Layers): Mark[] {
   for (const e of state.exfils) if (e.pos) out.push({ pos: e.pos, color: ui.accent, kind: "exfil", label: e.name });
   for (const p of state.players) {
     if (p.local || !p.pos || p.absent) continue;
-    out.push({ pos: p.pos, color: p.dead ? ui.faint : (SIDE_COLORS[p.side] ?? ui.text), kind: "player", label: p.dead ? "dead" : p.ai ? p.side : `${p.side} (human)` });
+    out.push({ pos: p.pos, color: p.dead ? ui.faint : (sideColors[p.side] ?? ui.text), kind: "player", label: p.dead ? "dead" : p.ai ? p.side : `${p.side} (human)` });
   }
   return out;
 }
@@ -197,7 +200,7 @@ function drawMarks(ctx: CanvasRenderingContext2D, all: Mark[], painter: Painter)
 
 function label(ctx: CanvasRenderingContext2D, m: Mark, at: ScreenPoint, size: number) {
   if (!m.label) return;
-  ctx.font = "12px system-ui, sans-serif";
+  ctx.font = canvasFont({ size: 12 }, getTheme().fonts.ui);
   ctx.fillText(`${m.label} ${Math.round(at.depth)} m`, at.x + size + 3, at.y);
 }
 
@@ -215,13 +218,14 @@ function draw(c: HTMLCanvasElement, size: { w: number; h: number }, state: Radar
   }
   const ctx = c.getContext("2d");
   if (!ctx) return;
+  const ui = getTheme().colors;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = ui.bg;
   ctx.fillRect(0, 0, w, h);
   const view = mainView(camera);
   if (!camera || !view) {
     ctx.fillStyle = ui.muted;
-    ctx.font = "14px system-ui, sans-serif";
+    ctx.font = canvasFont({ size: 14 }, getTheme().fonts.ui);
     ctx.fillText("No camera: waiting for the backend's camera message.", 16, 28);
     return;
   }
@@ -251,6 +255,7 @@ function draw(c: HTMLCanvasElement, size: { w: number; h: number }, state: Radar
 function drawScope(ctx: CanvasRenderingContext2D, scope: ScopeView, all: Mark[], camera: CameraData, w: number, h: number) {
   // Like the game's scoped view: the scope's picture over the whole view (as the reference draws it;
   // the lens's real size depends on the scope model), the unscoped marks dimmed beneath.
+  const ui = getTheme().colors;
   const r = h * SCOPE_RADIUS;
   ctx.fillStyle = ui.overlay;
   ctx.fillRect(0, 0, w, h);
@@ -273,6 +278,6 @@ function drawScope(ctx: CanvasRenderingContext2D, scope: ScopeView, all: Mark[],
   ctx.arc(w / 2, h / 2, r, 0, Math.PI * 2);
   ctx.stroke();
   ctx.fillStyle = ui.text;
-  ctx.font = "12px system-ui, sans-serif";
+  ctx.font = canvasFont({ size: 12 }, getTheme().fonts.ui);
   ctx.fillText(`${camera.magnification.toFixed(1)}× · ${scope.source === "optic" ? "optic camera" : "zoomed FPS view"}`, w / 2 - r, h / 2 + r + 16);
 }

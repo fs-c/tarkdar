@@ -1,6 +1,8 @@
 // Display settings of the 3D map. Separate from Map3D.ts so that using them does not pull the
 // renderer (three.js) into the main bundle.
 
+import type { Theme } from "../theme/themes";
+
 /**
  * How material colours from the game are turned into map colours. The game's colours are
  * albedo-texture means: dark on average (median luma ~0.3) and uneven, so they are lifted and
@@ -131,3 +133,15 @@ export const DEFAULT_MAP_SETTINGS: MapSettings = {
   controls: "map",
   ...COLOR_SCHEMES.standard,
 };
+
+/** What the theme decides about the map: the page behind it, and the grid shown where a map has no model. */
+export interface MapColors {
+  background: number;
+  grid: number;
+  gridMajor: number;
+}
+
+const hex = (c: string) => Number.parseInt(c.slice(1), 16);
+
+/** The map's colours from a theme (its colours are "#rrggbb"). */
+export const mapColors = (theme: Theme): MapColors => ({ background: hex(theme.colors.bg), grid: hex(theme.canvas.grid), gridMajor: hex(theme.canvas.gridMajor) });

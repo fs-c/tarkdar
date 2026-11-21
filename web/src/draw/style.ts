@@ -5,22 +5,30 @@
 // the emphasis decides everything else (size, opacity, halo, label, draw order).
 
 import type { Emphasis } from "../rules/rules";
-import { ui } from "./theme";
+import { getTheme } from "../theme/current";
+import type { CanvasFont } from "../theme/font";
 
+/** Colours of what isn't a rule. The text ones follow the theme (read when drawn); marker states
+ *  (the local player, exfil states, the dead, ...) are the same in every theme, like the rules' colours. */
 export const COLORS = {
-  local: ui.accent,
+  local: "#4cd964",
   dead: "#6b6b6b",
-  label: "#e8eef2",
-  labelHalo: "rgba(8, 12, 16, 0.85)",
   /** Points picked with the coordinate tool (map debugging). */
   debug: "#ff4fd8",
-  exfilOpen: ui.accent,
-  exfilClosed: ui.danger,
-  exfilPending: ui.warn,
+  exfilOpen: "#4cd964",
+  exfilClosed: "#ff5a52",
+  exfilPending: "#ff9f40",
   exfilNeutral: "#e8eef2",
-  exfilSecret: ui.secret,
+  exfilSecret: "#e45cff",
+  /** Explosives (not the same red as the UI's danger). */
   danger: "#ff3b30",
   vehicle: "#f2c14e",
+  get label() {
+    return getTheme().canvas.label;
+  },
+  get labelHalo() {
+    return getTheme().canvas.labelHalo;
+  },
 };
 
 // ---- Players ----
@@ -50,7 +58,7 @@ export interface PlayerLook {
   /** The type's name goes in the label, not just the id. */
   namedLabel: boolean;
   labelColor: string;
-  labelFont: string;
+  labelFont: CanvasFont;
   /** Draw order: higher on top. */
   order: number;
   /** Trails: the most opaque part (0..1). */
@@ -60,11 +68,11 @@ export interface PlayerLook {
 }
 
 const PROMINENCE: Record<Prominence, Omit<PlayerLook, "color" | "prominence" | "labelColor"> & { coloredLabel?: boolean }> = {
-  faint: { radius: 4, facing: 11, facingFromHead: 9, alpha: 0.55, halo: null, namedLabel: false, labelFont: "10px sans-serif", order: 0, trailAlpha: 0.35, dim: true },
-  normal: { radius: 5.5, facing: 18, facingFromHead: 14, alpha: 1, halo: null, namedLabel: false, labelFont: "11px sans-serif", order: 2, trailAlpha: 0.6, dim: false },
-  strong: { radius: 5.5, facing: 18, facingFromHead: 14, alpha: 1, halo: { gap: 3, width: 1.5 }, namedLabel: true, coloredLabel: true, labelFont: "11px sans-serif", order: 3, trailAlpha: 0.6, dim: false },
-  loud: { radius: 7, facing: 18, facingFromHead: 14, alpha: 1, halo: { gap: 4, width: 2 }, namedLabel: true, coloredLabel: true, labelFont: "bold 12px sans-serif", order: 3, trailAlpha: 0.6, dim: false },
-  self: { radius: 7, facing: 28, facingFromHead: 22, alpha: 1, halo: null, namedLabel: false, labelFont: "11px sans-serif", order: 4, trailAlpha: 0.6, dim: false },
+  faint: { radius: 4, facing: 11, facingFromHead: 9, alpha: 0.55, halo: null, namedLabel: false, labelFont: { size: 10 }, order: 0, trailAlpha: 0.35, dim: true },
+  normal: { radius: 5.5, facing: 18, facingFromHead: 14, alpha: 1, halo: null, namedLabel: false, labelFont: { size: 11 }, order: 2, trailAlpha: 0.6, dim: false },
+  strong: { radius: 5.5, facing: 18, facingFromHead: 14, alpha: 1, halo: { gap: 3, width: 1.5 }, namedLabel: true, coloredLabel: true, labelFont: { size: 11 }, order: 3, trailAlpha: 0.6, dim: false },
+  loud: { radius: 7, facing: 18, facingFromHead: 14, alpha: 1, halo: { gap: 4, width: 2 }, namedLabel: true, coloredLabel: true, labelFont: { size: 12, bold: true }, order: 3, trailAlpha: 0.6, dim: false },
+  self: { radius: 7, facing: 28, facingFromHead: 22, alpha: 1, halo: null, namedLabel: false, labelFont: { size: 11 }, order: 4, trailAlpha: 0.6, dim: false },
 };
 
 /** A player's look by prominence, colour and state: the dead are grey (and drawn low), those who left

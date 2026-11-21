@@ -11,7 +11,7 @@
   position: absolute; right: 14px; bottom: 14px; z-index: 1;
   width: 40px; height: 40px; display: grid; place-items: center;
   border: 1px solid var(--border-strong); border-radius: 50%; background: var(--overlay); color: var(--muted);
-  box-shadow: 0 2px 10px var(--shadow);
+  box-shadow: var(--shadow-float);
   &:hover { color: var(--text); }
   &[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
   &[data-heading="true"] { background: var(--accent); color: var(--on-accent); }

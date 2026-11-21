@@ -16,14 +16,14 @@
   position: absolute; right: 14px; bottom: 64px; z-index: 2;
   width: 40px; height: 40px; display: grid; place-items: center; padding: 0; cursor: pointer;
   border: 1px solid var(--border-strong); border-radius: 50%; background: var(--overlay); color: var(--muted);
-  box-shadow: 0 2px 10px var(--shadow);
+  box-shadow: var(--shadow-float);
   &:hover { color: var(--text); }
 }
 /* Indoor maps: which floor the map is cut open at. Above the follow button (and north button). */
 .floor {
   position: absolute; right: 14px; bottom: 64px; z-index: 2; width: 40px; cursor: default;
   display: grid; border: 1px solid var(--border-strong); border-radius: var(--radius);
-  background: var(--overlay); box-shadow: 0 2px 10px var(--shadow); overflow: hidden;
+  background: var(--overlay); box-shadow: var(--shadow-float); overflow: hidden;
   & button {
     display: grid; place-items: center; height: 30px; padding: 0; border: 0; background: none; color: var(--muted);
     &:hover:not(:disabled) { color: var(--text); background: var(--overlay-surface); }

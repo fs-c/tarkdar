@@ -1,20 +1,19 @@
-/* Global styles: non-colour tokens, element defaults and a few utilities. Colours come from
-   theme.ts (applyTheme); component styles live in *.module.css next to each component. */
+/* Global styles: size and shape tokens, element defaults and a few utilities. Colours and fonts come
+   from the theme (theme/, applyTheme); component styles live in *.module.css next to each component. */
 
 /* Cascade order: element defaults < primitives (ui/) < utilities < component modules (unlayered),
    so a component's own class always beats a primitive's default, whatever the import order. */
 @layer base, ui, utilities;
 
 :root {
-  color-scheme: dark;
+  /* Theme tokens (colours, fonts, --color-scheme) are set by applyTheme (theme/apply.ts) on this element. */
+  color-scheme: var(--color-scheme);
 
   /* layout */
   --activity-w: 48px;
   --status-h: 24px;
 
   /* type */
-  --font: system-ui, sans-serif;
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --fs-2xs: 10px; /* badges, column headers */
   --fs-xs: 11px; /* captions, section titles, chips */
   --fs-sm: 12px; /* status bar, dense rows, code */
@@ -22,6 +21,11 @@
   --fs-lg: 14px; /* panel titles */
   --fs-xl: 17px; /* the timeline clock */
   --tracking-caps: 0.06em; /* uppercase labels */
+
+  /* shadows: geometry here, colour from the theme */
+  --shadow-float: var(--shadow-float); /* buttons and panels over the map */
+  --shadow-chip: var(--shadow-chip);
+  --shadow-pop: var(--shadow-pop); /* popups */
 
   /* shape */
   --radius-sm: 3px;

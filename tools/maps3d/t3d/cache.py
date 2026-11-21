@@ -397,10 +397,6 @@ class TextureStore:
             self._pending[h] = np.ascontiguousarray(rgba, dtype=np.uint8)
         return h
 
-    def discard_pending(self) -> None:
-        self._pending.clear()
-        self._known = None
-
     def load_shard(self, shard: str) -> dict[str, np.ndarray]:
         path = self.dir / f"{shard}.pack.zst"
         if not path.exists():

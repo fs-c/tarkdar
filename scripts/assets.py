@@ -7,7 +7,8 @@ content address, `<prefix><sha[:2]>/<sha256>`. Blobs are immutable and never
 overwritten, so any commit's manifest can be pulled later.
 
     scripts/assets.py status [PATH...]        what is missing / modified / new
-    scripts/assets.py pull   [PATH...]        download missing or outdated files
+    scripts/assets.py pull   [PATH...]        download missing files (locally modified ones
+                                              are skipped unless --force)
     scripts/assets.py add    PATH...          hash + upload + record files/dirs
     scripts/assets.py push   [PATH...]        re-add every changed tracked file
                                               (and new files matching "track"),
@@ -59,6 +60,7 @@ JOBS = 8
 CHUNK = 1 << 20
 STAGING = ROOT / ".assets-staging"  # same filesystem as the work tree, so pulls can rename
 SHARED_PREFIX = "shared/"  # store area for shared dirs: plain files under their repo path, no manifest entries
+TEMP_SUFFIXES = (".tmp", ".assets-tmp")  # in-flight files, never published
 
 
 def die(msg: str) -> None:
@@ -73,7 +75,13 @@ def die(msg: str) -> None:
 def load_manifest() -> dict:
     if not MANIFEST.exists():
         die(f"{MANIFEST.name} not found")
-    m = json.loads(MANIFEST.read_text())
+    text = MANIFEST.read_text()
+    if any(line.startswith(("<<<<<<<", "=======", ">>>>>>>")) for line in text.splitlines()):
+        die(f"{MANIFEST.name} has merge conflict markers: resolve them first")
+    try:
+        m = json.loads(text)
+    except json.JSONDecodeError as e:
+        die(f"{MANIFEST.name}: invalid JSON at line {e.lineno}, column {e.colno}: {e.msg}")
     if m.get("version") != MANIFEST_VERSION:
         die(f"{MANIFEST.name}: unsupported version {m.get('version')}")
     m.setdefault("store", {"prefix": "sha256/"})
@@ -347,16 +355,14 @@ class Store:
             raise StoreError(f"rclone delete in {self.name} failed (exit {r.returncode})")
 
 
-def connect(m: dict) -> Store:
-    return Store(m)
-
-
 def fmt_size(n: float) -> str:
-    for unit in ("B", "KB", "MB", "GB"):
-        if n < 1000 or unit == "GB":
-            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+    if n < 1000:
+        return f"{n:.0f} B"
+    for unit in ("KB", "MB"):
         n /= 1000
-    return ""
+        if n < 1000:
+            return f"{n:.1f} {unit}"
+    return f"{n / 1000:.1f} GB"
 
 
 # ---------------------------------------------------------------------------
@@ -428,7 +434,7 @@ def cmd_pull(args) -> int:
     if not todo and not shared:
         print("nothing to download")
         return 0
-    store = connect(m)
+    store = Store(m)
     failed = _pull_blobs(m, store, todo) if todo else 0
     if shared:
         failed += _pull_shared(m, store, shared, paths)
@@ -526,7 +532,7 @@ def _publish(m: dict, rels: list[str], dry_run: bool) -> int:
     if not hashed:
         print("nothing to publish")
         return 0
-    store = connect(m)
+    store = Store(m)
     try:
         present = store.keys()
         todo = {}
@@ -573,7 +579,7 @@ def cmd_add(args) -> int:
         files = walk_files(rel)
         if not files:
             die(f"{p}: no such file or directory")
-        rels.extend(f for f in files if not f.endswith((".tmp", ".assets-tmp")))
+        rels.extend(f for f in files if not f.endswith(TEMP_SUFFIXES))
     return _publish(m, sorted(set(rels)), args.dry_run)
 
 
@@ -581,7 +587,7 @@ def cmd_push(args) -> int:
     m = load_manifest()
     paths = [to_rel(p) for p in args.paths]
     rels = {r for r in m["files"] if selected(paths, r) and (ROOT / r).is_file()}
-    rels.update(track_candidates(m, paths))
+    rels.update(r for r in track_candidates(m, paths) if not r.endswith(TEMP_SUFFIXES))
     gone = [r for r in m["files"] if selected(paths, r) and not (ROOT / r).is_file()]
     if gone:
         if args.prune:
@@ -603,6 +609,15 @@ def cmd_rm(args) -> int:
         del m["files"][r]
     save_manifest(m)
     print(f"removed {len(gone)} entries (local files and remote blobs untouched)")
+    tracked = [r for r in gone if (ROOT / r).is_file() and matches_track(m, r)]
+    if tracked:
+        print(f"warning: {len(tracked)} removed paths still match a \"track\" glob in {MANIFEST.name}, so the "
+              "next `push` will add them again; add a \"!<path>\" exclusion to \"track\" to keep them out:",
+              file=sys.stderr)
+        for r in tracked[:10]:
+            print(f"  {r}", file=sys.stderr)
+        if len(tracked) > 10:
+            print(f"  ... and {len(tracked) - 10} more", file=sys.stderr)
     return 0
 
 
@@ -629,7 +644,7 @@ def cmd_share(args) -> int:
     managed = [r for r in rels if r in m["files"]]
     if managed:
         die(f"{managed[0]} is in the manifest: `rm` it there first")
-    store = connect(m)
+    store = Store(m)
     try:
         remote = store.shared_files(sorted({shared_dir(m, r) for r in rels}))
         new = [r for r in rels if r not in remote]
@@ -661,7 +676,7 @@ def cmd_share(args) -> int:
 def cmd_unshare(args) -> int:
     m = load_manifest()
     paths = _shared_args(m, args.paths)
-    store = connect(m)
+    store = Store(m)
     try:
         remote = store.shared_files(sorted({shared_dir(m, p) for p in paths}))
         gone = sorted(r for r in remote if selected(paths, r))
@@ -686,7 +701,7 @@ def cmd_shared(args) -> int:
     dirs = [d for d in m["shared"] if selected(paths, d) or any(shared_dir(m, p) == d for p in paths)]
     if not dirs:
         die(f"no shared dirs here (configured: {', '.join(d + '/' for d in m['shared']) or 'none'})")
-    store = connect(m)
+    store = Store(m)
     try:
         remote = {r: s for r, s in store.shared_files(dirs).items() if selected(paths, r)}
     except StoreError as e:
@@ -714,7 +729,7 @@ def cmd_shared(args) -> int:
 
 def cmd_verify(args) -> int:
     m = load_manifest()
-    store = connect(m)
+    store = Store(m)
     try:
         present = store.keys()
     except StoreError as e:
@@ -738,7 +753,7 @@ def cmd_gc(args) -> int:
             referenced.update(blob_key(m, e["sha256"]) for e in old.get("files", {}).values())
         except (subprocess.CalledProcessError, ValueError):
             continue
-    store = connect(m)
+    store = Store(m)
     try:
         orphans = sorted(store.keys() - referenced)
         print(f"{len(orphans)} blobs not referenced by any of {len(revs)} commits' manifests (or the working copy)")

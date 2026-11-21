@@ -12,8 +12,7 @@ which file does what) lives in the code and its comments.
 - The map is **3D**, built from the game's own geometry (`docs/maps3d.md`), seen straight down
   during a raid; it can be tilted and turned for a closer look.
 - Until verified against a real SPT build, game-reading behaviour follows what is known to work on
-  live EFT (a reference implementation). Deviations get fixed once they're confirmed
-  (`docs/verification-playbook.md`).
+  live EFT (a reference implementation). Deviations get fixed once they're confirmed.
 
 ## Layers
 

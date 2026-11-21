@@ -112,9 +112,8 @@ def _grow(height: np.ndarray, accepted: np.ndarray, candidates: list[np.ndarray]
                 # Onto unknown cells, and up from known ground onto what spans it (a bridge over a river).
                 reach = np.abs(cand[target] - h[source]) <= step                 # NaN compares false
                 ok = reach & (~acc[target] | (cand[target] > h[target] + 0.05))
-                t, s = target[ok], source[ok]
                 # Several sources may reach a target: any of them will do.
-                t, first = np.unique(t, return_index=True)
+                t = np.unique(target[ok])
                 h[t] = cand[t]
                 acc[t] = True
                 fresh.append(t)

@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
         --force) FORCE=1; shift ;;
         --skip-deps) SKIP_DEPS=1; shift ;;
         --skip-runtime) SKIP_RUNTIME=1; shift ;;
-        -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
 done
@@ -61,6 +61,9 @@ if [[ $SKIP_DEPS -eq 0 ]]; then
         warn "node/npm not found: needed to build the frontend (Node.js 20+)."
     elif [[ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]]; then
         warn "Node.js $(node --version) is older than 20; the frontend build may fail."
+    fi
+    if command -v python3 >/dev/null 2>&1 && ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 13))'; then
+        warn "python3 $(python3 -c 'import platform; print(platform.python_version())') is older than 3.13; scripts/assets.py needs 3.13+ (mise.toml pins the version: run 'mise install')."
     fi
     if [[ ${#missing[@]} -gt 0 ]]; then
         printf '  missing: %s\n' "${missing[@]}" >&2

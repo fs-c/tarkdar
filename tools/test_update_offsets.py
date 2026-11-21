@@ -171,6 +171,19 @@ class UpdateOffsetsTest(unittest.TestCase):
             self.assertEqual(list(json.loads(text).keys()), list(OFFSETS.keys()))  # key order kept
             self.assertIn('"value": "0xA00"', text)
 
+            # A no-op run keeps non-ASCII notes byte-identical (no \\u escapes).
+            noted = json.loads(text)
+            noted["note"] = "a \u2192 b"
+            with open(offsets_path, "w", encoding="utf-8") as f:
+                json.dump(noted, f, indent=2, ensure_ascii=False)
+                f.write("\n")
+            with open(offsets_path, "rb") as f:
+                raw = f.read()
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(uo.main([dump_path, "--offsets", offsets_path]), 0)
+            with open(offsets_path, "rb") as f:
+                self.assertEqual(f.read(), raw)
+
             # A dump without the required class: nothing written, exit 1 (unless --force).
             with open(dump_path, "w") as f:
                 json.dump({"classes": []}, f)

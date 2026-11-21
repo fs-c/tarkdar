@@ -43,6 +43,8 @@ them); unvalidated ones are reported but not applied unless `--accept-unvalidate
 {
   "dumpedBy": "radar il2cpp-dump",
   "schema": 1,
+  "backend": "IL2CPP",
+  "process": "EscapeFromTarkov.exe",      // the process that was dumped
   "modules": {
     "GameAssembly.dll": { "base": "0x7FF6…", "imageSize": "0x…", "peTimestamp": "0x…", "sizeOfImage": "0x…" },
     "UnityPlayer.dll":  { … }
@@ -52,12 +54,15 @@ them); unvalidated ones are reported but not applied unless `--accept-unvalidate
     "gameObjectManager": { "rva": "0x1A233A0", "validated": true, … },
     "allCameras": { "rva": "0x19F3080", "validated": false, "note": "not validated (…)" }
   },
+  "staticFieldsOffset": "0xB8",           // Il2CppClass::StaticFields, as the dumper assumes it
   "metadata": { "base": "0x2B3…", "version": 29, "typeDefinitionSize": "0x58", "fieldStartOffset": "0x20",
                 "literalFields": 41234, "literalValues": 41230 },   // or null, see notes
+  "typeCount": 5008,                      // entries in the type-info table
   "notes": [ "type-info table: signature initStore matched 1 time(s)", … ],
   "classes": [                            // sorted by typeIndex
     { "typeIndex": 8725, "name": "Player", "namespace": "EFT", "fullName": "EFT.Player",
       "declaringType": null, "parent": "UnityEngine.MonoBehaviour", "parentTypeIndex": 1234,
+      "classPtr": "0x1F2A…",
       "fieldsInitialised": true,
       "fields": [
         { "name": "<Profile>k__BackingField", "type": "EFT.Profile", "offset": 2496, "offsetHex": "0x9C0",
@@ -76,6 +81,7 @@ them); unvalidated ones are reported but not applied unless `--accept-unvalidate
 | `type` | Best effort; don't parse it strictly. |
 | `value` | Literals only, when found: the constant (enum member value, `const` number, bool or string). Enum members are written as their underlying integer. |
 | `metadata` | Where the global metadata (`global-metadata.dat` as loaded) was found, which literal values come from; `null` if it wasn't (the `notes` say why). |
+| `classPtr` | Address of the class's `Il2CppClass` in the dumped process (session-specific). |
 | `parentTypeIndex` | Set when the parent is in the table. Generic instances (e.g. ``List`1``) aren't; then only `parent` is set. |
 
 **Literal values** come from the runtime's copy of the global metadata, found without knowing its
@@ -88,6 +94,9 @@ string lengths compressed from metadata v29 on). The header offsets assume metad
 
 Pointers are session-specific; everything else should be identical between two dumps of the same
 build.
+
+The reference dump lives at `dumps/il2cpp-dump.json` in the asset store (README, "Data files");
+`scripts/assets.py pull dumps/` fetches it.
 
 If a dump comes out empty or garbled, the IL2CPP struct layouts the dumper assumes (`managedLayout`
 in `eft.offsets.json`, fitting metadata v29-era runtimes) may not match. Check the game's

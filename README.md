@@ -1,6 +1,6 @@
 # radar
 
-Read-only radar for SP-Tarkov, the single-player mod for Tarkov, reading the game's memory 
+Read-only radar for SP-Tarkov, the single-player mod for Tarkov, reading the game's memory
 from a QEMU guest on a Linux host via VMM (MemProcFS) + LeechCore.
 
 ## Building
@@ -13,13 +13,17 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+The `assets-tool` test needs `rclone` (`mise install`) and is skipped without it. The 3D map
+builder's tests are not part of ctest: run `make test` in `tools/maps3d`.
+
 ```sh
 # web/dist, served by radar-backend
 cd web && npm install && npm test && npm run build
 ```
 
 Everything ends up in `build/bin/`: `radar-backend`, `vmm.so`, `leechcore.so` and
-`leechcore_device_qemu.so`.  They depend on being next to each other.
+`leechcore_device_qemu.so`.  They depend on being next to each other.  The developer tools
+(`docs/offset-tools.md`) are there too: `il2cpp-dump`, `mem-dump` and `vmm-check`.
 
 **Overlay window** (`--overlay`, `docs/design.md`): built when the Wayland, EGL and OpenGL ES
 development files are found (Debian: `libwayland-dev wayland-protocols libegl-dev libgles-dev`;
@@ -35,6 +39,13 @@ machine's architecture); pass `--build-dir` for a different build directory.
 **Patches:** local patches to submodules (`patches/`) are applied automatically when CMake
 configures. They're skipped if already applied, so re-running is safe. The patched submodule is
 marked `ignore = dirty`, so it doesn't show as modified.
+
+## Documentation
+
+- `docs/design.md`: the decisions and invariants behind the code
+- `docs/protocol.md`: the backend's HTTP/WebSocket protocol
+- `docs/offset-tools.md`: `il2cpp-dump` and `update-offsets.py`, keeping the offsets current
+- `docs/maps3d.md`: the 3D map pipeline and viewer
 
 ## Data files (asset store)
 

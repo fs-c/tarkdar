@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage 2: cache/ -> 3D map dataset (format 2, see t3d/dataset.py). No game data needed.
+"""Stage 2: cache/ -> 3D map dataset (format 3, see t3d/dataset.py). No game data needed.
 
     python build.py --map customs                  # overview -> maps/3d/customs/ (served by the backend)
     python build.py --map customs --error 0.05     # ... with a tighter error bound

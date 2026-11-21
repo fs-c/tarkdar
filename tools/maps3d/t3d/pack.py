@@ -1,7 +1,8 @@
 """Deterministic container: magic | header-json | 16-byte aligned arrays.
 
 Writing the same meta + arrays always yields the same bytes, so unchanged
-cache files stay unchanged in git/LFS after a re-extract. `write`/`read` wrap
+cache files stay unchanged in the asset store after a re-extract (it is
+content-addressed, so identical files dedupe). `write`/`read` wrap
 it in zstd (the extraction cache); the map datasets store it themselves.
 
 An array can be stored through a lossless meshoptimizer codec (`Coded`): its

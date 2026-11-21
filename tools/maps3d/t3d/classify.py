@@ -3,7 +3,7 @@
 The single classifier of the project: the build writes its result into the
 dataset, the viewer only reads it. Shader names decide where they are
 unambiguous (shadow proxies, decals, SpeedTree, water, glass); mesh-name token
-rules (see HANDOFF invariants) cover the rest.
+rules (see "Things that are easy to get wrong" in docs/maps3d.md) cover the rest.
 """
 
 from __future__ import annotations

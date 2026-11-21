@@ -1,5 +1,5 @@
 """Build stage over a synthetic cache, the dataset writer, and (when the real
-cache is present) the HANDOFF validation checks."""
+cache is present) the validation checks from docs/maps3d.md."""
 
 import tempfile
 import unittest
@@ -83,13 +83,13 @@ class SyntheticBuildTest(unittest.TestCase):
         members = [[0, 0, 0], [1, 0, 1], [3, 1, 0]]
         write_cache(self.root, renderers, meshes=meshes, lod_groups=groups, lod_members=members)
         names = lambda ds: [ds.paths[i.path] for i in ds.instances]  # noqa: E731
-        # invariant 1: a renderer outside any LOD group is kept whatever its name
+        # docs/maps3d.md "easy to get wrong" item 1: a renderer outside any LOD group is kept whatever its name
         self.assertEqual(names(assemble(self.root, lod=0)), ["lod0", "ungrouped", "single-level"])
         # a group with fewer levels falls back to its last level
         self.assertEqual(names(assemble(self.root, lod=1)), ["lod1", "ungrouped", "single-level"])
 
     def test_renderer_in_several_lod_levels(self):
-        # invariant 3: one renderer reused for two levels is shown at both
+        # docs/maps3d.md "easy to get wrong" item 3: one renderer reused for two levels is shown at both
         # (the old "last membership wins" rule dropped it at one of them)
         write_cache(self.root, [{"mesh": 0, "path": "shared"}, {"mesh": 0, "path": "far"}],
                     meshes=[named(quad_mesh(), "box")], lod_groups=[{"heights": [0.5, 0.2, 0.1]}],
@@ -386,7 +386,7 @@ class ValidationChecksTest(unittest.TestCase):
         self.assertTrue(any(n.endswith("_LOD1") or n.endswith("_LOD2") for n in self.by_name))
 
     def test_no_giant_phantom_objects(self):
-        # invariant 2: wrong PPtr resolution produced props hundreds of metres big
+        # docs/maps3d.md "easy to get wrong" item 2: wrong PPtr resolution produced props hundreds of metres big
         for inst in self.ds.instances:
             if self.ds.geoms[inst.geom].name.startswith("Pipe_filter"):
                 self.assertLess(self.size(inst), 5.0)

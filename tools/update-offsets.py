@@ -254,7 +254,7 @@ def main(argv=None):
     else:
         tmp = args.offsets + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(doc, f, indent=2)
+            json.dump(doc, f, indent=2, ensure_ascii=False)
             f.write("\n")
         os.replace(tmp, args.offsets)
         print(f"wrote {args.offsets}")

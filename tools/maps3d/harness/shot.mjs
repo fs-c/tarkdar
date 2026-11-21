@@ -20,6 +20,10 @@ const { values: opt } = parseArgs({
     bg: { type: "string", default: "9aacbd" },
   },
 });
+if (!opt.out) {
+  console.error("usage: node shot.mjs --data <dataset> --out <dir> [--settings <json>] [--views <json>] (see the file header)");
+  process.exit(1);
+}
 const [width, height] = opt.size.split("x").map(Number);
 fs.mkdirSync(opt.out, { recursive: true });
 const browser = await chromium.launch({ args: ["--ignore-gpu-blocklist", "--enable-unsafe-swiftshader"] });

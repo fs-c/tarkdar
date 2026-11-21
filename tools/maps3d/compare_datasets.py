@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare two 3D map datasets (format 2) for exact equality.
+"""Compare two 3D map datasets (format 3) for exact equality.
 
     python compare_datasets.py <dirA> <dirB>
 

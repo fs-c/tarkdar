@@ -151,7 +151,7 @@ def _untuned(label: str, ids: list[str], folders: list[str], *, game: str | None
 # indoorOptional: the build drops *indoor* scenes unless --include-indoor.
 # interior: the map is (mostly) indoors: the build keeps everything (no hidden-surface removal,
 #          indoor scenes included) and the viewer cuts the map open above the floor being
-#          looked at (web/src/map3d: Map3D.setCut).
+#          looked at (web/src/map3d: Map3D.setFloor).
 # up: the direction (degrees clockwise from north) at the top of the viewer's home view, to match
 #     the orientation common hand-drawn maps use (Woods and Shoreline are drawn south up). Default
 #     0, north up. Written to map.json.

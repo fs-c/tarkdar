@@ -8,16 +8,15 @@ material names, hierarchy paths. Filtering is the build stage's job.
 from __future__ import annotations
 
 import math
+import re
 import time
 from collections import Counter
 from pathlib import Path
 
-import re
-
 import numpy as np
 import UnityPy
 
-from .cache import KEPT_CHANNELS, VERTEX_FORMATS, Mesh, MeshStore, TextureStore, mesh_hash
+from .cache import KEPT_CHANNELS, NORMAL_FORMATS, VERTEX_FORMATS, Mesh, MeshStore, TextureStore, mesh_hash
 
 # Unity VertexAttributeFormat -> bytes per component.
 COMPONENT_SIZE = {0: 4, 1: 2, 2: 1, 3: 1, 4: 2, 5: 2, 6: 1, 7: 1, 8: 2, 9: 2, 10: 4, 11: 4}
@@ -219,7 +218,7 @@ def decode_mesh(mesh, data_dir: Path) -> Mesh:
     normals_raw, normal_format = None, None
     if len(channels) > 1 and channels[1].dimension > 0:
         nch = channels[1]
-        dt = {0: np.dtype("<f4"), 1: np.dtype("<f2"), 2: np.dtype(np.uint8), 3: np.dtype(np.int8)}.get(nch.format)
+        dt = NORMAL_FORMATS.get(nch.format)
         if dt is not None:
             normals_raw = _channel(blob, layout, vcount, nch, dt, nch.dimension & 0xF).copy()
             normal_format = int(nch.format)

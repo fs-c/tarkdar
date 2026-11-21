@@ -88,6 +88,39 @@ class AssetsTest(unittest.TestCase):
         self.assertEqual(f1.read_bytes(), orig1)
         self.run_assets("status", "--check")
 
+    def test_rm_warns_when_path_matches_track_glob(self):
+        self.run_assets("push")
+        r = self.run_assets("rm", "data/sub/f0.bin")
+        self.assertIn("still match", r.stderr)
+        self.assertIn("!<path>", r.stderr)
+        self.assertNotIn("data/sub/f0.bin", self.manifest()["files"])
+        r = self.run_assets("rm", "data/sub/f1.bin")
+        self.assertIn("still match", r.stderr)
+        # Not matching any glob (excluded): no warning.
+        self.run_assets("add", "other.txt")
+        self.assertNotIn("still match", self.run_assets("rm", "other.txt").stderr)
+
+    def test_push_skips_temp_files(self):
+        (self.repo / "data" / "sub" / "x.tmp").write_bytes(b"tmp")
+        (self.repo / "data" / "sub" / "y.assets-tmp").write_bytes(b"tmp")
+        self.run_assets("push")
+        files = self.manifest()["files"]
+        self.assertEqual(len(files), 8)
+        self.assertFalse(any(f.endswith((".tmp", ".assets-tmp")) for f in files))
+
+    def test_manifest_conflict_and_parse_errors(self):
+        good = (self.repo / "assets.json").read_text()
+        (self.repo / "assets.json").write_text("<<<<<<< HEAD\n" + good + "\n=======\n" + good + "\n>>>>>>> x\n")
+        r = self.run_assets("status", ok=False)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("merge conflict markers", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+        (self.repo / "assets.json").write_text('{\n "version": 1,\n oops\n}\n')
+        r = self.run_assets("status", ok=False)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("line 3", r.stderr)
+        self.assertNotIn("Traceback", r.stderr)
+
     def test_add_explicit_file_and_paths_relative_to_cwd(self):
         self.run_assets("add", "other.txt")
         self.assertEqual(list(self.manifest()["files"]), ["other.txt"])

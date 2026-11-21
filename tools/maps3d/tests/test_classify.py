@@ -6,7 +6,7 @@ from t3d import classify as c
 
 class NameRulesTest(unittest.TestCase):
     def test_tokens_not_substrings(self):
-        # HANDOFF invariant 7 and the validation list
+        # docs/maps3d.md, "Things that are easy to get wrong" item 6 (token rules) and the validation list
         self.assertEqual(c.classify("Treatment_Plant_outdoor_01_LOD0"), "structure")
         self.assertEqual(c.classify("Street_lamp_02"), "structure")
         self.assertEqual(c.classify("Ashtray_01"), "structure")

@@ -4,7 +4,10 @@ The radar draws a raid on a 3D map built from the game's own geometry (`maps/3d/
 location without one gets a grid of world coordinates in the same viewer instead: same camera,
 controls and markers.
 
-Available: **Customs** (`bigmap`) and **Streets** (`TarkovStreets`, exteriors only).
+Available (the folders published in `assets.json`): customs, factory, ground-zero, icebreaker,
+interchange, labs, labyrinth, lighthouse, reserve, shoreline, streets, terminal, woods. Which of
+them `make maps` rebuilds is set by its target in `tools/maps3d/Makefile`; `build.py --map` takes
+any of the maps defined in `t3d/maps.py`.
 
 No calibration is involved: the datasets are in the game's world coordinates, the same space the
 backend reports positions in. Checked against a recorded Customs raid: the median height of all
@@ -22,9 +25,10 @@ tools/maps3d/             the pipeline (Python) and the measurement harness
   extract_cache.py        stage 1: game files -> cache/        (needs the game + UnityPy)
   build.py                stage 2: cache/ -> maps/3d/<map>/    (no game needed)
   t3d/                    unity.py (scene walker), cache.py, pack.py (container),
-                          classify.py, geometry.py, hlod.py (cells), visibility.py, dataset.py, maps.py
+                          classify.py, geometry.py, ground.py (ground map), hlod.py (cells),
+                          visibility.py, dataset.py, maps.py
   tests/                  unittest
-  cache/                  extraction cache (0.7 GB, in the asset store, not in git)
+  cache/                  extraction cache (about 1.7 GB, in the asset store, not in git)
   harness/                screenshots + image metrics against a full-detail reference; frame times
 web/src/map3d/            the renderer (three.js): container, dataset, Map3D, stage, tiles, instances, color
 web/src/components/Radar.tsx     the map plus the marker overlay
@@ -44,7 +48,7 @@ To rebuild them (Python 3.14+, a C++ compiler for the `meshoptimizer` package):
 cd tools/maps3d
 make cache-pull     # the extraction cache from the asset store
 make install        # .venv
-make maps           # both maps into maps/3d/, just under 4 min on 6 cores
+make maps           # customs, streets and factory into maps/3d/ (the Makefile's `maps` target)
 make test
 make publish        # upload maps/3d to the asset store; commit assets.json
 ```
@@ -393,69 +397,69 @@ mean nothing.
 12. **The map must not render on a timer.** `Map3D` renders on request only; anything that needs
     a frame calls `requestRender()`. The animations (WASD movement, a flight, turning towards a
     direction) render per animation frame, but only until they arrive.
-17. **Camera changes made by code go through `Map3D.own`** (or set `expectedTarget` first): the
+13. **Camera changes made by code go through `Map3D.own`** (or set `expectedTarget` first): the
     controls' change event cannot tell them from the user's, and "the user moved/turned the map"
     is what ends following.
-13. **`GROUND_DESATURATION`** exists in `web/src/map3d/stage.ts` and `tools/maps3d/t3d/hlod.py`
+14. **`GROUND_DESATURATION`** exists in `web/src/map3d/stage.ts` and `tools/maps3d/t3d/hlod.py`
     (backdrop terrain colour); keep them equal.
 
-14. **Roads are "decals" by shader name only.** Customs' roads, pavements and concrete slabs are
+15. **Roads are "decals" by shader name only.** Customs' roads, pavements and concrete slabs are
     strips laid over the terrain with `Custom/Vert Paint SoftCutout Decal` (106,000 m², all level);
     the terrain's ground image under them is plain soil. Dropping them with the decals removed
     every road from the map. The same shader is on some rubble on Streets, hence "up-facing only".
     The viewer draws them with a polygon offset, since its terrain is coarser than the game's.
-15. **The harness measures the realistic style.** `capture.mjs` renders the scene directly, without
+16. **The harness measures the realistic style.** `capture.mjs` renders the scene directly, without
     the outline pass; `shot.mjs` goes through `Map3D` and shows what the radar shows.
-16. **Plan colours reach the shader as sRGB values** (not `THREE.Color`, which would convert):
+17. **Plan colours reach the shader as sRGB values** (not `THREE.Color`, which would convert):
     the plan formulas mix in sRGB. The standard material's lighting code is still there and its
     result is overwritten at the end of the fragment shader; with the lights off (`setPlan`) it
     does nothing.
 
-28. **Whatever changes what the map looks like has to tell the tiles**: the setters of `Stage`
+18. **Whatever changes what the map looks like has to tell the tiles**: the setters of `Stage`
     count it (`content`); a change made from outside (what is drawn, a group hidden) calls
     `Stage.invalidate()`. Forgetting it shows as a top-down view that does not change until the
     next zoom.
-29. **Anything in a shader that is measured in pixels** (line widths, `fwidth`, the outline's
+19. **Anything in a shader that is measured in pixels** (line widths, `fwidth`, the outline's
     neighbours) is in texels while a tile is painted, two per pixel: multiply by `uTexels`, or
     lines come out half as wide in the top-down view as in a tilted one.
-30. **A tile of the realistic style is rendered as the screen is** (tone mapped sRGB values in an
+20. **A tile of the realistic style is rendered as the screen is** (tone mapped sRGB values in an
     8-bit buffer, blended as such): three.js does that for a render target marked
     `isXRRenderTarget`, which `Stage.paint` sets. Tone mapping after the fact instead blends the
     see-through tree markers in linear light, and they change shade when tiles take over. The
     target also needs `internalFormat: "RGBA8"`, or its multisampled buffer gets another format
     than its texture and cannot be resolved.
-31. **The direct rendering of a flat view has to stay on the tiles' pixel grid** (`snapShift` in
+21. **The direct rendering of a flat view has to stay on the tiles' pixel grid** (`snapShift` in
     `Stage.renderDirect`), or the picture jumps by half a pixel each time tiles take over.
-32. **`bench.mjs` must wait for the GPU every few frames** (a `readPixels`): hundreds of frames
+22. **`bench.mjs` must wait for the GPU every few frames** (a `readPixels`): hundreds of frames
     queued without it lose the WebGL context, and the numbers look wonderful.
 
-18. **The index codec may return a triangle starting at another of its corners** (same winding).
+23. **The index codec may return a triangle starting at another of its corners** (same winding).
     Nothing may depend on which vertex of a triangle comes first; comparisons of two datasets
     have to allow for it.
-19. **The Python meshoptimizer binding's decoders trust their arguments**: `decode_vertex_buffer`
+24. **The Python meshoptimizer binding's decoders trust their arguments**: `decode_vertex_buffer`
     allocates `count` elements of the dtype it is given (a one-byte dtype is a buffer overrun),
     and `decode_index_buffer` always returns u4 storage, half used for 2-byte indices. `pack.py`
     is the only place that calls them.
-20. **`web/src/map3d/chunk.fixture.ts` is generated** (`python -m tests.web_fixture` in
+25. **`web/src/map3d/chunk.fixture.ts` is generated** (`python -m tests.web_fixture` in
     `tools/maps3d`): a chunk as the pipeline writes it and what the pipeline reads back, which
     the viewer's test must decode to the same numbers. A Python test fails when it is stale.
-21. **Do not read the gunzipped stream with `new Response(stream).arrayBuffer()`**: in Chromium
+26. **Do not read the gunzipped stream with `new Response(stream).arrayBuffer()`**: in Chromium
     that sometimes takes two seconds for 40 MB; `readAll` in `dataset.ts` takes a tenth of one.
 
-22. **A scene path can be in BuildSettings twice** (Terminal's are). The first level has the full
+27. **A scene path can be in BuildSettings twice** (Terminal's are). The first level has the full
     `sharedassets`; the second's are stubs that refer to it. `extract_cache.py` takes the first.
-23. **Game presets are flattened through their children**, and only a top-level `*.ScenesPreset`
+28. **Game presets are flattened through their children**, and only a top-level `*.ScenesPreset`
     is a location: a child can carry a wrong `ServerName` (Factory's night culling preset says
     `factory4_day`), and the Customs bundle has an editor preset that says `Lighthouse`.
-24. **`ServerName` is not always the location id**: Ground Zero's start variant is `Sandbox_SL`,
+29. **`ServerName` is not always the location id**: Ground Zero's start variant is `Sandbox_SL`,
     its location id `sandbox_start`. Presets name their game preset (`game`).
 
-25. **Anything that samples surfaces must clip them to its area first** (`geometry.clip_to_rect`).
+30. **Anything that samples surfaces must clip them to its area first** (`geometry.clip_to_rect`).
     Sea floors and water are planes with triangles of 700 m and more; sampled whole at 0.5 m or
     less they take gigabytes (Lighthouse's ground map: 10 GB).
-26. **The sea floor is "terrain" by its mesh name** (`Plane`) but not ground: with it as the lowest
+31. **The sea floor is "terrain" by its mesh name** (`Plane`) but not ground: with it as the lowest
     surface the ground map makes a port one building (`ground.SEA_FLOOR`).
-27. **Some albedo slots have no thumbnail in cache v4**: the rock shaders' (`_Aldebo`,
+32. **Some albedo slots have no thumbnail in cache v4**: the rock shaders' (`_Aldebo`,
     `_BaseAlbedoASmoothness`). Such a material's colour is its tint alone, i.e. white.
 
 `tools/maps3d/tests/test_build.py` (`ValidationChecksTest`) checks known objects of the real

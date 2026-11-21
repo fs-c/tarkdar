@@ -90,7 +90,7 @@ changes, at most about 30 times per second.
 - **`pos`:** world position in metres, Unity axes `[x east, y up, z north]`, centimetre precision.
   `null` until known.
 - **`yaw`, `pitch`:** look direction in degrees, as stored by the game. Assumed: yaw 0 = +z (north),
-  90 = +x (east). This is unverified; see `docs/verification-playbook.md`.
+  90 = +x (east). This is unverified.
 
 The whole list is sent on every change (players are few; positions change every tick anyway).
 

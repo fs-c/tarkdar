@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -129,7 +130,6 @@ def main():
         }
         todo.extend(p for p in scenes if p not in todo)
 
-    import re
     only = re.compile(args.only, re.I) if args.only else None
 
     store = cache.MeshStore(root)

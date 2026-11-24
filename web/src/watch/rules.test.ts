@@ -3,7 +3,7 @@ import { applyRules } from "../rules/rules";
 import { emptyCatalog } from "../model/items";
 import type { AnyRow } from "../list/rows";
 import { markerStore, layerStore, type WatchEntry } from "./prefs";
-import { watchRules, watchesPlayers } from "./rules";
+import { QUEST_COLOR, thingMarks, watchRules, watchesPlayers } from "./rules";
 import { tierOf } from "./tiers";
 
 const item = (id: number, value?: number): AnyRow =>
@@ -49,5 +49,23 @@ describe("watch rules", () => {
     expect(tierOf("usec")).toBe("pmc");
     expect(tierOf("rogue")).toBe("raider");
     expect(tierOf("self")).toBeNull();
+  });
+
+  it("marks a thing in the list with the highest entry watching it, if it's on", () => {
+    const es = [entry({ id: "a", label: "LEDX", level: "normal" }), entry({ id: "b", label: "pricey", query: "value>=100k", color: "#5ce1e6", level: "top" }), entry({ id: "c", query: "is:item", color: "#c084fc", level: "top", on: false })];
+    const rules = watchRules(markers, layers, es);
+    const marks = (rows: AnyRow[]) => thingMarks(rules, applyRules(rows, rules, emptyCatalog).matched, es);
+    expect(marks([item(1, 500_000), item(2, 1000), boss(3)])).toEqual(
+      new Map([
+        ["loot:1", { color: "#5ce1e6", label: "watched: pricey" }],
+        ["loot:2", { color: "#ff8a3d", label: "watched: LEDX" }],
+      ]),
+    );
+  });
+
+  it("marks what quests need when nothing watched decides", () => {
+    const needed = { ...item(1, 1000), questNeeded: true, questFir: true } as AnyRow;
+    const rules = watchRules(markers, { ...layers, quest: "started" }, []);
+    expect(thingMarks(rules, applyRules([needed], rules, emptyCatalog).matched, []).get("loot:1")).toEqual({ color: QUEST_COLOR, label: "needed for a quest" });
   });
 });

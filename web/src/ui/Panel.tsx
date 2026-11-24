@@ -1,12 +1,16 @@
 // Building blocks of the side panel's views.
 
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import s from "./Panel.module.css";
 import { cx } from "./cx";
 
 /** The scrolling body of a side panel view. */
-export function PanelBody({ children }: { children: ReactNode }) {
-  return <div className={s.body}>{children}</div>;
+export function PanelBody({ ref, children }: { ref?: Ref<HTMLDivElement>; children: ReactNode }) {
+  return (
+    <div ref={ref} className={s.body}>
+      {children}
+    </div>
+  );
 }
 
 /** A titled section; consecutive sections are separated by a rule. `aside`: controls right of the title. */

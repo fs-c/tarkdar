@@ -1,4 +1,5 @@
 {
   "0": { "tab": "items", "sorting": { "players": [{ "id": "dist", "desc": false }], "items": [{ "id": "gone", "desc": true }] }, "filters": { "text": "ledx", "aliveOnly": true, "minValue": 0 } },
-  "1": { "$v": 1, "data": { "tab": "players", "sorting": { "players": [{ "id": "dist", "desc": true }], "items": [{ "id": "price", "desc": true }], "containers": [{ "id": "dist", "desc": false }], "exfils": [{ "id": "dist", "desc": false }] }, "filters": { "players": { "text": "", "alive": true, "humans": false, "special": false }, "items": { "text": "gpu", "minValue": 30000 }, "containers": { "text": "" }, "exfils": { "text": "" } } } }
+  "1": { "$v": 1, "data": { "tab": "players", "sorting": { "players": [{ "id": "dist", "desc": true }], "items": [{ "id": "price", "desc": true }], "containers": [{ "id": "dist", "desc": false }], "exfils": [{ "id": "dist", "desc": false }] }, "filters": { "players": { "text": "", "alive": true, "humans": false, "special": false }, "items": { "text": "gpu", "minValue": 30000 }, "containers": { "text": "" }, "exfils": { "text": "" } } } },
+  "2": { "$v": 2, "data": { "tab": "containers", "sort": "dist", "filters": { "players": { "text": "" }, "items": { "text": "gpu", "minValue": 0 }, "containers": { "text": "bank" }, "exfils": { "text": "" } } } }
 }

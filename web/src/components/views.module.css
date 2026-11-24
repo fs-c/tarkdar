@@ -1,4 +1,4 @@
-/* The side panel's views (Players, Watch, Raids, ...): their filter box, group headers, rows. */
+/* The side panel's views (Players, Loot, Exfils, Watch, Raids, ...): their filter box, group headers, rows. */
 
 /* A view's filter or search: always first, in the same spot. */
 .find {
@@ -10,6 +10,11 @@
 }
 .tools { display: flex; align-items: center; gap: 8px; padding: 0 10px 6px; font-size: var(--fs-sm); }
 .grow { flex: 1; }
+.faint { color: var(--faint); }
+/* A view's one call to action ("Watch …"). */
+.primary { color: var(--accent); background: var(--accent-soft); &:hover:not(:disabled) { background: rgba(255, 181, 71, 0.22); } }
+/* A view without a filter: its rows start where they would below one. */
+.top { height: 8px; }
 .empty { margin: 8px 16px; color: var(--faint); font-size: 12.5px; }
 
 /* A group's header: colour mark, name, count, its level; click to fold. */
@@ -49,4 +54,19 @@
 .player[data-gone="true"] {
   & .name, & .id { color: var(--faint); text-decoration: line-through; text-decoration-color: rgba(148, 163, 175, 0.55); }
   & .far { opacity: 0.6; }
+}
+
+/* Loot: the mark (watched, needed for a quest), the name, the value, the distance. */
+.thing { grid-template-columns: 10px 1fr 48px 58px; gap: 8px; padding-left: 10px; & .pip { margin: 0 0 1px 1px; } }
+.value { color: var(--faint); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; &.base { opacity: 0.7; } }
+.quest { color: var(--quest); }
+
+/* Exfils: the name, its status, the distance. */
+.exfil { grid-template-columns: 1fr auto 58px; padding-left: 16px; }
+.status {
+  font-size: var(--fs-sm); color: var(--muted);
+  &[data-tone="open"] { color: #4cd964; }
+  &[data-tone="closed"] { color: var(--danger); }
+  &[data-tone="pending"] { color: var(--warn); }
+  &[data-tone="secret"] { color: var(--secret); }
 }

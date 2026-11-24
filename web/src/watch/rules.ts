@@ -97,3 +97,26 @@ export function entryMatches(entry: WatchEntry, matched: ReadonlyMap<string, Any
   const carriers = players.filter((p) => carried.get(p.sel.id)?.some((m) => m.entryId === entry.id));
   return [...own, ...carriers];
 }
+
+/** A thing's mark in the Loot list: what makes it stand out, a watch entry or the quest layer. */
+export interface ThingMark {
+  color: string;
+  /** "watched: LEDX", "tracked: Shooter Born in Heaven", "needed for a quest". */
+  label: string;
+}
+
+const QUEST_MARK: ThingMark = { color: QUEST_COLOR, label: "needed for a quest" };
+
+/** Row key → its mark: of the entries (on) and the quest layer that match a thing, the one at the
+ *  highest level, as on the map. `rules`: watchRules' (bottom to top); `matched`: what each matched. */
+export function thingMarks(rules: readonly Rule[], matched: ReadonlyMap<string, readonly AnyRow[]>, entries: readonly WatchEntry[]): Map<string, ThingMark> {
+  const byRule = new Map(
+    entries.filter((e) => e.on && !watchesPlayers(e.query)).map((e) => [watchRuleId(e.id), { color: e.color, label: `${e.questId ? "tracked" : "watched"}: ${e.label}` }]),
+  );
+  const out = new Map<string, ThingMark>();
+  for (const r of rules) {
+    const mark = byRule.get(r.id) ?? (r.id.startsWith("layer.quest") ? QUEST_MARK : undefined);
+    if (mark) for (const row of matched.get(r.id) ?? []) if (row.subject !== "player") out.set(row.key, mark);
+  }
+  return out;
+}

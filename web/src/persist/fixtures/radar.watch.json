@@ -1,0 +1,65 @@
+{
+  "0": {
+    "entries": [
+      {
+        "id": "w:1",
+        "label": "LEDX",
+        "query": "item:LEDX",
+        "color": "#ff8a3d",
+        "level": "top",
+        "on": true
+      },
+      {
+        "id": "w:2",
+        "label": "Shortage",
+        "query": "quest:\"Shortage\"",
+        "color": "#c084fc",
+        "level": "high",
+        "on": false,
+        "questId": "5967733e86f774602332fc84"
+      },
+      {
+        "id": "w:2",
+        "label": "duplicate",
+        "query": "x"
+      },
+      {
+        "id": "w:3",
+        "query": ""
+      }
+    ]
+  },
+  "1": {
+    "$v": 1,
+    "data": {
+      "entries": [
+        {
+          "id": "w:1",
+          "label": "LEDX",
+          "query": "item:LEDX",
+          "color": "#ff8a3d",
+          "level": "top",
+          "on": true
+        },
+        {
+          "id": "w:2",
+          "label": "Shortage",
+          "query": "quest:\"Shortage\"",
+          "color": "#c084fc",
+          "level": "high",
+          "on": false,
+          "questId": "5967733e86f774602332fc84"
+        },
+        {
+          "id": "w:2",
+          "label": "duplicate",
+          "query": "x"
+        },
+        {
+          "id": "w:3",
+          "query": ""
+        }
+      ]
+    }
+  }
+}

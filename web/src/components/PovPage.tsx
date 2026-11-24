@@ -12,7 +12,8 @@ import { playerRows } from "../list/rows";
 import { useCatalog } from "../model/useCatalog";
 import { type PovPlayerLook, povPlayerLook } from "../pov/playerLook";
 import { applyRules } from "../rules/rules";
-import { hiddenKinds, storedRules, useRuleStore } from "../rules/store";
+import { useLayerPrefs, useMarkerPrefs, useWatchPrefs } from "../watch/prefs";
+import { watchRules } from "../watch/rules";
 import { canvasFont } from "../theme/font";
 import { getTheme, useTheme } from "../theme";
 import { ToggleRow } from "../ui";
@@ -43,14 +44,16 @@ export function PovPage() {
   const camera = useSyncExternalStore(conn.subscribeCamera, conn.getCamera);
   const [layers, setLayers] = useState<Layers>({ grid: true, loot: true });
 
-  // Players look as the display rules make them look on the map (not the pinned ones and highlights).
+  // Players look as they do on the map: their tiers, and the watchlist (watch/rules.ts).
   const { catalog } = useCatalog();
-  const [ruleStore] = useRuleStore();
+  const [markers] = useMarkerPrefs();
+  const [mapLayers] = useLayerPrefs();
+  const [watch] = useWatchPrefs();
   const looks = useMemo(() => {
     const rows = playerRows(state.players, state.equipment, catalog);
-    const styles = applyRules(rows, storedRules(ruleStore), catalog, hiddenKinds(ruleStore)).styles;
+    const styles = applyRules(rows, watchRules(markers, mapLayers, watch.entries), catalog).styles;
     return new Map(rows.flatMap((r) => { const look = povPlayerLook(r, styles.get(r.key)); return look ? [[r.sel.id, look] as const] : []; }));
-  }, [state.players, state.equipment, catalog, ruleStore]);
+  }, [state.players, state.equipment, catalog, markers, mapLayers, watch.entries]);
 
   const theme = useTheme(); // a new theme redraws
   const canvas = useRef<HTMLCanvasElement>(null);

@@ -1,0 +1,29 @@
+{
+  "0": {
+    "tiers": {
+      "pmc": {
+        "level": "top",
+        "color": "#ff0000"
+      },
+      "scav": {
+        "level": "nope"
+      }
+    },
+    "valuable": 100000
+  },
+  "1": {
+    "$v": 1,
+    "data": {
+      "tiers": {
+        "pmc": {
+          "level": "top",
+          "color": "#ff0000"
+        },
+        "scav": {
+          "level": "nope"
+        }
+      },
+      "valuable": 100000
+    }
+  }
+}

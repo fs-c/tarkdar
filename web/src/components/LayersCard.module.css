@@ -1,0 +1,4 @@
+.layers { display: grid; gap: 4px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 0; }
+.checks { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; padding: 3px 0; }
+.check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; & input { margin: 0; accent-color: var(--accent); } }

@@ -1,27 +1,14 @@
-// The display rules as App applies them: the stored ones and the pinned ones, then the highlights (and
-// the global search's live preview) on top; the categories switched off last. Applied per tab, so loot
-// (thousands of rows, changing rarely) isn't matched again every time players move.
+// The display rules as App applies them (watch/rules.ts: the tiers, the layers and the watchlist, then
+// the search's preview on top). Applied per tab, so loot (thousands of rows, changing rarely) isn't
+// matched again every time players move.
 
 import { useMemo } from "react";
-import type { Highlight } from "../highlight/match";
-import { nextColor } from "../highlight/match";
 import type { ItemCatalog } from "../model/items";
 import type { AnyRow, SubjectKind, TabRows } from "../list/rows";
-import { type Rule, type Style, applyRules, highlightRule } from "./rules";
+import { type Rule, type Style, applyRules } from "./rules";
 
-/** Rule id of a highlight, and of the search's preview. */
-export const highlightId = (id: number) => `highlight:${id}`;
+/** Rule id of the search's preview (the watch bar's active suggestion, marked on the map). */
 export const PREVIEW_ID = "highlight:preview";
-
-/**
- * Highlights as rules, bottom to top: the preview lowest (what's highlighted already keeps its colour),
- * then the pills from last to first (the first pill that matches a thing gives it its colour).
- */
-export function highlightRules(highlights: readonly Highlight[], preview: string | null): Rule[] {
-  const rules = highlights.map((h) => highlightRule(highlightId(h.id), h.label, h.query, h.color, h.on)).reverse();
-  if (preview) rules.unshift(highlightRule(PREVIEW_ID, "", preview, nextColor(highlights), true));
-  return rules;
-}
 
 export interface RuleState {
   /** Row key → its style. */

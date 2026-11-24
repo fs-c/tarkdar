@@ -133,7 +133,7 @@ export function MapPanel(p: Props) {
         />
         <ToggleRow
           label="Everyone"
-          hint="Recent paths of all players (those the list's filters let through)"
+          hint="Recent paths of all players"
           checked={p.trails.all}
           onChange={() => p.onTrails((t) => ({ ...t, all: !t.all }))}
         />

@@ -1,16 +1,16 @@
 @layer base, ui;
 @layer ui {
   .switch {
-    --w: 30px; --h: 17px; --knob: 11px; /* the knob sits 2px in from the (1px) border */
+    --w: 30px; --h: 18px; --knob: 14px;
     appearance: none; position: relative; flex: none; align-self: center; box-sizing: border-box;
     width: var(--w); height: var(--h); margin: 0; cursor: pointer;
-    border: 1px solid var(--border-strong); border-radius: var(--radius-pill); background: var(--control); transition: background 0.12s;
+    border: 0; border-radius: var(--radius-pill); background: var(--control); transition: background 0.12s;
     &::after {
-      content: ""; position: absolute; top: 2px; left: 2px; width: var(--knob); height: var(--knob); border-radius: 50%;
-      background: var(--muted); transition: transform 0.12s, background 0.12s;
+      content: ""; position: absolute; top: calc((var(--h) - var(--knob)) / 2); left: 2px; width: var(--knob); height: var(--knob); border-radius: 50%;
+      background: #b9c3ca; transition: transform 0.12s, background 0.12s;
     }
-    &:checked { border-color: var(--accent); background: var(--accent-soft); }
-    &:checked::after { transform: translateX(calc(var(--w) - var(--knob) - 6px)); background: var(--accent); }
+    &:checked { background: var(--accent); }
+    &:checked::after { transform: translateX(calc(var(--w) - var(--knob) - 4px)); background: var(--on-accent); }
   }
-  .sm { --w: 26px; --h: 15px; --knob: 9px; }
+  .sm { --w: 26px; --h: 16px; --knob: 12px; }
 }

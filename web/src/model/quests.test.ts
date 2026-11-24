@@ -69,7 +69,7 @@ describe("questNeeds", () => {
     expect(needs.started).toBe(3);
     expect([...needs.items.keys()].sort()).toEqual(["boltsTpl", "questA", "questB"]);
     expect(needs.items.get("boltsTpl")!.map(formatQuestNeed)).toEqual(["Gunsmith (×2, FIR)", "Prapor daily (2/5, FIR)"]);
-    expect(needs.items.get("questB")).toEqual([{ quest: "Retrieve the flight recorder", kind: "story", count: 1, fir: false, of: 1 }]);
+    expect(needs.items.get("questB")).toEqual([{ quest: "Retrieve the flight recorder", questId: expect.any(String), questName: expect.any(String), kind: "story", count: 1, fir: false, of: 1 }]);
   });
 
   it("is incomplete while a started quest's objectives are unknown, and null without quests", () => {
@@ -121,7 +121,7 @@ describe("imported quests", () => {
   const collector = { id: "col", name: "Collector", objectives: [obj("c1", "handover", ["egg"], { fir: true }), obj("c2", "find", ["egg"], { fir: true })] };
   it("need everything, under their own kind, without counting as started", () => {
     const needs = questNeeds([quest("a", [obj("o1", "find", ["x"])])], { imported: [collector] })!;
-    expect(needs.items.get("egg")).toEqual([{ quest: "Collector", kind: "imported", count: 1, fir: true, of: 1 }]);
+    expect(needs.items.get("egg")).toEqual([{ quest: "Collector", questId: collector.id, questName: "Collector", kind: "imported", count: 1, fir: true, of: 1 }]);
     expect(needs.started).toBe(1);
     expect(neededKinds(needs.items.get("egg"), false)).toEqual(["imported"]);
   });

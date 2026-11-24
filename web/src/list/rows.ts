@@ -8,7 +8,7 @@ import { type ItemCatalog, containerName, equipmentValue, slotValue } from "../m
 import { exfilStatus } from "../model/exfils";
 import { type Selection, midpoint, selectionKey } from "../draw/pick";
 import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, Vehicle, WorldPos } from "../model/protocol";
-import { type NeedKind, type QuestNeed, carriedNeeds, formatQuestNeed, neededKinds, needsFir } from "../model/quests";
+import { type NeedKind, type QuestNeed, carriedNeeds, formatQuestNeed, isOpen, neededKinds, needsFir } from "../model/quests";
 import { type PlayerType, SPECIAL_TYPES, bossGroups, identityText, playerType } from "../model/roles";
 
 export type TabId = "players" | "items" | "containers" | "exfils";
@@ -49,6 +49,9 @@ export interface RowBase {
   questFir?: boolean;
   /** The kinds of quest those needs are for: `quest:story` etc. */
   questKinds?: readonly NeedKind[];
+  /** The names and ids (lowercase) of the quests that still need it, or what's carried (not covered
+   *  by what's owned): `quest:"<name>"`, a tracked quest. */
+  questNames?: readonly string[];
 }
 
 export interface PlayerRow extends RowBase {
@@ -181,7 +184,13 @@ type NeedsMap = ReadonlyMap<string, readonly QuestNeed[]>;
 const NO_NEEDS: NeedsMap = new Map();
 
 /** What a player or corpse carries that quests need, as row fields; cached per needs map and gear. */
-type GearNeeds = Pick<RowBase, "questNeeds" | "questNeeded" | "questFir" | "questKinds">;
+type GearNeeds = Pick<RowBase, "questNeeds" | "questNeeded" | "questFir" | "questKinds" | "questNames">;
+
+/** The quests these needs are for, those still open: names (lowercase) and ids (for quests without a
+ *  name of their own, e.g. story steps, a tracked one goes by its id). */
+function questNamesOf(needs: readonly QuestNeed[] | undefined): string[] {
+  return [...new Set((needs ?? []).filter(isOpen).flatMap((n) => [n.questName?.toLowerCase(), n.questId?.toLowerCase()].filter((x): x is string => !!x)))];
+}
 const NOT_NEEDED: GearNeeds = {};
 const gearNeedsCache = new WeakMap<NeedsMap, WeakMap<Gear, GearNeeds>>();
 
@@ -193,7 +202,8 @@ function gearNeeds(gear: Gear, needs: NeedsMap): GearNeeds {
   if (!out) {
     const list = carriedNeeds(gear.tpls, needs);
     const kinds = neededKinds(list, true);
-    out = list.length ? { questNeeds: list.map(formatQuestNeed), questNeeded: true, ...(needsFir(list, true) ? { questFir: true } : {}), questKinds: kinds } : NOT_NEEDED;
+    const names = questNamesOf(list);
+    out = list.length ? { questNeeds: list.map(formatQuestNeed), questNeeded: true, ...(needsFir(list, true) ? { questFir: true } : {}), questKinds: kinds, ...(names.length ? { questNames: names } : {}) } : NOT_NEEDED;
     byGear.set(gear, out);
   }
   return out;
@@ -263,6 +273,7 @@ export function lootRows(
       const needList = questNeeds.get(l.tpl);
       const needs = kind === "item" ? needList?.map(formatQuestNeed) : undefined;
       const kinds = neededKinds(needList, kind === "quest");
+      const names = questNamesOf(needList);
       items.push({
         ...base(sel, kind, l.pos, text(name, info?.shortName, l.tpl, kind, ...(needs ?? [])), l.tpl ? [l.tpl] : NO_TPLS),
         value: slotValue(info),
@@ -271,6 +282,7 @@ export function lootRows(
         name, shortName: info?.shortName ?? name, kind, basePrice: info?.priceSource === "base",
         ...(needs?.length ? { questNeeds: needs } : {}),
         ...(kinds.length ? { questNeeded: true, questKinds: kinds } : {}),
+        ...(names.length ? { questNames: names } : {}),
         ...(needsFir(needList, kind === "quest") ? { questFir: true } : {}),
       });
     }
@@ -348,11 +360,10 @@ export function normalizeFilters(stored: unknown): ListFilters {
 }
 
 /** One tab's stored filter: its fields (those the tab has) when of the right type, else the default's. */
-function cleanFilter(f: Record<string, unknown>, text: string, def: TabFilter): TabFilter {
-  const out: TabFilter = { ...def, text };
-  for (const k of ["alive", "humans", "special"] as const) if (k in def && typeof f[k] === "boolean") out[k] = f[k];
-  if ("minValue" in def && typeof f.minValue === "number" && Number.isFinite(f.minValue) && f.minValue >= 0) out.minValue = f.minValue;
-  return out;
+function cleanFilter(_f: Record<string, unknown>, text: string, def: TabFilter): TabFilter {
+  // Only the text: the players' chips and the items' minimum value are gone from the lists (UX rework),
+  // so stored ones mustn't filter unseen.
+  return { ...def, text };
 }
 
 /** Keys of all rows, for showing only these on the map. */

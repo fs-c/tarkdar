@@ -1,38 +1,49 @@
-/* ---- activity bar ---- */
+/* The sidebar: one frosted card floating over the map's left edge, holding the icons (the rail) and,
+   when a view is open, its panel, with a line between them. */
+.card {
+  position: absolute; z-index: 10; top: var(--gap); left: var(--gap); bottom: var(--gap);
+  display: flex; min-height: 0; box-sizing: border-box;
+  border: 1px solid var(--border); border-radius: var(--r); background: var(--surface);
+  backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); box-shadow: var(--shadow-float);
+}
+
+/* ---- the rail ---- */
 .activityBar {
-  flex: none; width: var(--activity-w); box-sizing: border-box;
-  display: flex; flex-direction: column; align-items: stretch;
-  background: var(--chrome); border-right: 1px solid var(--border);
+  flex: none; width: var(--rail-w); box-sizing: border-box; padding: 6px 0;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
 .spacer { flex: 1; }
 .activity {
-  position: relative; height: 46px; display: grid; place-items: center; color: var(--faint);
-  &:hover { color: var(--text); }
+  position: relative; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; color: var(--faint);
+  &:hover { color: var(--text); background: var(--hover); }
   &[aria-pressed="true"] {
-    color: var(--text);
-    &::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px; background: var(--accent); }
+    color: var(--text); background: var(--press);
+    &::before { content: ""; position: absolute; left: -6px; top: 11px; bottom: 11px; width: 3px; border-radius: 0 2px 2px 0; background: var(--accent); }
   }
 }
 .badge {
-  position: absolute; right: 5px; bottom: 6px; min-width: 15px; height: 15px; box-sizing: border-box; padding: 0 3px;
-  border-radius: var(--radius-pill); background: var(--control); color: var(--text);
-  font-size: var(--fs-2xs); font-weight: 600; line-height: 15px; text-align: center; font-variant-numeric: tabular-nums;
-  .activity[aria-pressed="true"] & { background: var(--accent); color: var(--on-accent); }
+  position: absolute; right: 1px; bottom: 3px; min-width: 15px; height: 15px; box-sizing: border-box; padding: 0 4px;
+  border-radius: 8px; background: #2f363c; color: var(--text);
+  font-size: 9.5px; font-weight: 600; line-height: 15px; text-align: center; font-variant-numeric: tabular-nums;
 }
-.dot { min-width: 9px; width: 9px; height: 9px; right: 10px; bottom: 10px; padding: 0; background: var(--warn); }
+.new { background: var(--accent); color: var(--on-accent); font-weight: 700; }
+.dot {
+  min-width: 8px; width: 8px; height: 8px; right: 6px; top: 6px; bottom: auto; padding: 0; background: var(--warn); box-shadow: 0 0 0 2px var(--chrome);
+  &[data-tone="live"] { background: var(--danger); }
+}
 
-/* ---- side panel ---- */
-/* Sits beside the map (which shrinks to make room) rather than over it. Width set inline (resizable);
-   the max keeps some map visible when the window shrinks after a resize. */
+/* ---- the panel ---- */
+/* Width set inline (resizable); the max keeps some map visible when the window shrinks after a resize. */
 .sidebar {
-  position: relative; flex: none; max-width: calc(100vw - var(--activity-w) - 160px); min-width: 260px; box-sizing: border-box;
-  display: flex; flex-direction: column;
-  background: var(--surface); border-right: 1px solid var(--border);
+  position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 260px; box-sizing: border-box;
+  max-width: calc(100vw - var(--rail-w) - 2 * var(--gap) - 160px);
+  border-left: 1px solid var(--border); border-radius: 0 var(--r) var(--r) 0;
 }
-/* Drag handle over the right border. */
+/* Drag handle over the card's right edge. */
 .sash {
-  position: absolute; top: 0; bottom: 0; right: -3px; z-index: 2; width: 6px; cursor: ew-resize; touch-action: none;
+  position: absolute; top: var(--r); bottom: var(--r); right: -4px; z-index: 2; width: 6px; cursor: ew-resize; touch-action: none; border-radius: 3px;
   &:hover, &:active { background: var(--accent); transition: background 0.1s 0.15s; }
 }
-.header { display: flex; flex: none; align-items: center; gap: 8px; height: 35px; padding: 0 6px 0 14px; }
-.title { flex: 1; margin: 0; color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+/* A view's title: level with the rail's first icon. */
+.header { display: flex; flex: none; align-items: center; height: 52px; box-sizing: border-box; padding: 6px 8px 0 16px; }
+.title { flex: 1; margin: 0; color: var(--text); font-size: 15px; font-weight: 600; }

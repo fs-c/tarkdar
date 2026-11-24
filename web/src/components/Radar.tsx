@@ -31,6 +31,14 @@ export interface RadarHandle {
   pose(): { position: WorldPos; target: WorldPos } | null;
   /** The camera for the map debugging readout (Map3D.view). */
   view(): MapView | null;
+  /** Loads the map again (after it failed to). */
+  reload(): void;
+}
+
+/** The map loading: progress 0..1 while it loads, the error if it failed. */
+export interface MapStatus {
+  progress: number | null;
+  error: string | null;
 }
 
 interface Props {
@@ -55,6 +63,8 @@ interface Props {
   onTap: (x: number, y: number) => void;
   /** Render statistics after each map frame (debugging); omit to skip the bookkeeping. */
   onStats?: (stats: MapStats) => void;
+  /** The map loading (App shows it as a notice). */
+  onStatus?: (status: MapStatus) => void;
   ref?: Ref<RadarHandle>;
 }
 
@@ -73,7 +83,7 @@ const FOLLOW_SLACK = 4;
 const FLY_ZOOM_ABOVE = 600;
 
 
-export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, onTurn, onTap, onStats, ref }: Props) {
+export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, onTurn, onTap, onStats, onStatus, ref }: Props) {
   const theme = useTheme(); // a new theme: the map's colours below, the markers with the render it causes
   const hostRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -83,7 +93,9 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
   /** The scene changed since the markers were drawn. */
   const stale = useRef(false);
   const lastFollow = useRef(0);
-  const [status, setStatus] = useState<{ progress: number | null; error: string | null }>({ progress: url ? 0 : null, error: null });
+  const [status, setStatus] = useState<MapStatus>({ progress: url ? 0 : null, error: null });
+  /** Bumped to load the map again. */
+  const [attempt, setAttempt] = useState(0);
   const floors = useFloorFollow(mapRef);
   // Turned away from the map's usual orientation: a button turns it back (its needle points north on screen).
   const [rotated, setRotated] = useState(false);
@@ -174,7 +186,11 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- draw only reads refs
-  }, [url, up]);
+  }, [url, up, attempt]);
+
+  useEffect(() => {
+    onStatus?.(status);
+  }, [status, onStatus]);
 
   useEffect(() => {
     mapRef.current?.setColors(mapColors(theme));
@@ -210,25 +226,30 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
     pickSurface: (x, y) => mapRef.current?.pick(x, y) ?? null,
     pose: () => mapRef.current?.pose() ?? null,
     view: () => mapRef.current?.view() ?? null,
+    reload: () => setAttempt((a) => a + 1),
   }));
 
   // A click is a press and release in (nearly) the same place; anything else moves the map.
   const press = useRef<{ x: number; y: number } | null>(null);
+  // The map's own controls go next to it, not in it: the map reaches under the sidebar card (wider
+  // than what's seen, so its middle is the visible map's), the controls are placed in what's seen.
   return (
-    <div
-      className={s.radar}
-      ref={hostRef}
-      onPointerDown={(e) => (press.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null)}
-      onPointerUp={(e) => {
-        const p = press.current;
-        press.current = null;
-        if (!p || Math.hypot(e.clientX - p.x, e.clientY - p.y) >= 4) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        latest.current.onTap(e.clientX - rect.left, e.clientY - rect.top);
-      }}
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      <canvas className={s.markers} ref={overlayRef} />
+    <>
+      <div
+        className={s.radar}
+        ref={hostRef}
+        onPointerDown={(e) => (press.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null)}
+        onPointerUp={(e) => {
+          const p = press.current;
+          press.current = null;
+          if (!p || Math.hypot(e.clientX - p.x, e.clientY - p.y) >= 4) return;
+          const rect = e.currentTarget.getBoundingClientRect();
+          latest.current.onTap(e.clientX - rect.left, e.clientY - rect.top);
+        }}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <canvas className={s.markers} ref={overlayRef} />
+      </div>
       {floors.interior && <FloorPicker picked={floors.pickedFloor} onStep={floors.stepFloor} onAuto={() => floors.setPickedFloor(null)} />}
       {rotated && (
         <NorthButton
@@ -241,8 +262,6 @@ export function Radar({ url, up = 0, scene, settings, follow, heading, onPan, on
           }}
         />
       )}
-      {status.progress !== null && <p className={s.status}>Loading the map… {Math.round(status.progress * 100)} %</p>}
-      {status.error && <p className={s.status} data-tone="error">Couldn't load the 3D map: {status.error}</p>}
-    </div>
+    </>
   );
 }

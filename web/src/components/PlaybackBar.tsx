@@ -1,8 +1,9 @@
-// The playback controls, floating over the bottom of the map: play, the shown moment, a scrubber
-// track over the whole raid, speed, and the way back (to live, or out of a replay).
-// Live and at "now" it shrinks to a chip; clicking that opens the controls to go back in time.
+// The playback controls, floating across the bottom of the map: play, the shown moment, a scrubber
+// track over the whole raid, speed, and the way back (to live, or out of a replay). The same bar for
+// a replay and the live raid; live, a LIVE marker (red at live, click it to get back there) and a
+// way to hide it. It's up while replaying, behind live, or while the Raids view shows the live raid.
 
-import { Pause, Play, Radio, X } from "lucide-react";
+import { Pause, Play, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { eventConcerns } from "../stream/events";
 import type { Selection } from "../draw/pick";
@@ -27,22 +28,13 @@ interface Props {
   events: TimelineEvent[];
   selection: Selection | null;
   onExitReplay: () => void;
+  /** Live: hides the bar (and goes back to live). */
+  onHide: () => void;
 }
 
-export function PlaybackBar({ range, playback, replay, events, selection, onExitReplay }: Props) {
+export function PlaybackBar({ range, playback, replay, events, selection, onExitReplay, onHide }: Props) {
   const live = !replay;
   const atLive = live && playback.cursor === null;
-  const [expanded, setExpanded] = useState(false);
-
-  if (atLive && !expanded)
-    return (
-      <button type="button" className={cx(f.surface, f.bottom, f.bottomCentred, s.pill, s.chip)} title="Live: go back in time" onClick={() => setExpanded(true)}>
-        <Radio size={15} className={s.liveIcon} />
-        <span className={s.liveTag}>Live</span>
-        <span className={s.time}>{timeLabel(range, null, true)}</span>
-      </button>
-    );
-
   const at = playback.cursor ?? range[1];
 
   return (
@@ -66,17 +58,22 @@ export function PlaybackBar({ range, playback, replay, events, selection, onExit
           <X size={15} /> <span className={s.label}>Exit replay</span>
         </button>
       ) : (
-        <button
-          type="button"
-          className={s.toLive}
-          title={atLive ? "Hide the controls" : "Back to live"}
-          onClick={() => {
-            playback.seek(null);
-            setExpanded(false);
-          }}
-        >
-          <Radio size={14} /> <span className={s.label}>Live</span>
-        </button>
+        <>
+          <button type="button" className={s.toLive} disabled={atLive} title={atLive ? "Live" : "Back to live"} onClick={() => playback.seek(null)}>
+            <span className={s.liveDot} /> LIVE
+          </button>
+          <button
+            type="button"
+            className={s.exit}
+            title="Hide (back to live)"
+            onClick={() => {
+              playback.seek(null);
+              onHide();
+            }}
+          >
+            <X size={15} />
+          </button>
+        </>
       )}
     </div>
   );

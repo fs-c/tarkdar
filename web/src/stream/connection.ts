@@ -115,6 +115,14 @@ export class Connection {
     this.connect();
   }
 
+  /** Disconnected: tries again now rather than when the backoff says (resets it too). */
+  retryNow(): void {
+    if (!this.running || this.ws) return;
+    clearTimeout(this.retryTimer);
+    this.retryMs = 500;
+    this.connect();
+  }
+
   stop(): void {
     this.running = false;
     this.stats.stop();

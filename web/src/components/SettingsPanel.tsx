@@ -1,35 +1,157 @@
-// Settings view of the side panel: the theme, the overlay, then debugging tools (DebugPanel). (How the map looks: MapPanel.)
+// Settings view of the side panel, as tabs: Markers (how the tiers and loot look), Map (the 3D map's
+// look and trails: MapPanel), Quests (owned items, imported quests), Overlay (deprecated), Keys,
+// Status (connection, game, data), Debug (DebugPanel).
 
+import type { ComponentProps } from "react";
 import type { OverlayPrefs } from "../overlay/marks";
 import { DebugSections, type DebugProps } from "./DebugPanel";
+import { MapPanel } from "./MapPanel";
+import { QuestSettings } from "./QuestSettings";
+import { LevelPicker } from "./LevelPicker";
 import { PanelBody, Section, Segmented, SliderRow, ToggleRow } from "../ui";
 import type { SetStored } from "../persist";
-import { useThemePrefs } from "../persist/prefs";
-import { THEMES } from "../theme";
+import { formatPrice } from "../model/items";
+import { ORDINARY_CHOICES, VALUABLE_CHOICES, type MarkerPrefs } from "../watch/prefs";
+import { TIERS, TIER_ORDER } from "../watch/tiers";
+import s from "./SettingsPanel.module.css";
+
+export type SettingsTab = "markers" | "map" | "quests" | "overlay" | "keys" | "status" | "debug";
+
+const TABS: { id: SettingsTab; label: string }[] = [
+  { id: "markers", label: "Markers" },
+  { id: "map", label: "Map" },
+  { id: "quests", label: "Quests" },
+  { id: "overlay", label: "Overlay" },
+  { id: "keys", label: "Keys" },
+  { id: "status", label: "Status" },
+  { id: "debug", label: "Debug" },
+];
+
+/** One line of Settings → Status: how something is, and what to do about it. */
+export interface StatusLine {
+  label: string;
+  tone: "ok" | "info" | "warn" | "error" | "off";
+  text: string;
+  action?: { label: string; run: () => void };
+}
 
 interface Props {
+  tab: SettingsTab;
+  onTab: (tab: SettingsTab) => void;
+  markers: MarkerPrefs;
+  setMarkers: SetStored<MarkerPrefs>;
+  map: ComponentProps<typeof MapPanel>;
+  quests: ComponentProps<typeof QuestSettings>;
   /** The overlay: whether the backend runs it, its settings, and how many things it's told to mark. */
   overlay: { available: boolean; prefs: OverlayPrefs; onPrefs: SetStored<OverlayPrefs>; marks: number | null };
+  status: StatusLine[];
   debug: DebugProps;
 }
 
+const KEYS: [string[], string][] = [
+  [["/"], "Watch something"],
+  [["L"], "Open the panel's filter, or close the panel"],
+  [["F"], "Follow you, or stop"],
+  [["M"], "Realistic or plan map"],
+  [["Space"], "Play or pause"],
+  [["[", "]"], "Back or forward 10 s"],
+  [["PgUp", "PgDn"], "Floor up or down"],
+  [["+", "−", "0"], "Zoom in, out, reset"],
+  [["Esc"], "Deselect"],
+];
+
 export function SettingsPanel(p: Props) {
+  const warn = p.status.some((l) => l.tone === "warn" || l.tone === "error");
   return (
     <PanelBody>
-      <AppearanceSection />
-      <OverlaySection {...p.overlay} />
-      <DebugSections {...p.debug} />
+      <div className={s.tabs} role="tablist">
+        {TABS.map((t) => (
+          <button key={t.id} type="button" role="tab" aria-selected={p.tab === t.id} className={s.tab} onClick={() => p.onTab(t.id)}>
+            {t.label}
+            {t.id === "status" && warn && <span className={s.warnDot} />}
+          </button>
+        ))}
+      </div>
+      {p.tab === "markers" && <MarkersTab markers={p.markers} setMarkers={p.setMarkers} />}
+      {p.tab === "map" && <MapPanel {...p.map} />}
+      {p.tab === "quests" && <QuestSettings {...p.quests} />}
+      {p.tab === "overlay" && (
+        <>
+          <div className={s.callout}>
+            <b>Deprecated</b> The overlay isn&apos;t maintained and will be removed. Its settings still work for now.
+          </div>
+          <OverlaySection {...p.overlay} />
+        </>
+      )}
+      {p.tab === "keys" && (
+        <Section title="Keys">
+          {KEYS.map(([keys, what]) => (
+            <div key={what} className={s.key}>
+              <span>
+                {keys.map((k) => (
+                  <kbd key={k}>{k}</kbd>
+                ))}
+              </span>
+              <span>{what}</span>
+            </div>
+          ))}
+        </Section>
+      )}
+      {p.tab === "status" && (
+        <Section title="Status">
+          {p.status.map((l) => (
+            <div key={l.label} className={s.status}>
+              <span className={s.dot} data-tone={l.tone} />
+              <span className={s.statusLabel}>{l.label}</span>
+              <span className={s.statusText}>{l.text}</span>
+              {l.action && (
+                <button type="button" className={s.statusAction} onClick={l.action.run}>
+                  {l.action.label}
+                </button>
+              )}
+            </div>
+          ))}
+        </Section>
+      )}
+      {p.tab === "debug" && <DebugSections {...p.debug} />}
     </PanelBody>
   );
 }
 
-/** The theme: applied at once (theme/sync.ts follows the stored choice). */
-function AppearanceSection() {
-  const [{ id }, setPrefs] = useThemePrefs();
+/** How the tiers' players and loot look: each tier's level (its colour: the Players view's headers),
+ *  and from which value per slot loot counts as valuable, or ordinary. */
+function MarkersTab({ markers, setMarkers }: { markers: MarkerPrefs; setMarkers: SetStored<MarkerPrefs> }) {
   return (
-    <Section title="Appearance">
-      <Segmented label="Theme" options={THEMES.map((t) => ({ value: t.id, label: t.name }))} value={id} onChange={(next) => setPrefs({ id: next })} />
-    </Section>
+    <>
+      <Section title="Players">
+        {TIER_ORDER.map((t) => {
+          const { level, color } = markers.tiers[t];
+          return (
+            <div key={t} className={s.tier}>
+              <span>
+                <span className={s.tierDot} style={{ background: color }} />
+                {TIERS[t].name}
+              </span>
+              <LevelPicker level={level} color={color} label={TIERS[t].name} onChange={(l) => setMarkers((m) => ({ ...m, tiers: { ...m.tiers, [t]: { ...m.tiers[t], level: l } } }))} />
+            </div>
+          );
+        })}
+      </Section>
+      <Section title="Loot">
+        <div className={s.tier}>
+          <span>
+            Valuable <span className="muted">from, per slot: High</span>
+          </span>
+          <Segmented label="Valuable" options={VALUABLE_CHOICES.map((v) => ({ value: v, label: formatPrice(v).toLowerCase() }))} value={markers.valuable} onChange={(valuable) => setMarkers((m) => ({ ...m, valuable }))} />
+        </div>
+        <div className={s.tier}>
+          <span>
+            Ordinary <span className="muted">from: Normal; below it Low</span>
+          </span>
+          <Segmented label="Ordinary" options={ORDINARY_CHOICES.map((v) => ({ value: v, label: formatPrice(v).toLowerCase() }))} value={markers.ordinary} onChange={(ordinary) => setMarkers((m) => ({ ...m, ordinary }))} />
+        </div>
+      </Section>
+    </>
   );
 }
 
@@ -39,9 +161,8 @@ function OverlaySection({ available, prefs, onPrefs, marks }: Props["overlay"]) 
   return (
     <Section title="Overlay">
       <p className="muted">
-        The player's view drawn by the backend in a transparent window over the game&apos;s picture (Wayland: KDE Plasma,
-        wlroots compositors). It marks what the map shows, as the rules style it: players, exfils, and loot that stands
-        out.
+        The player&apos;s view drawn by the backend in a transparent window over the game&apos;s picture (Wayland: KDE Plasma,
+        wlroots compositors). It marks what the map shows: players, exfils, and loot that stands out.
       </p>
       {!available ? (
         <p className="muted">Not running: start radar-backend with --overlay.</p>

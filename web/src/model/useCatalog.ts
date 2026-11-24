@@ -1,6 +1,6 @@
 // React glue for the item catalogue.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { type CatalogStatus, loadCatalog } from "./catalog";
 import { type ItemCatalog, emptyCatalog } from "./items";
 
@@ -11,13 +11,16 @@ let catalogLoad: ReturnType<typeof loadCatalog> | null = null;
 export interface CatalogState {
   catalog: ItemCatalog;
   status: CatalogStatus;
+  /** Loads it again (after it failed, or to refresh stale data). */
+  reload: () => void;
 }
 
 export function useCatalog(): CatalogState {
-  const [state, setState] = useState<CatalogState>({
+  const [state, setState] = useState<Omit<CatalogState, "reload">>({
     catalog: emptyCatalog,
     status: { state: "loading", count: 0, fetchedAt: null },
   });
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
     void (catalogLoad ??= loadCatalog()).then(({ catalog, status }) => {
@@ -26,6 +29,11 @@ export function useCatalog(): CatalogState {
       setState({ catalog: catalog ?? emptyCatalog, status });
     });
     return () => void (live = false);
+  }, [attempt]);
+  const reload = useCallback(() => {
+    catalogLoad = null;
+    setState((s) => ({ ...s, status: { ...s.status, state: "loading" } }));
+    setAttempt((a) => a + 1);
   }, []);
-  return state;
+  return { ...state, reload };
 }

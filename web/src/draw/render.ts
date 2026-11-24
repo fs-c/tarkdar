@@ -1,5 +1,6 @@
 // Draws the radar's markers (players, loot, exfils, ...) over the map, through its camera (projector.ts).
 
+import type { CarriedMark } from "../watch/rules";
 import { LabelPlacer, type Rect, candidatesAround } from "./labels";
 import { type ItemCatalog, containerName, formatHeightDiff, formatPrice, slotValue } from "../model/items";
 import { exfilStatus } from "../model/exfils";
@@ -37,6 +38,9 @@ export interface Scene {
   trails: TrailScene | null;
   /** Up close, draw players with a known skeleton as figures instead of dots (3D map). */
   bodies: boolean;
+  /** Player id → watched things they carry (watch/rules.ts carriedMarks): each drawn as its own
+   *  marker riding next to them, and named in their label. */
+  carried?: ReadonlyMap<number, readonly CarriedMark[]>;
 }
 
 /** Where players have been: drawn from the timeline's tracks up to `at`. */
@@ -81,7 +85,7 @@ export function renderMarkers(ctx: CanvasRenderingContext2D, pr: Projector, scen
   });
   // Drawn bottom to top (style.ts: faint, the dead, normal, strong and loud, us).
   typed.sort((a, b) => a.look.order - b.look.order);
-  for (const { p, info, style, look } of typed) drawPlayer(ctx, pr, p, info, look, style, scene.bodies, labels);
+  for (const { p, info, style, look } of typed) drawPlayer(ctx, pr, p, info, look, style, scene.bodies, labels, scene.carried?.get(p.id));
 
   drawRings(ctx, pr, scene, styleOf);
   drawLabels(ctx, labels, local?.pos?.[1] ?? null);
@@ -213,6 +217,7 @@ function drawPlayer(
   style: Style,
   bodies: boolean,
   labels: LabelRequest[],
+  marks: readonly CarriedMark[] = [],
 ): void {
   if (!p.pos) return;
   let [x, y] = pr.toScreen(p.pos);
@@ -274,15 +279,57 @@ function drawPlayer(
     drawHalo(ctx, x, y, r, look);
   }
 
+  const carryGap = marks.length && !p.dead ? drawCarried(ctx, x, y, r, marks) : 0;
+
   const shownLabel = labelAt(style, pr.detail);
-  if (!p.local && shownLabel) {
-    const label = look.namedLabel ? `${info.label} ${p.id}` : `${p.id}`;
+  if (!p.local && (shownLabel || carryGap)) {
+    const name = look.namedLabel ? `${info.label} ${p.id}` : `${p.id}`;
+    const carried = carryGap ? marks.slice(0, CARRIED_SHOWN).map((m) => m.label) : [];
     labels.push({
-      x, y, height: p.pos[1], texts: [label], font: look.labelFont, color: look.labelColor, alpha: look.alpha,
-      gap: r + (look.halo ? 7 : 3), rank: LABEL_RANK.player, priority: look.order, forced: shownLabel.forced, fixed: true,
+      x, y, height: p.pos[1], texts: [[name, ...carried].join(" · ")], font: look.labelFont, color: look.labelColor, alpha: carryGap ? 1 : look.alpha,
+      gap: r + (look.halo ? 7 : 3) + carryGap, rank: LABEL_RANK.player, priority: look.order, forced: !!carryGap || !!shownLabel?.forced, fixed: true,
     });
   }
   ctx.globalAlpha = 1;
+}
+
+/** Carried things drawn next to a player, at most. */
+const CARRIED_SHOWN = 3;
+const CARRIED_SIZE: Record<CarriedMark["level"], number> = { low: 3, normal: 4, high: 5.5, top: 6.5 };
+
+/**
+ * What a player carries that's watched: each thing's own marker (a square, its size by level, ringed at
+ * Top, in the entry's colour) up and to the right of them, joined by a thin line, so a LEDX in a
+ * backpack looks like a LEDX, and the line says it's carried. Returns how far right they reach (the
+ * label goes after them).
+ */
+function drawCarried(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, marks: readonly CarriedMark[]): number {
+  const shown = marks.slice(0, CARRIED_SHOWN);
+  shown.forEach((m, i) => {
+    const size = CARRIED_SIZE[m.level];
+    const bx = x + r + 12 + i * 16, by = y - r - 8;
+    ctx.globalAlpha = 0.6;
+    ctx.strokeStyle = m.color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = m.color;
+    ctx.fillRect(bx - size / 2, by - size / 2, size, size);
+    ctx.strokeStyle = getTheme().canvas.outline;
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(bx - size / 2, by - size / 2, size, size);
+    if (m.level === "top") {
+      ctx.strokeStyle = m.color;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(bx, by, size + 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  });
+  return 14 + shown.length * 16;
 }
 
 /** A ring around special players' markers, so they stand out even among a crowd. */

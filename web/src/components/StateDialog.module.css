@@ -1,0 +1,21 @@
+.dialog {
+  display: grid; grid-template-columns: 40px 1fr; column-gap: 16px; width: 440px; box-sizing: border-box; padding: 20px 22px 18px;
+}
+.icon {
+  grid-row: span 4; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+  background: var(--hover); color: var(--muted);
+  .dialog[data-tone="error"] & { background: rgba(255, 90, 82, 0.13); color: var(--danger); }
+  &[data-spin="true"] svg { animation: spin 1.4s linear infinite; }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .icon[data-spin="true"] svg { animation: none; } }
+.title { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+.text { margin: 0; color: var(--muted); }
+.meta { margin-top: 10px; color: var(--faint); font: 11.5px var(--mono); }
+.actions { display: flex; gap: 8px; margin-top: 16px; }
+.action {
+  display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 8px;
+  background: var(--press); font-size: 12.5px;
+  &:hover { background: rgba(255, 255, 255, 0.14); }
+  &[data-primary="true"] { background: var(--accent); color: var(--on-accent); font-weight: 600; &:hover { filter: brightness(1.08); } }
+}

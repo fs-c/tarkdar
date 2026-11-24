@@ -1,5 +1,27 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`radar.layers > from version 0 1`] = `
+{
+  "containers": true,
+  "corpses": true,
+  "exfils": true,
+  "explosives": true,
+  "loot": "all",
+  "quest": "started",
+}
+`;
+
+exports[`radar.layers > from version 1 1`] = `
+{
+  "containers": true,
+  "corpses": true,
+  "exfils": true,
+  "explosives": true,
+  "loot": "all",
+  "quest": "started",
+}
+`;
+
 exports[`radar.list > from version 0 1`] = `
 {
   "filters": {
@@ -60,11 +82,11 @@ exports[`radar.list > from version 1 1`] = `
       "text": "",
     },
     "items": {
-      "minValue": 30000,
+      "minValue": 0,
       "text": "gpu",
     },
     "players": {
-      "alive": true,
+      "alive": false,
       "humans": false,
       "special": false,
       "text": "",
@@ -217,6 +239,104 @@ exports[`radar.map > from version 1 1`] = `
   "style": "realistic",
   "trees": true,
   "wireframe": false,
+}
+`;
+
+exports[`radar.markers > from version 0 1`] = `
+{
+  "ordinary": 15000,
+  "tiers": {
+    "bd": {
+      "color": "#6fa8ff",
+      "level": "high",
+    },
+    "boss": {
+      "color": "#ff4fd8",
+      "level": "top",
+    },
+    "cultist": {
+      "color": "#b48cff",
+      "level": "high",
+    },
+    "guard": {
+      "color": "#ff4fd8",
+      "level": "high",
+    },
+    "infected": {
+      "color": "#9bd14b",
+      "level": "low",
+    },
+    "other": {
+      "color": "#a3acb3",
+      "level": "normal",
+    },
+    "pmc": {
+      "color": "#ff0000",
+      "level": "top",
+    },
+    "pscav": {
+      "color": "#f5c542",
+      "level": "normal",
+    },
+    "raider": {
+      "color": "#38e8c0",
+      "level": "high",
+    },
+    "scav": {
+      "color": "#d5dde3",
+      "level": "low",
+    },
+  },
+  "valuable": 100000,
+}
+`;
+
+exports[`radar.markers > from version 1 1`] = `
+{
+  "ordinary": 15000,
+  "tiers": {
+    "bd": {
+      "color": "#6fa8ff",
+      "level": "high",
+    },
+    "boss": {
+      "color": "#ff4fd8",
+      "level": "top",
+    },
+    "cultist": {
+      "color": "#b48cff",
+      "level": "high",
+    },
+    "guard": {
+      "color": "#ff4fd8",
+      "level": "high",
+    },
+    "infected": {
+      "color": "#9bd14b",
+      "level": "low",
+    },
+    "other": {
+      "color": "#a3acb3",
+      "level": "normal",
+    },
+    "pmc": {
+      "color": "#ff0000",
+      "level": "top",
+    },
+    "pscav": {
+      "color": "#f5c542",
+      "level": "normal",
+    },
+    "raider": {
+      "color": "#38e8c0",
+      "level": "high",
+    },
+    "scav": {
+      "color": "#d5dde3",
+      "level": "low",
+    },
+  },
+  "valuable": 100000,
 }
 `;
 
@@ -538,6 +658,24 @@ exports[`radar.rules > from version 4 1`] = `
 }
 `;
 
+exports[`radar.seenQuests > from version 0 1`] = `
+{
+  "ids": [
+    "a",
+    "b",
+  ],
+}
+`;
+
+exports[`radar.seenQuests > from version 1 1`] = `
+{
+  "ids": [
+    "a",
+    "b",
+  ],
+}
+`;
+
 exports[`radar.sidebar > from version 0 1`] = `
 {
   "open": true,
@@ -550,7 +688,7 @@ exports[`radar.sidebar > from version 1 1`] = `
 {
   "open": false,
   "raidsLevel": "list",
-  "section": "filters",
+  "section": "watch",
 }
 `;
 
@@ -558,7 +696,15 @@ exports[`radar.sidebar > from version 2 1`] = `
 {
   "open": true,
   "raidsLevel": "list",
-  "section": "map",
+  "section": "settings",
+}
+`;
+
+exports[`radar.sidebar > from version 3 1`] = `
+{
+  "open": true,
+  "raidsLevel": "timeline",
+  "section": "loot",
 }
 `;
 
@@ -576,13 +722,13 @@ exports[`radar.sidebarSize > from version 1 1`] = `
 
 exports[`radar.theme > from version 0 1`] = `
 {
-  "id": "light",
+  "id": "dark",
 }
 `;
 
 exports[`radar.theme > from version 1 1`] = `
 {
-  "id": "amber",
+  "id": "dark",
 }
 `;
 
@@ -599,5 +745,53 @@ exports[`radar.trails > from version 1 1`] = `
   "all": false,
   "minutes": 10,
   "selected": false,
+}
+`;
+
+exports[`radar.watch > from version 0 1`] = `
+{
+  "entries": [
+    {
+      "color": "#ff8a3d",
+      "id": "w:1",
+      "label": "LEDX",
+      "level": "top",
+      "on": true,
+      "query": "item:LEDX",
+    },
+    {
+      "color": "#c084fc",
+      "id": "w:2",
+      "label": "Shortage",
+      "level": "high",
+      "on": false,
+      "query": "quest:"Shortage"",
+      "questId": "5967733e86f774602332fc84",
+    },
+  ],
+}
+`;
+
+exports[`radar.watch > from version 1 1`] = `
+{
+  "entries": [
+    {
+      "color": "#ff8a3d",
+      "id": "w:1",
+      "label": "LEDX",
+      "level": "top",
+      "on": true,
+      "query": "item:LEDX",
+    },
+    {
+      "color": "#c084fc",
+      "id": "w:2",
+      "label": "Shortage",
+      "level": "high",
+      "on": false,
+      "query": "quest:"Shortage"",
+      "questId": "5967733e86f774602332fc84",
+    },
+  ],
 }
 `;

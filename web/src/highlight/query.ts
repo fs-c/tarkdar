@@ -10,6 +10,7 @@
 //                             items always): what buying won't do. Gear off a body counts
 //   quest:story,side          ... needed by that kind of quest: story side daily weekly (repeatable:
 //                             daily and weekly), imported (future: one imported in the Quests view)
+//   quest:"Shortage"          ... needed by that quest (by name): what a tracked quest watches
 //   item:LEDX  item:"Red Rebel ice pick"   items (short or full name) and kinds of container
 //   cat:Electronics           handbook categories
 //   value>=40k  price<5k      roubles: value per slot (loose items) or of the equipment (players,
@@ -33,7 +34,8 @@ export type Term =
   | { kind: "is"; values: string[] }
   | { kind: "item"; names: string[] }
   | { kind: "cat"; names: string[] }
-  | { kind: "quest"; kinds: NeedKind[] }
+  /** Kinds of quest, and quests by name (lowercase): any of them. */
+  | { kind: "quest"; kinds: NeedKind[]; names: string[] }
   | { kind: "num"; field: NumField; op: Op; value: number };
 
 const NUM_FIELDS: Record<string, NumField> = {
@@ -155,11 +157,15 @@ export function parseQuery(q: string): Parsed {
     const op = (m[2] === "≥" ? ">=" : m[2] === "≤" ? "<=" : m[2]) as Op | ":";
     const rest = m[3]!;
     if (op === ":" && key === "quest") {
+      // A kind of quest, or a quest's name (quest:"Shooter Born in Heaven": what a tracked quest watches).
       const values = list(rest).map((v) => v.toLowerCase());
-      const unknown = values.filter((v) => !(v in QUEST_KIND_NAMES));
-      if (!values.length) errors.push("quest: needs a value (story, side, daily, weekly, imported)");
-      else if (unknown.length) errors.push(`quest:${unknown.join(",")}: unknown (story, side, daily, weekly, repeatable, imported)`);
-      else terms.push({ kind: "quest", kinds: [...new Set(values.flatMap((v) => QUEST_KIND_NAMES[v]!))] });
+      if (!values.length) errors.push("quest: needs a value (story, side, daily, weekly, imported, or a quest's name)");
+      else
+        terms.push({
+          kind: "quest",
+          kinds: [...new Set(values.flatMap((v) => QUEST_KIND_NAMES[v] ?? []))],
+          names: values.filter((v) => !(v in QUEST_KIND_NAMES)),
+        });
       continue;
     }
     if (op === ":" && (key === "is" || key === "item" || key === "cat")) {
@@ -270,7 +276,7 @@ function compileTerm(t: Term, catalog: ItemCatalog, errors: string[]): RowTest {
       return tests.length === 1 ? tests[0]! : (r) => tests.some((f) => f(r));
     }
     case "quest":
-      return (r) => !!r.questKinds?.some((k) => t.kinds.includes(k));
+      return (r) => !!r.questKinds?.some((k) => t.kinds.includes(k)) || !!r.questNames?.some((n) => t.names.includes(n));
     case "item": {
       const ix = nameIndex(catalog).items;
       const set = new Set<string>();

@@ -46,8 +46,14 @@ describe("suggest", () => {
     expect(suggest("electronics", catalog).find((s) => s.group === "Category")).toMatchObject({ detail: "Barter items", query: "cat:Electronics" });
   });
 
-  it("turns a value into thresholds for items (per slot) and for gear", () => {
-    expect(suggest("≥50k", catalog).slice(1).map((s) => s.query)).toEqual(["is:item value>=50k", "is:player,corpse value>=50k"]);
+  it("turns a value into thresholds for items (per slot) and for gear, before the text", () => {
+    expect(suggest("≥50k", catalog).map((s) => s.query)).toEqual(["is:item value>=50k", "is:player,corpse value>=50k", "≥50k"]);
+  });
+
+  it("puts a kind typed as such before the text", () => {
+    expect(suggest("boss", catalog)[0]).toMatchObject({ label: "Bosses", query: "is:boss" });
+    expect(suggest("bosses", catalog)[0]).toMatchObject({ query: "is:boss" });
+    expect(suggest("bo", catalog)[0]).toMatchObject({ group: "Text" });
   });
 
   it("takes a query as it is, or says what's wrong with it", () => {

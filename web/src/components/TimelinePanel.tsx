@@ -5,13 +5,13 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronLeft } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
-import { EVENT_GROUPS, type EventGroup, describeEvent, eventConcerns, eventGroup } from "../stream/events";
+import { EVENT_GROUPS, type EventGroup, describeEvent, eventGroup } from "../stream/events";
 import { useLogPrefs } from "../persist/prefs";
 import type { ItemCatalog } from "../model/items";
 import { type Selection, selectionKey } from "../draw/pick";
 import { type Playback, formatDuration } from "../stream/playback";
 import type { Timeline, TimelineEvent } from "../stream/timeline";
-import { Button, Chip, cx, Note, selectableRow } from "../ui";
+import { Button, cx, Note, selectableRow } from "../ui";
 import s from "./TimelinePanel.module.css";
 
 const ROW_HEIGHT = 22;
@@ -49,10 +49,10 @@ export function TimelinePanel(props: Props) {
   const events = useMemo(() => {
     if (!timeline) return [];
     return timeline.events.filter(
-      (e) => groups[eventGroup(e.kind)] && (!prefs.selectedOnly || (selection !== null && eventConcerns(e, selection))),
+      (e) => groups[eventGroup(e.kind)],
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- events only grow (count)
-  }, [timeline, count, groups, prefs.selectedOnly, selection]);
+  }, [timeline, count, groups]);
 
   // The "now" marker goes after the last event at or before the shown moment.
   const nowIndex = useMemo(() => {
@@ -127,17 +127,11 @@ export function TimelinePanel(props: Props) {
       {loading && <Note>Loading the raid so far…</Note>}
       <div className={s.filters}>
         {(Object.keys(EVENT_GROUPS) as EventGroup[]).map((g) => (
-          <Chip key={g} on={groups[g]} onClick={() => toggleGroup(g)}>
+          <button key={g} type="button" className={s.group} aria-pressed={groups[g]} data-group={g} onClick={() => toggleGroup(g)}>
+            <span className={s.groupDot} />
             {EVENT_GROUPS[g].label}
-          </Chip>
+          </button>
         ))}
-        <Chip
-          on={prefs.selectedOnly}
-          title="Only events about the selected player, item or exfil"
-          onClick={() => setPrefs((p) => ({ ...p, selectedOnly: !p.selectedOnly }))}
-        >
-          Selected only
-        </Chip>
       </div>
       <div className={s.body}>
         <div ref={scrollRef} className={s.scroll} onScroll={onScroll}>

@@ -1,64 +1,89 @@
 /* Controls floating over the map: where each one sits, all in one place, so they line up and keep
-   clear of each other. The map area (App's <main>) carries the measures (.area); the controls take a
-   placement class from here and keep their own look in their own module.
+   clear of each other and of the sidebar card. The map area (App's <main>) fills the window and
+   carries the measures (.area); the controls take a placement class from here and keep their own
+   look in their own module.
 
-     top row     highlights (top left)                           style switch (top right)
-                                                                 details panel, below the switch
-     bottom row  playback pill (from the left, up to the buttons) the round buttons' column:
-                                                                 follow in the corner, north and
-                                                                 the floor picker stacked above it */
+     top row     the watch bar (left, right of the sidebar card)        map style (top right)
+                                                                        details, below the style
+     bottom row  playback bar (from the card to the buttons' column)    the buttons' column:
+                 notices above it, centred                              follow in the corner,
+                                                                        north and floors above */
 .area {
-  --float-top: 10px; /* the top row's distance from the edges */
-  --float-bottom: 14px; /* the bottom row's */
+  --float-edge: 12px; /* from the map area's edges */
   --float-gap: 10px; /* between neighbours */
-  --float-button: 40px; /* round buttons; the playback pill's height */
-  --float-tile: 34px; /* the style switch's previews */
-  --details-w: 360px;
-  /* From the right edge to the left of the round buttons' column (and from the bottom edge to above follow). */
-  --float-column: calc(var(--float-bottom) + var(--float-button) + var(--float-gap));
-  /* What the top right corner holds: its height (what goes below it starts there) and width (the top
-     left stops short of it). */
+  --cover: 0px; /* how far the sidebar card reaches into the map from the left (set by App) */
+  --float-left: calc(var(--cover) + var(--float-edge)); /* where the controls start on the left */
+  --details-w: 340px;
+  --style-tile: 52px; /* the map style switch: a bigger tile than the other controls */
+  /* From the right edge to the left of the buttons' column (and from the bottom edge to above follow). */
+  --float-column: calc(var(--float-edge) + var(--fh) + var(--float-gap));
+  /* What the top right corner holds: its height (what goes below it starts there) and width. */
   --top-right-h: 0px;
   --top-right-w: 0px;
-  /* the style switch: a tile, plus its padding (3px) and border (1px) on both sides */
   &[data-style-switch="true"] {
-    --top-right-h: calc(var(--float-tile) + 8px + var(--float-gap));
+    --top-right-h: calc(var(--style-tile) + var(--float-gap));
     --top-right-w: var(--top-right-h);
   }
-  &[data-details="true"] { --top-right-w: calc(var(--details-w) + var(--float-gap)); }
 }
 
-/* ---- looks shared by the controls ---- */
-.surface { border: 1px solid var(--border-strong); background: var(--overlay); box-shadow: var(--shadow-float); }
+/* ---- the look they share: frosted glass, one height, one corner ---- */
+.surface {
+  border: 1px solid var(--border); border-radius: var(--fr); background: var(--overlay);
+  backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); box-shadow: var(--shadow-float);
+}
 .round {
-  width: var(--float-button); height: var(--float-button); display: grid; place-items: center; padding: 0;
-  border-radius: 50%; color: var(--muted);
+  width: var(--fh); height: var(--fh); display: grid; place-items: center; padding: 0; box-sizing: border-box;
+  color: var(--muted);
   &:hover { color: var(--text); }
-  &[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  &[aria-pressed="true"] { color: var(--accent); box-shadow: 0 0 0 1px var(--link-line), var(--shadow-float); }
+}
+/* Cards over the map (details, menus): the same glass, a bit more opaque, bigger corners. */
+.card {
+  border: 1px solid var(--border); border-radius: var(--r); background: var(--overlay-surface);
+  backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); box-shadow: var(--shadow-pop);
 }
 
 /* ---- placements ---- */
 .topLeft {
-  position: absolute; top: var(--float-top); left: var(--float-top); z-index: 2;
-  max-width: min(640px, calc(100% - 2 * var(--float-top) - var(--top-right-w)));
+  position: absolute; top: var(--float-edge); left: var(--float-left); z-index: 3;
+  max-width: calc(100% - var(--float-left) - var(--float-edge) - var(--top-right-w));
 }
-.topRight { position: absolute; top: var(--float-top); right: var(--float-top); z-index: 2; max-width: calc(100% - 2 * var(--float-top)); }
-/* Below the top right corner, down to above the round buttons. */
+.topRight { position: absolute; top: var(--float-edge); right: var(--float-edge); z-index: 4; }
+/* Below the top right corner, down to above the buttons' column (follow, and north and the floor
+   picker stacked above it: --column-h). */
 .belowTopRight {
-  position: absolute; top: calc(var(--float-top) + var(--top-right-h)); right: var(--float-top); z-index: 1;
-  width: min(var(--details-w), calc(100% - 2 * var(--float-top)));
-  max-height: calc(100% - var(--float-top) - var(--top-right-h) - var(--float-column));
+  --column-h: calc(2 * var(--fh) + 84px + 3 * var(--float-gap));
+  position: absolute; top: calc(var(--float-edge) + var(--top-right-h)); right: var(--float-edge); z-index: 2;
+  width: min(var(--details-w), calc(100% - var(--float-left) - var(--float-edge)));
+  max-height: calc(100% - 2 * var(--float-edge) - var(--top-right-h) - var(--column-h));
 }
-.corner { position: absolute; right: var(--float-bottom); bottom: var(--float-bottom); z-index: 1; }
+.corner { position: absolute; right: var(--float-edge); bottom: var(--float-edge); z-index: 2; }
 /* Stacked above the corner button; the first of two goes above the second. */
 .aboveCorner {
-  position: absolute; right: var(--float-bottom); bottom: var(--float-column); z-index: 2; width: var(--float-button);
-  &:has(~ .aboveCorner) { bottom: calc(var(--float-column) + var(--float-button) + var(--float-gap)); }
+  position: absolute; right: var(--float-edge); bottom: var(--float-column); z-index: 2; width: var(--fh);
+  &:has(~ .aboveCorner) { bottom: calc(var(--float-column) + var(--fh) + var(--float-gap)); }
 }
-/* The bottom row, from the left up to the round buttons' column. */
+/* The bottom row, from the sidebar card up to the buttons' column. */
 .bottom {
-  position: absolute; left: var(--float-bottom); right: var(--float-column); bottom: var(--float-bottom); z-index: 1;
-  height: var(--float-button); border-radius: calc(var(--float-button) / 2);
+  position: absolute; left: var(--float-left); right: var(--float-column); bottom: var(--float-edge); z-index: 2;
+  height: var(--fh); box-sizing: border-box;
 }
-/* ...or as narrow as its content, centred on the map (as far as the column lets it). */
-.bottomCentred { left: var(--float-column); width: fit-content; margin: 0 auto; }
+/* ...or as narrow as its content, centred in the visible map (as far as the column lets it). */
+.bottomCentred { width: fit-content; margin: 0 auto; }
+/* Notices: centred above the bottom row (or in it, without a playback bar). */
+.notices {
+  position: absolute; left: var(--float-left); right: var(--float-column); bottom: var(--float-edge); z-index: 3;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
+  & > * { pointer-events: auto; }
+  &[data-above="true"] { bottom: calc(var(--float-edge) + var(--fh) + var(--float-gap)); }
+}
+/* A dialog in the middle of the visible map. */
+.centre {
+  position: absolute; top: 45%; left: calc(var(--cover) + (100% - var(--cover)) / 2); z-index: 3;
+  transform: translate(-50%, -50%); max-width: calc(100% - var(--cover) - 2 * var(--float-edge));
+}
+/* A pop-out next to the sidebar card (the quest picker): the map's full height. */
+.flyout {
+  position: absolute; left: var(--float-left); top: var(--float-edge); bottom: var(--float-edge); z-index: 6;
+  width: min(380px, calc(100% - var(--float-left) - var(--float-edge)));
+}

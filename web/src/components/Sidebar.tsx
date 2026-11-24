@@ -1,46 +1,59 @@
-// VS Code-style navigation: an always-visible activity bar of icons on the left, and a collapsible
-// side panel showing the picked view. Clicking the active icon collapses the panel.
+// Navigation: one frosted card floating over the map's left edge (SidebarCard), with an
+// always-visible rail of icons and a collapsible panel showing the picked view. Clicking the active
+// icon collapses the panel.
 
-import { Archive, DoorOpen, Funnel, History, type LucideIcon, Map as MapIcon, Package, PanelLeftClose, ScrollText, Settings, Users } from "lucide-react";
-import { type PointerEvent, type ReactNode, useRef } from "react";
+import { Binoculars, ChevronLeft, DoorOpen, History, type LucideIcon, Package, Settings, Users } from "lucide-react";
+import { type PointerEvent, type ReactNode, useLayoutEffect, useRef } from "react";
 import { DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, useSidebarSize } from "../persist/prefs";
-import { TABS } from "../list/columns";
-import type { TabId } from "../list/rows";
+import type { Section } from "../persist/prefs";
 import { Button, cx } from "../ui";
 import s from "./Sidebar.module.css";
 
-/** The panel's views: one per list tab, plus quests, the display rules, map options, raid recordings, and settings (with debugging). */
-export type ViewId = TabId | "quests" | "filters" | "map" | "raids" | "settings";
+/** The panel's views: who's around, loot, exfils, the watchlist (with tracked quests), raids, settings. */
+export type ViewId = Section;
 
-const LIST_ICONS: Record<TabId, LucideIcon> = {
-  players: Users,
-  items: Package,
-  containers: Archive,
-  exfils: DoorOpen,
-};
+const TOP: ViewId[] = ["players", "loot", "exfils", "watch", "raids"];
 
-const TOP: ViewId[] = ["players", "items", "containers", "exfils", "quests", "filters", "map", "raids"];
+export const VIEW_TITLES: Record<ViewId, string> = { players: "Players", loot: "Loot", exfils: "Exfils", watch: "Watch", raids: "Raids", settings: "Settings" };
 
-export const VIEW_TITLES: Record<ViewId, string> = {
-  ...Object.fromEntries(Object.entries(TABS).map(([id, t]) => [id, t.label])),
-  quests: "Quests",
-  filters: "Filters",
-  map: "Map",
-  raids: "Raids",
-  settings: "Settings",
-} as Record<ViewId, string>;
+const ICONS: Record<ViewId, LucideIcon> = { players: Users, loot: Package, exfils: DoorOpen, watch: Binoculars, raids: History, settings: Settings };
 
-const ICONS: Record<ViewId, LucideIcon> = { ...LIST_ICONS, quests: ScrollText, filters: Funnel, map: MapIcon, raids: History, settings: Settings };
+/** A rail icon's badge: a count; a count that wants attention ("new"); or a dot (live: red, else amber). */
+export type Badge = number | { n: number; tone: "new" } | { dot: "live" | "warn" };
+
+/** The card around the rail and the panel. Reports how far it reaches into the map (its right edge,
+ *  px from the window's left), which is where the map's own controls start. */
+export function SidebarCard({ onCover, children }: { onCover: (px: number) => void; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current!;
+    const report = () => onCover(Math.round(el.getBoundingClientRect().right));
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    addEventListener("resize", report);
+    return () => {
+      observer.disconnect();
+      removeEventListener("resize", report);
+    };
+  }, [onCover]);
+  return (
+    <div ref={ref} className={s.card}>
+      {children}
+    </div>
+  );
+}
 
 interface ActivityBarProps {
   /** The view shown in the panel, or null when it's collapsed. */
   active: ViewId | null;
   onPick: (view: ViewId) => void;
-  /** Badge per view: a number (row count), true (a dot), or nothing. */
-  badges: Partial<Record<ViewId, number | boolean>>;
+  badges: Partial<Record<ViewId, Badge>>;
+  /** Extra tooltip text per view ("a raid is live"). */
+  notes?: Partial<Record<ViewId, string>>;
 }
 
-export function ActivityBar({ active, onPick, badges }: ActivityBarProps) {
+export function ActivityBar({ active, onPick, badges, notes = {} }: ActivityBarProps) {
   const item = (v: ViewId) => {
     const Icon = ICONS[v];
     const badge = badges[v];
@@ -49,12 +62,13 @@ export function ActivityBar({ active, onPick, badges }: ActivityBarProps) {
         key={v}
         className={s.activity}
         aria-pressed={v === active}
-        title={VIEW_TITLES[v] + (v === active ? " (click to collapse)" : "")}
+        title={VIEW_TITLES[v] + (notes[v] ? ` · ${notes[v]}` : "") + (v === active ? " (click to fold)" : "")}
         onClick={() => onPick(v)}
       >
-        <Icon size={22} strokeWidth={1.6} />
+        <Icon size={22} strokeWidth={1.7} />
         {typeof badge === "number" && badge > 0 && <span className={s.badge}>{compact(badge)}</span>}
-        {badge === true && <span className={cx(s.badge, s.dot)} />}
+        {typeof badge === "object" && "n" in badge && badge.n > 0 && <span className={cx(s.badge, s.new)}>{compact(badge.n)}</span>}
+        {typeof badge === "object" && "dot" in badge && <span className={cx(s.badge, s.dot)} data-tone={badge.dot} />}
       </button>
     );
   };
@@ -114,8 +128,8 @@ export function SidePanel({ view, onClose, children }: SidePanelProps) {
       />
       <header className={s.header}>
         <h2 className={s.title}>{VIEW_TITLES[view]}</h2>
-        <Button variant="icon" title="Collapse (L)" onClick={onClose}>
-          <PanelLeftClose size={16} />
+        <Button variant="icon" title="Fold the panel" onClick={onClose}>
+          <ChevronLeft size={16} />
         </Button>
       </header>
       {children}

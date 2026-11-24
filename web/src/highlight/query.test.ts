@@ -142,7 +142,7 @@ describe("matching", () => {
   });
   it("matches what a kind of quest needs", () => {
     const needs = new Map<string, QuestNeed[]>([
-      ["bolts", [{ quest: "Gunsmith", kind: "side", count: 2, fir: true, of: 1 }, { quest: "Prapor daily", kind: "daily", count: 1, fir: true, of: 1 }]],
+      ["bolts", [{ quest: "Gunsmith", questName: "Gunsmith - Part 1", kind: "side", count: 2, fir: true, of: 1 }, { quest: "Prapor daily", kind: "daily", count: 1, fir: true, of: 1 }]],
       ["ledx", [{ quest: "Any meds", kind: "story", count: 3, fir: false, of: 60 }]], // too broad: doesn't count
       ["drive", [{ quest: "Retrieve the drive", kind: "story", count: 1, fir: false, of: 1 }]],
       ["salewa", [{ quest: "Skier weekly", kind: "weekly", count: 2, fir: true, of: 1 }]],
@@ -154,7 +154,11 @@ describe("matching", () => {
     expect(match("quest:side,story")).toEqual(["loot:12", "loot:13"]);
     expect(match("quest:repeatable")).toEqual(["loot:12", "loot:15"]);
     expect(match("is:item quest:daily")).toEqual(["loot:12"]);
-    expect(compileQuery("quest:kappa", catalog).errors).toEqual(["quest:kappa: unknown (story, side, daily, weekly, repeatable, imported)"]);
+    // Not a kind of quest: a quest's name (a tracked quest), in any case.
+    expect(match('quest:"gunsmith - part 1"')).toEqual(["loot:12"]);
+    expect(match('quest:"Gunsmith - Part 1",story')).toEqual(["loot:12", "loot:13"]);
+    expect(compileQuery("quest:kappa", catalog).errors).toEqual([]);
+    expect(match("quest:kappa")).toEqual([]);
   });
   it("matches nothing with an empty query, or one with errors", () => {
     expect(keys("")).toEqual([]);

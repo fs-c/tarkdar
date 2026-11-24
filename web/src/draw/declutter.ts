@@ -1,7 +1,6 @@
 // What the map shows when, so it stays readable: the levels of detail labels show from, and in which
 // order labels claim their space. Which markers drop out as you zoom out, and whether things show at
-// all, is the display rules' (rules/: loose items by value, groups switched off); the list's filters
-// hide too; highlights always show.
+// all, is the display rules' (watch/rules.ts: each thing's level, by its layer, tier or watch entry).
 //
 // "Detail" is the projector's level of detail (see Map3D's DETAIL_PX_PER_METRE: 1 ≈ 4 screen px per
 // metre).

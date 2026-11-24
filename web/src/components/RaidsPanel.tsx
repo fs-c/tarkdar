@@ -1,12 +1,13 @@
-// Raids view of the side panel, list level: the current (live) raid, pinned, and the backend's past
-// raid recordings. Picking one shows it on the map (playback controls float over it, PlaybackBar) and
+// Raids view of the side panel, list level: the current (live) raid under "Now", and the backend's
+// past raid recordings by day. Picking one shows it on the map (playback controls float over it, PlaybackBar) and
 // opens its event log (TimelinePanel).
 
 import { useEffect, useState } from "react";
 import { formatDuration } from "../stream/playback";
 import type { RecordingInfo } from "../model/protocol";
 import { fetchRecordings } from "../stream/recordings";
-import { cx, Note, PanelBody, selectableRow } from "../ui";
+import { cx, Note, PanelBody } from "../ui";
+import v from "./views.module.css";
 import s from "./RaidsPanel.module.css";
 
 export interface CurrentRaid {
@@ -52,57 +53,71 @@ export function RaidsPanel({ current, viewing, loading, error, mapName, onOpen, 
   // The recording being written is the current raid: listed once, as that.
   const past = list?.filter((r) => !(r.active && current.available)) ?? null;
 
+  // Past raids by day: "Today", "Yesterday", "Sat 21 Nov".
+  const days = new Map<string, RecordingInfo[]>();
+  for (const r of [...(past ?? [])].sort((a, b) => (b.start ?? 0) - (a.start ?? 0))) {
+    const day = r.start ? dayName(r.start) : "Unknown date";
+    days.set(day, [...(days.get(day) ?? []), r]);
+  }
+
   return (
     <PanelBody>
       {error && <Note tone="alert">{error}</Note>}
       {listError && <Note tone="alert">Couldn't list recordings: {listError}</Note>}
-      <ul className={s.list}>
-        {current.available && (
-          <li>
+      {current.available && (
+        <>
+          <div className={v.group} data-static="true">
+            <b>Now</b>
+          </div>
+          <button
+            className={cx(v.row, s.raid)}
+            data-selected={viewing === null && current.inRaid}
+            disabled={loading !== null || !current.inRaid}
+            onClick={onCurrent}
+            title={current.inRaid ? "The live raid: its events" : undefined}
+          >
+            <span>
+              {current.inRaid ? (
+                <>
+                  <span className={s.live} />
+                  {current.mapName ?? "unknown map"}
+                  {viewing === null && <span className={s.pill}>viewing</span>}
+                </>
+              ) : (
+                <span className="muted">Waiting for a raid</span>
+              )}
+            </span>
+            <span className={s.when}>{current.inRaid ? "live" : ""}</span>
+            <span className={cx(s.when, "num")}>{current.inRaid && current.elapsed !== null ? formatDuration(current.elapsed) : ""}</span>
+          </button>
+        </>
+      )}
+      {[...days].map(([day, list]) => (
+        <div key={day}>
+          <div className={v.group} data-static="true">
+            <b>{day}</b>
+            <span className={v.count}>{list.length}</span>
+          </div>
+          {list.map((r) => (
             <button
-              className={cx(s.raid, selectableRow)}
-              data-current
-              data-selected={viewing === null}
-              disabled={loading !== null}
-              onClick={onCurrent}
-            >
-              <span className={s.what}>
-                Current raid
-                {viewing === null && <span className={s.pill}>viewing</span>}
-              </span>
-              <span className={cx(s.when, "muted")}>
-                {current.inRaid
-                  ? `${current.mapName ?? "unknown map"} · in progress${current.elapsed !== null ? ` · ${formatDuration(current.elapsed)}` : ""}`
-                  : "waiting for a raid"}
-              </span>
-            </button>
-          </li>
-        )}
-        {past?.map((r) => (
-          <li key={r.name}>
-            <button
-              className={cx(s.raid, selectableRow)}
+              key={r.name}
+              className={cx(v.row, s.raid)}
               data-selected={viewing === r.name}
               disabled={loading !== null}
-              title={r.name}
+              title={`${r.name} · ${formatSize(r.size)}`}
               onClick={() => onOpen(r)}
             >
-              <span className={s.what}>
+              <span>
                 {mapName(r.locationId)}
-                {viewing === r.name && <span className={s.pill} data-tone="replay">replaying</span>}
+                {viewing === r.name && <span className={s.pill}>replaying</span>}
                 {loading === r.name && <span className="muted"> loading…</span>}
               </span>
-              <span className={cx(s.when, "muted")}>
-                {r.start ? new Date(r.start).toLocaleString() : "?"}
-                {" · "}
-                {r.start && r.end ? formatDuration(r.end - r.start) : r.active ? "in progress" : "?"}
-                {" · "}
-                {formatSize(r.size)}
-              </span>
+              <span className={s.when}>{r.start ? new Date(r.start).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : ""}</span>
+              <span className={cx(s.when, "num")}>{r.start && r.end ? formatDuration(r.end - r.start) : r.active ? "in progress" : ""}</span>
             </button>
-          </li>
-        ))}
-      </ul>
+          ))}
+        </div>
+      ))}
       {past?.length === 0 && (
         <Note>
           No past raids yet. Every raid is recorded while the backend runs (<code>recordings/</code>).
@@ -110,6 +125,15 @@ export function RaidsPanel({ current, viewing, loading, error, mapName, onOpen, 
       )}
     </PanelBody>
   );
+}
+
+/** "Today", "Yesterday", or "Sat 21 Nov". */
+function dayName(ms: number): string {
+  const d = new Date(ms), now = new Date();
+  const days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) / 86_400_000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 }
 
 function formatSize(bytes: number): string {

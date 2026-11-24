@@ -1,8 +1,9 @@
-// The map style switcher in the map's top right corner: a button showing the current style that
-// opens a row of the styles to its left, each a preview drawn in its own colours, the same size as
-// the button. Names are only in the tooltips.
+// The map style switcher in the map's top right corner: a tile showing the current style that opens
+// a row of the styles to its left, each a preview drawn in its own colours, the same size as the
+// tile, and below them a card with the map's layers (children). Names are only in the tooltips.
 
-import { useRef, useState } from "react";
+import { Layers } from "lucide-react";
+import { type ReactNode, useRef, useState } from "react";
 import { PLAN_PALETTES, type MapStyle, type PlanPalette, type PlanPaletteName, paletteOf } from "../map3d/settings";
 import { cx, useDismiss } from "../ui";
 import f from "./Floating.module.css";
@@ -14,6 +15,8 @@ interface Props {
   /** The user's own palette, if they made one: offered next to the pre-made ones. */
   custom: PlanPalette | null;
   onChange: (style: MapStyle, palette: PlanPalette) => void;
+  /** The layers: shown in a card below while it's open. */
+  children?: ReactNode;
 }
 
 export const PALETTE_LABELS: Record<PlanPaletteName, string> = {
@@ -49,7 +52,7 @@ function Preview({ palette: c, lines = true }: { palette: PlanPalette; lines?: b
   );
 }
 
-export function StyleSwitch({ style, palette, custom, onChange }: Props) {
+export function StyleSwitch({ style, palette, custom, onChange, children }: Props) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const plan = style === "plan";
@@ -66,33 +69,36 @@ export function StyleSwitch({ style, palette, custom, onChange }: Props) {
       className={s.option}
       title={label}
       aria-label={label}
-      onClick={() => {
-        pick();
-        setOpen(false);
-      }}
+      onClick={pick}
     >
       <Preview palette={colors} lines={lines} />
     </button>
   );
 
   return (
-    <div className={cx(f.surface, f.topRight, s.switch)} ref={root} data-open={open}>
-      <div className={s.options} role="radiogroup" aria-label="Map style" inert={!open}>
-        {option("realistic", "Realistic", REALISTIC, !plan, () => onChange("realistic", palette), false)}
-        {(Object.keys(PLAN_PALETTES) as PlanPaletteName[]).map((name) =>
-          option(name, PALETTE_LABELS[name], PLAN_PALETTES[name], current === name, () => onChange("plan", PLAN_PALETTES[name])),
-        )}
-        {custom && option("custom", "Custom", custom, plan && current === null, () => onChange("plan", custom))}
+    <div className={cx(f.topRight, s.root)} ref={root}>
+      <div className={cx(f.surface, s.switch)} data-open={open}>
+        <div className={s.options} role="radiogroup" aria-label="Map style" inert={!open}>
+          {option("realistic", "Realistic", REALISTIC, !plan, () => onChange("realistic", palette), false)}
+          {(Object.keys(PLAN_PALETTES) as PlanPaletteName[]).map((name) =>
+            option(name, PALETTE_LABELS[name], PLAN_PALETTES[name], current === name, () => onChange("plan", PLAN_PALETTES[name])),
+          )}
+          {custom && option("custom", "Custom", custom, plan && current === null, () => onChange("plan", custom))}
+        </div>
+        <button
+          type="button"
+          className={s.button}
+          aria-expanded={open}
+          title={`Map: ${plan ? (current ? PALETTE_LABELS[current] : "Custom") : "Realistic"} · styles and layers (M switches between realistic and plan)`}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <Preview palette={plan ? palette : REALISTIC} lines={plan} />
+          <span className={s.layers}>
+            <Layers size={12} />
+          </span>
+        </button>
       </div>
-      <button
-        type="button"
-        className={s.button}
-        aria-expanded={open}
-        title={`Map style: ${plan ? (current ? PALETTE_LABELS[current] : "Custom") : "Realistic"} (M switches between realistic and plan)`}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <Preview palette={plan ? palette : REALISTIC} lines={plan} />
-      </button>
+      {open && children && <div className={cx(f.card, s.card)}>{children}</div>}
     </div>
   );
 }

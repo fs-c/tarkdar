@@ -182,25 +182,29 @@ export const overlayStore = defineStore<OverlayPrefs>({
 
 export const useOverlayPrefs = () => usePersisted(overlayStore);
 
-export const SECTIONS = ["list", "quests", "filters", "map", "raids", "settings"] as const;
+export const SECTIONS = ["players", "loot", "exfils", "watch", "raids", "settings"] as const;
 export type Section = (typeof SECTIONS)[number];
 
-/** The side panel: open or collapsed, and which section it shows (for "list", the list tab in the
- *  list's prefs). The Raids section has two levels: the list of raids, and the shown raid's timeline. */
+/** The side panel: open or collapsed, and which view it shows (Loot: Items or Containers, the list
+ *  tab in the list's prefs). The Raids view has two levels: the list of raids, and a raid's timeline. */
 export interface SidebarPrefs {
   open: boolean;
   section: Section;
   raidsLevel: "list" | "timeline";
 }
 
-/** Sections of version 1 that are now elsewhere. */
-const SECTION_RENAMES: Record<string, Section> = { map: "filters", debug: "settings" };
+/** Sections of version 1 that were elsewhere in version 2. */
+const SECTION_RENAMES: Record<string, string> = { map: "filters", debug: "settings" };
+/** Version 2's sections in version 3 (the UX rework): the lists are views of their own (the list's
+ *  tab isn't known here: Players), quests and the display rules make the watchlist, the map's settings
+ *  are in Settings. */
+const SECTIONS_V3: Record<string, Section> = { list: "players", quests: "watch", filters: "watch", map: "settings" };
 
-const sidebarDefaults = (): SidebarPrefs => ({ open: false, section: "list", raidsLevel: "list" });
+const sidebarDefaults = (): SidebarPrefs => ({ open: false, section: "players", raidsLevel: "list" });
 
 export const sidebarStore = defineStore<SidebarPrefs>({
   key: "radar.sidebar",
-  version: 2,
+  version: 3,
   scope: "device",
   defaults: sidebarDefaults,
   migrations: {
@@ -209,12 +213,13 @@ export const sidebarStore = defineStore<SidebarPrefs>({
     // "map" was the display rules, now "filters"; "map" is the map's settings (from Settings) and trails.
     // Debug is part of Settings now.
     1: (d) => (isObject(d) && typeof d.section === "string" ? { ...d, section: SECTION_RENAMES[d.section] ?? d.section } : d),
+    2: (d) => (isObject(d) && typeof d.section === "string" ? { ...d, section: SECTIONS_V3[d.section] ?? d.section } : d),
   },
   normalize: (data) => {
     const p = flatNormalize(sidebarDefaults)(data);
     return {
       open: p.open,
-      section: oneOf(p.section, SECTIONS, "list"),
+      section: oneOf(p.section, SECTIONS, "players"),
       raidsLevel: oneOf(p.raidsLevel, ["list", "timeline"], "list"),
     };
   },

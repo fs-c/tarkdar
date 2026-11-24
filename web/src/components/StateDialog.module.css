@@ -5,7 +5,8 @@
   grid-row: span 4; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
   background: var(--hover); color: var(--muted);
   .dialog[data-tone="error"] & { background: rgba(255, 90, 82, 0.13); color: var(--danger); }
-  &[data-spin="true"] svg { animation: spin 1.4s linear infinite; }
+  /* Slow and faint: the waiting dialog sits through every loading screen, often for minutes. */
+  &[data-spin="true"] svg { animation: spin 5s linear infinite; opacity: 0.7; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .icon[data-spin="true"] svg { animation: none; } }

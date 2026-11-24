@@ -1,18 +1,18 @@
 // The watch bar (top left of the map, or /): the watchlist as it shows on the map, and the way to add
 // to it. A search field with the entries as chips in front of it: each its level and colour, name and
-// how many there are now; clicking one steps to the nearest, then the next. What doesn't fit goes
-// behind "+N", the least important first (off, then by level, then the oldest). Focusing the field
-// opens what's under it: while typing, what the text could mean (Enter watches it, at High);
-// otherwise every entry, with its switch, level and remove.
+// how many there are now; clicking one opens its menu under it (level, on/off, show the nearest,
+// remove). What doesn't fit goes behind "+N", the least important first (off, then by level, then
+// the oldest). Focusing the field opens what's under it: while typing, what the text could mean
+// (Enter watches it, at High); otherwise every entry, with its switch, level and remove.
 
-import { ScrollText, Search, X } from "lucide-react";
+import { Crosshair, ScrollText, Search, Trash2, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ItemCatalog } from "../model/items";
 import { matchingRows } from "../highlight/match";
 import { type Suggestion, suggest } from "../highlight/suggest";
 import type { AnyRow } from "../list/rows";
-import { useHotkeys } from "../ui";
-import { levelRank } from "../watch/levels";
+import { useDismiss, useHotkeys } from "../ui";
+import { LEVEL_TEXT, levelRank } from "../watch/levels";
 import type { WatchEntry } from "../watch/prefs";
 import { LevelGlyph, LevelPicker } from "./LevelPicker";
 import f from "./Floating.module.css";
@@ -63,6 +63,8 @@ export function WatchBar({ entries, hits, rows, catalog, quests, onAdd, onTrack,
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
+  /** The chip whose menu is open, and where (from the left of the bar). */
+  const [menu, setMenu] = useState<{ id: string; left: number } | null>(null);
 
   // ---- what the text could mean ----
   const choices = useMemo((): Choice[] => {
@@ -103,6 +105,15 @@ export function WatchBar({ entries, hits, rows, catalog, quests, onAdd, onTrack,
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
   }, [open]);
+  useDismiss(rootRef, !!menu, () => setMenu(null));
+
+  const toggleMenu = (e: WatchEntry, chip: HTMLElement) => {
+    if (menu?.id === e.id) return setMenu(null);
+    const bar = barRef.current!.getBoundingClientRect();
+    setOpen(false);
+    setQuery("");
+    setMenu({ id: e.id, left: chip.getBoundingClientRect().left - bar.left });
+  };
 
   const close = () => {
     setOpen(false);
@@ -142,6 +153,8 @@ export function WatchBar({ entries, hits, rows, catalog, quests, onAdd, onTrack,
   const shown = entries.filter((e) => !hidden.includes(e.id));
   const behind = entries.filter((e) => hidden.includes(e.id));
   const n = (e: WatchEntry) => hits.get(e.id)?.length ?? 0;
+  // Its chip went behind "+N" or the entry is gone: so is its menu.
+  const menuEntry = menu ? shown.find((e) => e.id === menu.id) : undefined;
 
   return (
     <div className={f.topLeft} ref={rootRef}>
@@ -153,8 +166,9 @@ export function WatchBar({ entries, hits, rows, catalog, quests, onAdd, onTrack,
               type="button"
               className={s.chip}
               data-on={e.on}
-              title={`${e.label}: ${n(e) ? "show the nearest, then the next" : "none right now"}${e.on ? "" : " (off)"}`}
-              onClick={() => step(e)}
+              aria-expanded={menu?.id === e.id}
+              title={`${e.label}: ${LEVEL_TEXT[e.level]}${e.on ? "" : " (off)"}, ${n(e) || "none"} now`}
+              onClick={(ev) => toggleMenu(e, ev.currentTarget)}
             >
               <LevelGlyph level={e.level} color={e.on ? e.color : "#56626b"} />
               {e.questId && <ScrollText size={11} className={s.questIcon} />}
@@ -187,7 +201,10 @@ export function WatchBar({ entries, hits, rows, catalog, quests, onAdd, onTrack,
             className={s.input}
             placeholder={entries.length ? "Watch more" : "Watch something"}
             value={query}
-            onFocus={() => setOpen(true)}
+            onFocus={() => {
+              setMenu(null);
+              setOpen(true);
+            }}
             onChange={(e) => {
               setQuery(e.target.value);
               setActive(0);
@@ -208,10 +225,54 @@ export function WatchBar({ entries, hits, rows, catalog, quests, onAdd, onTrack,
               }
             }}
           />
-          {!open && <kbd className={s.kbd}>/</kbd>}
+          {/* Kept while open (only hidden), so the bar doesn't change size. */}
+          <kbd className={s.kbd} data-hidden={open}>
+            /
+          </kbd>
         </div>
+        {menuEntry && (
+          <div key={menuEntry.id} className={f.card + " " + s.menu + " " + s.pop} style={{ left: menu!.left }} data-on={menuEntry.on}>
+            <div className={s.menuHead}>
+              <button
+                type="button"
+                className={s.switch}
+                style={{ "--c": menuEntry.color } as React.CSSProperties}
+                title={menuEntry.on ? "On: click to switch off" : "Off: click to switch on"}
+                onClick={() => onChange(menuEntry.id, { on: !menuEntry.on })}
+              />
+              <span className={s.name}>
+                {menuEntry.questId && <ScrollText size={11} className={s.questIcon} />} <span className={s.entryLabel}>{menuEntry.label}</span>{" "}
+                <span className={s.times}>×{n(menuEntry)}</span>
+              </span>
+            </div>
+            <div className={s.menuRow}>
+              <LevelPicker
+                level={menuEntry.level}
+                color={menuEntry.on ? menuEntry.color : "#8a96a0"}
+                label={menuEntry.label}
+                onChange={(level) => onChange(menuEntry.id, { level })}
+              />
+              <span className={s.levelText}>{LEVEL_TEXT[menuEntry.level]}</span>
+            </div>
+            <div className={s.menuActions}>
+              <button type="button" className={s.action} disabled={!n(menuEntry)} title="Show the nearest, then the next" onClick={() => step(menuEntry)}>
+                <Crosshair size={13} /> Show nearest
+              </button>
+              <button
+                type="button"
+                className={s.action + " " + s.danger}
+                onClick={() => {
+                  setMenu(null);
+                  onRemove(menuEntry.id);
+                }}
+              >
+                <Trash2 size={13} /> {menuEntry.questId ? "Stop tracking" : "Remove"}
+              </button>
+            </div>
+          </div>
+        )}
         {open && (
-          <div className={f.card + " " + s.drop}>
+          <div className={f.card + " " + s.drop + " " + s.pop}>
             {query.trim() ? (
               <ul className={s.suggestions} role="listbox">
                 {choices.map((c, i) => (

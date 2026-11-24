@@ -10,7 +10,8 @@
 .chip {
   flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px 0 7px; border-radius: var(--fr-in);
   background: var(--hover); color: var(--text); font-size: var(--fs-sm); white-space: nowrap;
-  &:hover { background: var(--press); }
+  &:hover, &[aria-expanded="true"] { background: var(--press); }
+  &[aria-expanded="true"] { box-shadow: inset 0 0 0 1px var(--border-hover); }
   &[data-on="false"] { color: var(--faint); }
 }
 .n { color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -19,7 +20,30 @@
 .dots { display: inline-flex; & i { width: 8px; height: 8px; margin-left: -2px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--chrome); } & i:first-child { margin-left: 0; } }
 .icon { flex: none; margin: 0 2px 0 6px; }
 .input { flex: 1; min-width: 110px; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: var(--fs-md); outline: none; &::placeholder { color: var(--faint); } }
-.kbd { flex: none; font: 11px var(--mono); color: var(--muted); border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; }
+.kbd { flex: none; font: 11px var(--mono); color: var(--muted); border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; &[data-hidden="true"] { visibility: hidden; } }
+
+/* Opening: a short fade and drop, from the bar (like the map style's options sliding out). */
+.pop { transform-origin: top left; animation: pop 0.16s ease-out; }
+@keyframes pop { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+@media (prefers-reduced-motion: reduce) { .pop { animation: none; } }
+
+/* A chip's menu, under it. */
+.menu {
+  position: absolute; top: calc(var(--fh) + 6px); z-index: 5; width: 250px; max-width: 90vw; box-sizing: border-box; padding: 8px 6px 6px;
+}
+.menuHead { display: grid; grid-template-columns: 12px 1fr; align-items: center; gap: 10px; padding: 2px 8px 6px; }
+.menu[data-on="false"] .switch { background: transparent; }
+.menu[data-on="false"] .entryLabel { color: var(--faint); }
+.menuRow { display: flex; align-items: center; gap: 8px; padding: 0 4px 6px; }
+.levelText { color: var(--muted); font-size: var(--fs-sm); }
+.menuActions { display: flex; gap: 4px; padding-top: 6px; border-top: 1px solid var(--border); }
+.action {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; border-radius: var(--fr-in);
+  color: var(--muted); font-size: var(--fs-sm);
+  &:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+  &:disabled { opacity: 0.45; cursor: default; }
+}
+.danger:hover:not(:disabled) { color: var(--danger); }
 
 /* Under the bar: suggestions, or every entry. */
 .drop { position: absolute; top: calc(var(--fh) + 6px); left: 0; z-index: 5; width: 430px; max-width: 90vw; max-height: 70vh; overflow: auto; box-sizing: border-box; padding: 6px 0 4px; }

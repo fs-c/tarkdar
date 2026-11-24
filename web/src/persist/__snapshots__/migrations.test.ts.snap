@@ -42,32 +42,7 @@ exports[`radar.list > from version 0 1`] = `
       "text": "",
     },
   },
-  "sorting": {
-    "containers": [
-      {
-        "desc": false,
-        "id": "dist",
-      },
-    ],
-    "exfils": [
-      {
-        "desc": false,
-        "id": "dist",
-      },
-    ],
-    "items": [
-      {
-        "desc": true,
-        "id": "price",
-      },
-    ],
-    "players": [
-      {
-        "desc": false,
-        "id": "dist",
-      },
-    ],
-  },
+  "sort": "value",
   "tab": "items",
 }
 `;
@@ -92,33 +67,33 @@ exports[`radar.list > from version 1 1`] = `
       "text": "",
     },
   },
-  "sorting": {
-    "containers": [
-      {
-        "desc": false,
-        "id": "dist",
-      },
-    ],
-    "exfils": [
-      {
-        "desc": false,
-        "id": "dist",
-      },
-    ],
-    "items": [
-      {
-        "desc": true,
-        "id": "price",
-      },
-    ],
-    "players": [
-      {
-        "desc": true,
-        "id": "dist",
-      },
-    ],
+  "sort": "value",
+  "tab": "items",
+}
+`;
+
+exports[`radar.list > from version 2 1`] = `
+{
+  "filters": {
+    "containers": {
+      "text": "bank",
+    },
+    "exfils": {
+      "text": "",
+    },
+    "items": {
+      "minValue": 0,
+      "text": "gpu",
+    },
+    "players": {
+      "alive": false,
+      "humans": false,
+      "special": false,
+      "text": "",
+    },
   },
-  "tab": "players",
+  "sort": "dist",
+  "tab": "containers",
 }
 `;
 

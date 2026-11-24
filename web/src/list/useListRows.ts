@@ -1,17 +1,15 @@
-// List state shared by the list panel and the map: persisted prefs and the rows, filtered (the map
-// shows only what the list's filters let through) and not (highlights match against everything).
+// List state shared by the Loot view and the map: persisted prefs and the rows, filtered (what the
+// Loot view's filter lets through, marked on the map while it's set) and not (the rules match against
+// everything).
 
-import type { SortingState } from "@tanstack/react-table";
 import { useMemo } from "react";
-import { defineStore, usePersisted } from "../persist";
+import { defineStore, isObject, oneOf, usePersisted } from "../persist";
 import type { RadarState } from "../stream/connection";
 import type { ItemCatalog } from "../model/items";
 import type { QuestNeed } from "../model/quests";
-import { TABS, columnIds } from "./columns";
 import {
   DEFAULT_FILTERS,
   type ListFilters,
-  TAB_IDS,
   type TabId,
   type TabRows,
   explosiveRows,
@@ -23,43 +21,46 @@ import {
   vehicleRows,
 } from "./rows";
 
+/** The Loot view's lists. */
+export type LootTab = "items" | "containers";
+/** How the items are sorted: by value per slot (then nearest), or nearest first. */
+export type ItemSort = "value" | "dist";
+
 export interface ListPrefs {
-  tab: TabId;
-  sorting: Record<TabId, SortingState>;
+  tab: LootTab;
+  sort: ItemSort;
+  /** Only the items' and containers' text is set (the Loot view's filter); the rest stays at the defaults. */
   filters: ListFilters;
 }
 
-export const DEFAULT_PREFS: ListPrefs = {
-  tab: "players",
-  sorting: {
-    players: TABS.players.defaultSort,
-    items: TABS.items.defaultSort,
-    containers: TABS.containers.defaultSort,
-    exfils: TABS.exfils.defaultSort,
-  },
-  filters: DEFAULT_FILTERS,
-};
+export const DEFAULT_PREFS: ListPrefs = { tab: "items", sort: "value", filters: DEFAULT_FILTERS };
 
-/** Stored prefs, checked: columns have come and gone; filters of older builds (one set for all tabs)
- *  or garbage give the defaults. */
+/** Stored prefs, checked. */
 export function normalizeListPrefs(stored: unknown): ListPrefs {
-  const p = (stored && typeof stored === "object" ? stored : {}) as Partial<ListPrefs>;
-  const tab = p.tab && TAB_IDS.includes(p.tab) ? p.tab : DEFAULT_PREFS.tab;
-  const sorting = { ...DEFAULT_PREFS.sorting };
-  for (const t of TAB_IDS) {
-    const ids = columnIds(TABS[t]);
-    const s = (p.sorting as Partial<Record<TabId, SortingState>> | undefined)?.[t];
-    const valid = Array.isArray(s) ? s.filter((x) => !!x && typeof x === "object" && ids.has(x.id)) : [];
-    if (valid.length) sorting[t] = valid;
-  }
-  return { tab, sorting, filters: normalizeFilters(p.filters) };
+  const p = isObject(stored) ? stored : {};
+  const f = normalizeFilters(p.filters);
+  return {
+    tab: oneOf(p.tab, ["items", "containers"], "items"),
+    sort: oneOf(p.sort, ["value", "dist"], "value"),
+    filters: { ...DEFAULT_FILTERS, items: f.items, containers: f.containers },
+  };
 }
 
 export const listStore = defineStore<ListPrefs>({
   key: "radar.list",
-  version: 1,
+  version: 2,
   scope: "user",
   defaults: () => DEFAULT_PREFS,
+  migrations: {
+    // A sortable table per tab (Players, Items, Containers, Exfils) became the Loot view (items and
+    // containers): the tab, if it was one of those, and the items' sort if it was by distance stay.
+    1: (d) => {
+      if (!isObject(d)) return d;
+      const { sorting, ...rest } = d;
+      const first = isObject(sorting) && Array.isArray(sorting.items) && isObject(sorting.items[0]) ? sorting.items[0] : null;
+      return { ...rest, sort: first?.id === "dist" ? "dist" : "value" };
+    },
+  },
   normalize: normalizeListPrefs,
 });
 

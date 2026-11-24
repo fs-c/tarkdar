@@ -4,7 +4,7 @@ import { type RadarState, wsUrl } from "../stream/connection";
 import { useCatalog } from "../model/useCatalog";
 import { useMapIndex } from "../model/useMapIndex";
 import { useConnection } from "../stream/useConnection";
-import { cx, useHotkeys } from "../ui";
+import { cx, PanelBody, useHotkeys } from "../ui";
 import { useMapPrefs, useOverlayPrefs, useQuestPrefs, useSidebarPrefs, useTrailPrefs } from "../persist/prefs";
 import { overlayData, overlayMarks } from "../overlay/marks";
 import { useOverlaySync } from "../overlay/useOverlaySync";
@@ -21,7 +21,7 @@ import { usePlayback } from "../stream/playback";
 import { buildScene, trailScene } from "../draw/scene";
 import { questDebugReport } from "../model/quests.debug";
 import { type WatchEntry, newWatchId, nextWatchColor, useLayerPrefs, useMarkerPrefs, useSeenQuests, useWatchPrefs } from "../watch/prefs";
-import { carriedMarks, entryMatches, watchRules } from "../watch/rules";
+import { carriedMarks, entryMatches, thingMarks, watchRules } from "../watch/rules";
 import { type QuestEntry, questEntries } from "../watch/quests";
 import { DetailsPanel } from "./DetailsPanel";
 import { FollowButton } from "./FollowButton";
@@ -36,7 +36,8 @@ import { WatchBar } from "./WatchBar";
 import { WatchView } from "./WatchView";
 import { QuestPicker } from "./QuestPicker";
 import { PlayersView } from "./PlayersView";
-import { ListPanel } from "./ListPanel";
+import { LootView } from "./LootView";
+import { ExfilsView } from "./ExfilsView";
 import { RaidsPanel } from "./RaidsPanel";
 import { TimelinePanel } from "./TimelinePanel";
 import { SettingsPanel, type SettingsTab, type StatusLine } from "./SettingsPanel";
@@ -140,6 +141,7 @@ export function App() {
   const styled = useRules(list.all, rules, catalog, NO_KINDS);
   const carried = useMemo(() => carriedMarks(list.all.players, entries, catalog), [list.all.players, entries, catalog]);
   const watchHits = useMemo(() => new Map(entries.map((e) => [e.id, entryMatches(e, styled.matched, carried, list.all.players)])), [entries, styled.matched, carried, list.all.players]);
+  const marks = useMemo(() => thingMarks(baseRules, styled.matched, entries), [baseRules, styled.matched, entries]);
   const watchCounts = useMemo(() => new Map([...watchHits].map(([id, rows]) => [id, rows.length])), [watchHits]);
   const everything = useMemo(() => allRows(list.all), [list.all]);
 
@@ -194,24 +196,25 @@ export function App() {
   const togglePanel = () => setUi((u) => ({ ...u, open: !u.open }));
   const uiRef = useRef(ui);
   uiRef.current = ui;
-  const filterViews: readonly ViewId[] = ["players", "loot", "exfils"];
-  /** L: focuses the open list's filter (Players, Loot, Exfils), opening Players if none is; closes it when focused. */
+  /** The views with a filter (Raids: its list of raids). */
+  const hasFilter = (u: typeof ui) => u.section === "players" || u.section === "loot" || (u.section === "raids" && u.raidsLevel === "list");
+  /** L: focuses the open view's filter (Players, Loot, Raids), opening Players if none is; closes it when focused. */
   const toggleList = () => {
     const u = uiRef.current;
-    if (u.open && filterViews.includes(u.section) && document.activeElement?.tagName === "INPUT") return setUi((x) => ({ ...x, open: false }));
+    if (u.open && hasFilter(u) && document.activeElement?.tagName === "INPUT") return setUi((x) => ({ ...x, open: false }));
     wantFocus.current = true;
-    setUi((x) => ({ ...x, open: true, section: filterViews.includes(x.section) ? x.section : "players" }));
+    setUi((x) => (hasFilter(x) ? { ...x, open: true } : { ...x, open: true, section: "players" }));
     focusFilter.current?.();
   };
   // In the commit that shows the view (its own layout effects ran first), so keys typed right after L
   // land in the filter rather than in the map's shortcuts.
   const wantFocus = useRef(false);
-  const filterShown = ui.open && filterViews.includes(ui.section);
+  const filterShown = ui.open && hasFilter(ui);
   useLayoutEffect(() => {
     if (!filterShown || !wantFocus.current) return;
     wantFocus.current = false;
     focusFilter.current?.();
-  }, [filterShown, ui.section]);
+  }, [filterShown, ui.section, ui.raidsLevel]);
 
   // The playback bar: up while replaying, behind live, or after the Raids view showed the live raid.
   const [playbackOpen, setPlaybackOpen] = useState(false);
@@ -396,9 +399,8 @@ export function App() {
         : { label: "Map", tone: mapStatus.progress !== null ? "info" : "ok", text: mapStatus.progress !== null ? `${map.config.name} · loading, ${Math.round(mapStatus.progress * 100)} %` : map.config.name },
   ];
 
-  // What a list's filter lets through, marked on the map while it's set (and its view is open).
-  const listTab = ui.section === "loot" ? (listPrefs.tab === "containers" ? "containers" : "items") : ui.section === "exfils" ? "exfils" : null;
-  const marked = ui.open && listTab && listPrefs.filters[listTab].text.trim() ? list.rows[listTab].slice(0, MARKED_MAX) : [];
+  // What the Loot view's filter lets through, marked on the map while it's set (and the view is open).
+  const marked = ui.open && ui.section === "loot" && listPrefs.filters[listPrefs.tab].text.trim() ? list.rows[listPrefs.tab].slice(0, MARKED_MAX) : [];
 
   const scene = buildScene({
     state,
@@ -424,13 +426,15 @@ export function App() {
   };
   const statusWarn = status.some((l) => l.tone === "warn" || l.tone === "error");
 
+  const viewpoint = local?.pos ? { pos: local.pos, yaw: local.yaw } : null;
   const panel = (() => {
     switch (view) {
       case "players":
         return (
+          <PanelBody>
           <PlayersView
             players={list.all.players}
-            local={local?.pos ? { pos: local.pos, yaw: local.yaw } : null}
+            local={viewpoint}
             markers={markers}
             setMarkers={setMarkers}
             carried={carried}
@@ -439,27 +443,30 @@ export function App() {
             onHover={setHovered}
             focusRef={focusFilter}
           />
+          </PanelBody>
         );
       case "loot":
-      case "exfils":
         return (
-          <ListPanel
-            key={view}
+          <LootView
             state={state}
             list={list}
             prefs={listPrefs}
             setPrefs={setListPrefs}
+            local={viewpoint}
+            marks={marks}
+            markedMax={MARKED_MAX}
             selection={selection}
             onActivate={showOnMap}
             onHover={setHovered}
-            styles={styled.styles}
+            onWatch={(text) => addEntry(text, text)}
             focusRef={focusFilter}
-            tabs={view === "loot" ? ["items", "containers"] : ["exfils"]}
-            onWatch={view === "loot" ? (text) => addEntry(text, text) : undefined}
           />
         );
+      case "exfils":
+        return <ExfilsView exfils={list.all.exfils} local={viewpoint} selection={selection} onActivate={showOnMap} onHover={setHovered} />;
       case "watch":
         return (
+          <PanelBody>
           <WatchView
             entries={entries}
             counts={watchCounts}
@@ -473,6 +480,7 @@ export function App() {
             onPicker={(tab) => setPicker((p) => (p && !tab ? null : { tab: tab === "new" ? "New" : null }))}
             onDismissNew={() => markSeen(newQuests.map((q) => q.id))}
           />
+          </PanelBody>
         );
       case "raids":
         return ui.raidsLevel === "timeline" ? (
@@ -506,6 +514,7 @@ export function App() {
             mapName={mapName}
             onOpen={openRecording}
             onCurrent={openCurrent}
+            focusRef={focusFilter}
           />
         );
       case "settings":

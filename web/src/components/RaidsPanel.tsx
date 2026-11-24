@@ -1,8 +1,9 @@
-// Raids view of the side panel, list level: the current (live) raid under "Now", and the backend's
-// past raid recordings by day. Picking one shows it on the map (playback controls float over it, PlaybackBar) and
+// Raids view of the side panel, list level: a filter (map, day, time), the current (live) raid under
+// "Now", and the backend's past raid recordings by day. Picking one shows it on the map (playback controls float over it, PlaybackBar) and
 // opens its event log (TimelinePanel).
 
-import { useEffect, useState } from "react";
+import { Search } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { formatDuration } from "../stream/playback";
 import type { RecordingInfo } from "../model/protocol";
 import { fetchRecordings } from "../stream/recordings";
@@ -29,11 +30,24 @@ interface Props {
   mapName: (locationId: string | null) => string;
   onOpen: (rec: RecordingInfo) => void;
   onCurrent: () => void;
+  /** Set by the view: focuses its filter (the L key). */
+  focusRef: React.RefObject<(() => void) | undefined>;
 }
 
-export function RaidsPanel({ current, viewing, loading, error, mapName, onOpen, onCurrent }: Props) {
+export function RaidsPanel({ current, viewing, loading, error, mapName, onOpen, onCurrent, focusRef }: Props) {
   const [list, setList] = useState<RecordingInfo[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+  const term = filter.trim().toLowerCase();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useLayoutEffect(() => {
+    focusRef.current = () => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    };
+    return () => void (focusRef.current = undefined);
+  }, [focusRef]);
 
   useEffect(() => {
     let live = true;
@@ -53,18 +67,34 @@ export function RaidsPanel({ current, viewing, loading, error, mapName, onOpen, 
   // The recording being written is the current raid: listed once, as that.
   const past = list?.filter((r) => !(r.active && current.available)) ?? null;
 
-  // Past raids by day: "Today", "Yesterday", "Sat 21 Nov".
+  // Past raids by day: "Today", "Yesterday", "Sat 21 Nov". Filtered: those whose map, day or time match.
   const days = new Map<string, RecordingInfo[]>();
   for (const r of [...(past ?? [])].sort((a, b) => (b.start ?? 0) - (a.start ?? 0))) {
     const day = r.start ? dayName(r.start) : "Unknown date";
+    if (term && !`${mapName(r.locationId)} ${day} ${r.start ? timeOf(r.start) : ""} ${r.name}`.toLowerCase().includes(term)) continue;
     days.set(day, [...(days.get(day) ?? []), r]);
   }
 
   return (
     <PanelBody>
+      <label className={v.find}>
+        <Search size={14} />
+        <input
+          ref={inputRef}
+          placeholder="Filter raids"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              if (filter) setFilter("");
+              else e.currentTarget.blur();
+            }
+          }}
+        />
+      </label>
       {error && <Note tone="alert">{error}</Note>}
       {listError && <Note tone="alert">Couldn't list recordings: {listError}</Note>}
-      {current.available && (
+      {current.available && !term && (
         <>
           <div className={v.group} data-static="true">
             <b>Now</b>
@@ -112,12 +142,13 @@ export function RaidsPanel({ current, viewing, loading, error, mapName, onOpen, 
                 {viewing === r.name && <span className={s.pill}>replaying</span>}
                 {loading === r.name && <span className="muted"> loading…</span>}
               </span>
-              <span className={s.when}>{r.start ? new Date(r.start).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : ""}</span>
+              <span className={s.when}>{r.start ? timeOf(r.start) : ""}</span>
               <span className={cx(s.when, "num")}>{r.start && r.end ? formatDuration(r.end - r.start) : r.active ? "in progress" : ""}</span>
             </button>
           ))}
         </div>
       ))}
+      {term && past?.length !== 0 && days.size === 0 && <p className={v.empty}>No raids match</p>}
       {past?.length === 0 && (
         <Note>
           No past raids yet. Every raid is recorded while the backend runs (<code>recordings/</code>).
@@ -126,6 +157,9 @@ export function RaidsPanel({ current, viewing, loading, error, mapName, onOpen, 
     </PanelBody>
   );
 }
+
+/** "17:52" */
+const timeOf = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 
 /** "Today", "Yesterday", or "Sat 21 Nov". */
 function dayName(ms: number): string {

@@ -714,6 +714,19 @@ TEST_CASE("Quests: templates give objectives, names, kinds and hand-over progres
     CHECK((*again.objectives)[1].progress == 2);
     CHECK(again.traderId == "trader_1");
 
+    // Memory that doesn't read for a moment keeps what was known: the counters (progress isn't lost)
+    // and a quest's status (the quest isn't dropped, to come back as new).
+    const auto revision = world.quests.get()->revision;
+    w.fake.setUnreadable(FakeWorld::kPid, counter + off::TaskConditionCounter::Value, 4);
+    w.fake.setUnreadable(FakeWorld::kPid, story + off::QuestsData::Status, 4);
+    quests.update();
+    CHECK(world.quests.get()->revision == revision);  // nothing changed: not republished
+    w.fake.setUnreadable(FakeWorld::kPid, counter + off::TaskConditionCounter::Value, 4, false);
+    w.fake.setUnreadable(FakeWorld::kPid, story + off::QuestsData::Status, 4, false);
+    h.put<std::int32_t>(counter + off::TaskConditionCounter::Value, 3);
+    quests.update();
+    CHECK(world.quests.get()->revision == revision + 1);
+
     // A quest without texts is looked for again (a few times): here the table gains its name.
     const Address statics = localizationStatics(w);
     putLocales(w, statics, {{u"en", textTable(h, {text(h, u"q_side name", u"Changed"), text(h, u"q_story name", u"Tour")})}});

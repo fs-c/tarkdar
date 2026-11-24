@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <format>
 #include <map>
 
 namespace radar::eft {
@@ -25,6 +26,18 @@ void tallyInto(const std::vector<ItemNode>& nodes, std::map<std::string, OwnedIt
         if (n.fir) o.fir += n.count;
         tallyInto(n.children, out);
     }
+}
+
+std::int64_t units(const std::vector<OwnedItem>& items) {
+    std::int64_t n = 0;
+    for (const auto& o : items) n += o.count;
+    return n;
+}
+
+std::int64_t firUnits(const std::vector<OwnedItem>& items) {
+    std::int64_t n = 0;
+    for (const auto& o : items) n += o.fir;
+    return n;
 }
 
 std::vector<OwnedItem> sorted(std::map<std::string, OwnedItem>&& m) {
@@ -126,6 +139,7 @@ std::optional<Stash::Contents> Stash::readContents(const Game& game, Address pro
     c.stash = sorted(std::move(owned));
     if (trees.size() > containers) c.equipment = tally(trees[containers]);
     c.truncated = reader.truncated();
+    c.unreadable = reader.failures();
     return c;
 }
 
@@ -139,8 +153,19 @@ void Stash::update() {
         loggedFailure_ = true;
         return;  // keep the last good one
     }
+    // An incomplete read would drop owned items (or count stacks as 1), making them "needed": keep the
+    // last complete one (or none: the frontend then uses the stash it kept from earlier).
+    if (contents->unreadable > 0) {
+        log::info("stash: {} read(s) failed, keeping the {}; trying again in {} s", contents->unreadable,
+                  last_ ? "last complete read" : "frontend's kept stash", kInterval.count());
+        return;
+    }
+    loggedFailure_ = false;
     if (contents->truncated) log::info("stash: item tree cut at {} items", kLimits.maxNodes);
     if (contents == last_) return;
+    log::info("stash: {} templates, {} units ({} FIR), {} in the equipment{}", contents->stash.size(),
+              units(contents->stash), firUnits(contents->stash), contents->equipment.size(),
+              last_ ? std::format(" (was {} templates, {} units)", last_->stash.size(), units(last_->stash)) : "");
     world_.stash.publish(StashSnapshot{.raidId = session_->id, .revision = ++revision_, .known = true,
                                        .profileId = contents->profileId, .stash = contents->stash,
                                        .equipment = contents->equipment});

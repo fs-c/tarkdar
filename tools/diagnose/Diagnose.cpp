@@ -847,9 +847,10 @@ void checkStash(Report& r, const eft::Game& game, Address localPlayer) {
     } else {
         std::int64_t units = 0, fir = 0;
         for (const auto& o : contents->stash) units += o.count, fir += o.fir;
-        r.ok(std::format("Stash subsystem: profile {}: {} templates in the stash ({} units, {} FIR), {} in the equipment{}",
+        r.ok(std::format("Stash subsystem: profile {}: {} templates in the stash ({} units, {} FIR), {} in the equipment{}{}",
                          contents->profileId, contents->stash.size(), units, fir, contents->equipment.size(),
-                         contents->truncated ? " — TRUNCATED" : ""));
+                         contents->truncated ? " — TRUNCATED" : "",
+                         contents->unreadable ? std::format(" — {} failed reads", contents->unreadable) : ""));
     }
 }
 

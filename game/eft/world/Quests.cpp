@@ -1,5 +1,6 @@
 #include "game/eft/world/Quests.hpp"
 
+#include "core/log/Log.hpp"
 #include "core/mem/ReadBatch.hpp"
 #include "game/eft/Locale.hpp"
 #include "game/eft/Names.hpp"
@@ -10,6 +11,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <format>
+#include <iterator>
 #include <map>
 
 namespace radar::eft {
@@ -47,19 +49,58 @@ void Quests::registerTasks(sched::TaskRunner&, sched::TaskRunner& background) {
 
 void Quests::update() {
     auto quests = read();
-    if (!quests || quests == last_) return;  // an unreadable list keeps the last good one
+    if (!quests) return;  // an unreadable list keeps the last good one
+    if (failures_ > 0)
+        log::debug("quests: {} read(s) failed; their quests, conditions or progress carried over from the last read",
+                   failures_);
+    if (quests == last_) return;
+    logChange(*quests);
     last_ = std::move(quests);
     world_.quests.publish(QuestsSnapshot{.raidId = session_->id, .revision = ++revision_, .known = true, .quests = *last_});
+}
+
+void Quests::logChange(const std::vector<QuestState>& now) const {
+    // Rare (a quest started, handed in, a condition done): worth a line, and it shows when quests
+    // disappear and come back.
+    std::vector<std::string> added, removed;
+    const auto ids = [](const std::vector<QuestState>& qs) {
+        std::vector<std::string> out;
+        for (const auto& q : qs) out.push_back(q.id);
+        return out;  // sorted: read() sorts by id
+    };
+    const auto before = last_ ? ids(*last_) : std::vector<std::string>{};
+    const auto after = ids(now);
+    std::set_difference(after.begin(), after.end(), before.begin(), before.end(), std::back_inserter(added));
+    std::set_difference(before.begin(), before.end(), after.begin(), after.end(), std::back_inserter(removed));
+    const auto list = [](const std::vector<std::string>& v) {
+        std::string out;
+        for (std::size_t i = 0; i < v.size() && i < 5; ++i) out += (i ? ", " : "") + v[i];
+        return v.size() > 5 ? out + std::format(", … ({} more)", v.size() - 5) : out;
+    };
+    log::info("quests: {} in progress{}{}{}", now.size(), added.empty() || !last_ ? "" : "; started " + list(added),
+              removed.empty() ? "" : "; gone " + list(removed),
+              added.empty() && removed.empty() && last_ ? "; progress changed" : "");
 }
 
 bool Quests::isA(Address object, std::string_view className) { return game_.managed.isInstanceOf(object, className); }
 
 std::optional<std::vector<QuestState>> Quests::read() {
+    failures_ = 0;
     const Address profile = readPointer(game_, session_->start.localPlayer + off::Player::Profile);
     const Address list = profile ? readPointer(game_, profile + off::Profile::QuestsData, Freshness::Fresh) : 0;
     if (!list) return std::nullopt;
     const auto entries = game_.managed.readList<Address>(list, kMaxQuests, Freshness::Fresh);
     if (!entries) return std::nullopt;
+
+    // What a failed read leaves unknown is taken from the last read: memory that doesn't read for a
+    // moment mustn't drop quests (they'd come back as new) or progress (items would look needed again).
+    std::unordered_map<std::string_view, const QuestState*> previous;
+    if (last_)
+        for (const auto& q : *last_) previous.emplace(q.id, &q);
+    const auto previousOf = [&](const std::string& id) -> const QuestState* {
+        const auto it = previous.find(id);
+        return it != previous.end() ? it->second : nullptr;
+    };
 
     const auto statuses = mem::readEach<std::int32_t>(game_.mem, *entries, off::QuestsData::Status, Freshness::Fresh);
 
@@ -69,14 +110,24 @@ std::optional<std::vector<QuestState>> Quests::read() {
         Entry* entry;
     };
     std::vector<Active> active;
+    std::vector<QuestState> out;
     for (std::size_t i = 0; i < entries->size(); ++i) {
         const Address address = (*entries)[i];
-        if (!mem::MemoryView::isUserPointer(address) || !statuses[i]) continue;
-        if (*statuses[i] != kQuestStarted && *statuses[i] != kQuestAvailableForFinish) continue;
+        if (!mem::MemoryView::isUserPointer(address)) continue;
         auto cached = entries_.find(address);
+        if (!statuses[i]) {
+            ++failures_;
+            if (cached != entries_.end())
+                if (const auto* p = previousOf(cached->second.id)) out.push_back(*p);
+            continue;
+        }
+        if (*statuses[i] != kQuestStarted && *statuses[i] != kQuestAvailableForFinish) continue;
         if (cached == entries_.end()) {
             auto id = game_.managed.readStringField(address + off::QuestsData::Id, 64);
-            if (!id || !looksLikeId(*id)) continue;
+            if (!id || !looksLikeId(*id)) {
+                ++failures_;
+                continue;
+            }
             cached = entries_.emplace(address, Entry{.id = std::move(*id)}).first;
         }
         Entry& entry = cached->second;
@@ -90,11 +141,18 @@ std::optional<std::vector<QuestState>> Quests::read() {
     for (const auto& a : active) seen.push_back(a.entry);
     lookUpTexts(seen);
 
-    std::optional<std::unordered_map<std::string, std::int32_t>> counters;  // read when first needed
-    std::vector<QuestState> out;
+    std::optional<std::optional<Counters>> counters;  // read when first needed
     for (const auto& [address, status, entry] : active) {
-        const Address set = readPointer(game_, address + off::QuestsData::CompletedConditions, Freshness::Fresh);
-        auto completed = set ? readConditions(set) : std::nullopt;
+        const QuestState* prev = previousOf(entry->id);
+        Address set = 0;
+        std::optional<std::vector<std::string>> completed;
+        if (!game_.mem.tryRead(address + off::QuestsData::CompletedConditions, set, Freshness::Fresh)) {
+            ++failures_;
+            if (prev) completed = prev->completedConditions;
+        } else if (set) {
+            completed = readConditions(set);
+            if (!completed && prev) completed = prev->completedConditions;  // nullopt too if it never read
+        }
         QuestState q{.id = entry->id, .status = status, .completedConditions = std::move(completed)};
         if (entry->tmpl) {
             q.name = entry->tmpl->name;
@@ -104,8 +162,20 @@ std::optional<std::vector<QuestState>> Quests::read() {
             q.objectives = entry->tmpl->objectives;
             for (auto& o : *q.objectives) {
                 if (o.type != QuestObjective::Type::Handover) continue;
-                if (!counters) counters = readCounters(profile);
-                if (auto c = counters->find(o.id); c != counters->end()) o.progress = c->second;
+                if (!counters) {
+                    counters = readCounters(profile);
+                    if (!*counters || !(*counters)->complete) ++failures_;
+                }
+                const Counters* read = *counters ? &**counters : nullptr;
+                if (read)
+                    if (const auto c = read->values.find(o.id); c != read->values.end()) {
+                        o.progress = c->second;
+                        continue;
+                    }
+                // No counter: not started yet, unless counters didn't read; then the last known progress.
+                if ((!read || !read->complete) && prev && prev->objectives)
+                    for (const auto& po : *prev->objectives)
+                        if (po.id == o.id) o.progress = po.progress;
             }
         }
         out.push_back(std::move(q));
@@ -243,27 +313,33 @@ std::optional<std::vector<QuestObjective>> Quests::readObjectives(Address condit
     return out;
 }
 
-std::unordered_map<std::string, std::int32_t> Quests::readCounters(Address profile) {
+std::optional<Quests::Counters> Quests::readCounters(Address profile) {
     // Dictionary<MongoID, TaskConditionCounter>: the key is the condition's id.
-    std::unordered_map<std::string, std::int32_t> out;
+    Counters out;
     const Address dict = readPointer(game_, profile + off::Profile::TaskConditionCounters, Freshness::Fresh);
     const auto entries = dict ? game_.managed.readDictionary<MongoId, Address>(dict, kMaxCounters, Freshness::Fresh)
                               : std::nullopt;
-    if (!entries) return out;
+    if (!entries) return std::nullopt;
     std::vector<Address> counters;
     counters.reserve(entries->size());
     for (const auto& entry : *entries) counters.push_back(entry.second);
     const auto values = mem::readEach<std::int32_t>(game_.mem, counters, off::TaskConditionCounter::Value, Freshness::Fresh);
     for (std::size_t i = 0; i < entries->size(); ++i) {
         const Address str = (*entries)[i].first.stringId;
-        if (!values[i] || !mem::MemoryView::isUserPointer(str)) continue;
+        if (!values[i] || !mem::MemoryView::isUserPointer(str)) {
+            out.complete = false;
+            continue;
+        }
         auto cached = counterIds_.find(str);
         if (cached == counterIds_.end()) {
             auto id = game_.managed.readString(str, 64);
-            if (!id) continue;
+            if (!id) {
+                out.complete = false;
+                continue;
+            }
             cached = counterIds_.emplace(str, std::move(*id)).first;
         }
-        out[cached->second] = *values[i];
+        out.values[cached->second] = *values[i];
     }
     return out;
 }

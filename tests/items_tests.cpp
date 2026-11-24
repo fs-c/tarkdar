@@ -144,6 +144,35 @@ TEST_CASE("ItemTreeReader reads grid contents, nested, after slot contents") {
     CHECK(contents[3].children[0].tpl == "bolts");
     CHECK(contents[3].children[0].count == 3);
     CHECK(reader.readContents(plain).empty());
+    CHECK(reader.failures() == 0);
+}
+
+TEST_CASE("ItemTreeReader counts reads that failed, and leaves out what they'd have led to") {
+    FakeWorld w;
+    w.newWorld(u"bigmap", 1);
+    ItemClasses c(w);
+    constexpr Address kUnmapped = 0x5'0000'0000;  // a plausible pointer nothing is mapped at
+
+    const Address unreadableTemplate = makeItem(w, c.item, u"lost");
+    w.heap.put<Address>(unreadableTemplate + off::Item::Template, kUnmapped);
+    const Address backpack = makeItem(w, c.compound, u"backpack");
+    // The backpack's one grid: its item collection's list is unreadable.
+    const Address grid = w.heap.alloc(0x80), collection = w.heap.alloc(0x20);
+    w.heap.put<Address>(grid + *off::Grid::ItemCollection, collection);
+    w.heap.put<Address>(collection + *off::GridItemCollection::ItemsList, kUnmapped);
+    w.heap.put<Address>(backpack + *off::CompoundItem::Grids, w.heap.array(std::vector<Address>{grid}));
+    const Address root = makeItem(w, c.compound, u"container");
+    w.heap.put<Address>(root + *off::CompoundItem::Grids,
+                        makeGrids(w, {{makeItem(w, c.item, u"gpu"), unreadableTemplate, backpack}}));
+
+    const auto game = w.attachGame();
+    eft::ItemTreeReader reader(game);
+    const auto contents = reader.readContents(root);
+    REQUIRE(contents.size() == 2);  // the item whose template didn't read is left out
+    CHECK(contents[0].tpl == "gpu");
+    CHECK(contents[1].tpl == "backpack");
+    CHECK(contents[1].children.empty());
+    CHECK(reader.failures() == 2);
 }
 
 TEST_CASE("ItemTreeReader reads many trees together, in a few reads per level") {

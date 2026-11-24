@@ -50,6 +50,7 @@ public:
         std::string profileId;
         std::vector<OwnedItem> stash, equipment;
         bool truncated = false;
+        std::size_t unreadable = 0;  // failed reads: the trees may be incomplete (ItemTreeReader::failures)
         friend bool operator==(const Contents&, const Contents&) = default;
     };
     [[nodiscard]] static std::optional<Contents> readContents(const Game& game, Address profile);

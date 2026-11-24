@@ -76,7 +76,9 @@ private:
         int textAttempts = 0;
     };
 
-    // The quest list; nullopt if it couldn't be read.
+    // The quest list; nullopt if it couldn't be read. What a failed read within it leaves unknown (a
+    // quest's status, its completed conditions, hand-over progress) is carried over from last_; the
+    // failures are counted in failures_.
     [[nodiscard]] std::optional<std::vector<QuestState>> read();
     [[nodiscard]] std::optional<std::vector<std::string>> readConditions(Address set);
     // Everything but the texts (lookUpTexts).
@@ -84,8 +86,14 @@ private:
     [[nodiscard]] std::optional<std::vector<QuestObjective>> readObjectives(Address conditionsDict);
     // Fills in the name and objective texts of templates that have none yet, in one text-table scan.
     void lookUpTexts(const std::vector<Entry*>& entries);
-    // Condition id → counter value; empty if unreadable.
-    [[nodiscard]] std::unordered_map<std::string, std::int32_t> readCounters(Address profile);
+    struct Counters {
+        std::unordered_map<std::string, std::int32_t> values;  // condition id → counter value
+        bool complete = true;                                  // false: some counters didn't read
+    };
+    // Nullopt if the dictionary is unreadable; counters that don't read are left out (complete = false).
+    [[nodiscard]] std::optional<Counters> readCounters(Address profile);
+    // Logs what changed against last_.
+    void logChange(const std::vector<QuestState>& now) const;
     [[nodiscard]] bool isA(Address object, std::string_view className);
 
     std::shared_ptr<const RaidSession> session_;
@@ -95,6 +103,7 @@ private:
     std::unordered_map<Address, std::string> counterIds_;  // MongoID string → condition id
     std::optional<std::vector<QuestState>> last_;
     std::uint64_t revision_ = 0;
+    std::size_t failures_ = 0;  // of the last read()
 };
 
 }  // namespace radar::eft

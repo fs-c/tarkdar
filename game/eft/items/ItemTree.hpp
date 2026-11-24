@@ -39,12 +39,16 @@ public:
 
     // True if any call hit maxNodes since construction.
     [[nodiscard]] bool truncated() const noexcept { return truncated_; }
+    // Reads that failed since construction (an item's class, slots, grids, template or stack count):
+    // what they would have led to is missing or defaulted, so the trees may be incomplete.
+    [[nodiscard]] std::size_t failures() const noexcept { return failures_; }
 
 private:
     const Game& game_;
     ItemTreeLimits limits_;
     std::size_t nodes_ = 0;
     bool truncated_ = false;
+    std::size_t failures_ = 0;
 };
 
 }  // namespace radar::eft

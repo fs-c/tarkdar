@@ -48,6 +48,13 @@ public:
     void writeValue(Pid pid, Address va, const T& value) {
         write(pid, va, &value, sizeof(T));
     }
+    // Makes [va, va + size) fail to read (as memory the guest has paged out would), or readable again.
+    void setUnreadable(Pid pid, Address va, std::size_t size, bool unreadable = true) {
+        std::lock_guard lock(mutex_);
+        auto& ranges = unreadable_[pid];
+        if (unreadable) ranges[va] = va + size;
+        else ranges.erase(va);
+    }
     void setOpenResult(bool ok) {
         std::lock_guard lock(mutex_);
         openOk_ = ok;
@@ -120,11 +127,18 @@ private:
         if (!open_ || va == 0) return 0;
         auto memIt = memory_.find(pid);
         if (memIt == memory_.end()) return 0;
+        const auto blocked = unreadable_.find(pid);
+        const auto unreadable = [&](Address a) {
+            if (blocked == unreadable_.end()) return false;
+            for (const auto& [begin, end] : blocked->second)
+                if (a >= begin && a < end) return true;
+            return false;
+        };
         std::size_t leading = 0;
         bool contiguous = true;
         for (std::size_t i = 0; i < size; ++i) {
             auto it = memIt->second.find(va + i);
-            if (it != memIt->second.end()) {
+            if (it != memIt->second.end() && !unreadable(va + i)) {
                 out[i] = it->second;
                 if (contiguous) ++leading;
             } else {
@@ -143,6 +157,7 @@ private:
     std::map<Pid, bool> alive_;
     std::map<std::pair<Pid, std::string>, ModuleInfo> modules_;
     std::map<Pid, std::map<Address, std::byte>> memory_;
+    std::map<Pid, std::map<Address, Address>> unreadable_;  // begin → end
 };
 
 }  // namespace radar::mem

@@ -80,17 +80,25 @@ std::vector<std::vector<ItemNode>> ItemTreeReader::read(std::span<const ItemRoot
             if (!klassAt[i]) continue;
             if (!klasses[i]) {
                 log::debug("items: {:#x}: class unreadable; no slots/grids read", level[i].root.address);
+                ++failures_;
                 continue;
             }
             if (!game_.managed.classIsA(klasses[i], kCompoundItemClass)) continue;  // plain item: nothing inside
             slotArrays[i] = slotPtrs[i];
             gridArrays[i] = gridPtrs[i];
-            if (gridsKnown && !gridArrays[i])
+            if (gridsKnown && !gridArrays[i]) {
                 log::debug("items: {:#x}: Grids array unreadable (null or bad pointer)", level[i].root.address);
+                ++failures_;
+            }
         }
 
         // Slots: the contained item and the slot id of each.
         const auto slotLists = game_.managed.readArrays<Address>(slotArrays, limits_.maxSlots);
+        for (std::size_t i = 0; i < n; ++i)
+            if (slotArrays[i] && !slotLists[i]) {
+                log::debug("items: {:#x}: Slots array at {:#x} unreadable", level[i].root.address, slotArrays[i]);
+                ++failures_;
+            }
         std::vector<std::pair<std::size_t, Address>> slots;  // (expansion, slot)
         for (std::size_t i = 0; i < n; ++i)
             if (slotLists[i])
@@ -110,6 +118,7 @@ std::vector<std::vector<ItemNode>> ItemTreeReader::read(std::span<const ItemRoot
                 if (!gridLists[i]) {
                     log::debug("items: {:#x}: Grids array at {:#x} unreadable (bad pointer or over cap)",
                                level[i].root.address, gridArrays[i]);
+                    ++failures_;
                     continue;
                 }
                 for (Address grid : *gridLists[i]) grids.emplace_back(i, grid);
@@ -131,6 +140,7 @@ std::vector<std::vector<ItemNode>> ItemTreeReader::read(std::span<const ItemRoot
             if (!gridItems[k]) {
                 log::debug("items: {:#x}: grid {:#x} collection {:#x} ItemsList unreadable",
                            level[grids[k].first].root.address, grids[k].second, collections[k]);
+                ++failures_;
                 continue;
             }
             for (Address item : *gridItems[k])
@@ -154,6 +164,7 @@ std::vector<std::vector<ItemNode>> ItemTreeReader::read(std::span<const ItemRoot
                 batch.add(candidates[k].item + off::Item::SpawnedInSession, fir[k]);
             }
             batch.execute();  // failed reads stay 0: count 1, not found in raid
+            for (std::size_t h = 0; h < batch.size(); ++h) failures_ += batch.complete(h) ? 0 : 1;
         }
         std::vector<Address> idFieldAt(m);
         for (std::size_t k = 0; k < m; ++k)
@@ -173,6 +184,7 @@ std::vector<std::vector<ItemNode>> ItemTreeReader::read(std::span<const ItemRoot
             if (!ids[k] || ids[k]->empty()) {
                 log::debug("items: {:#x}: template id unreadable (Template={:#x}, depth {})", candidates[k].item,
                            templates[k], e.depth);
+                ++failures_;
                 continue;
             }
             if (nodes_ >= limits_.maxNodes) {

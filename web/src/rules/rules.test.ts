@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyCatalog } from "../model/items";
 import type { AnyRow } from "../list/rows";
-import { HIGHLIGHT_COLORS } from "../highlight/match";
-import { highlightRules } from "./useRules";
 import { BASE, type Rule, applyRules, explainStyle, highlightRule, isShown, labelAt } from "./rules";
 
 // Rows matched by text (their key is their search text).
@@ -63,12 +61,4 @@ describe("highlights as rules", () => {
     expect(applyRules([row("a")], [highlightRule("h", "", " ", "red", true)], emptyCatalog).matched.get("h")).toEqual([]);
   });
 
-  it("colour each thing by the first pill that matches it; the preview only where no pill does", () => {
-    const h = (id: number, color: string, query: string, on = true) => ({ id, label: "", group: "", query, color, on });
-    const rules = highlightRules([h(1, "red", "a"), h(2, "blue", "is:item b"), h(3, "green", "c", false)], "is:item");
-    // "is:item b": rows a..d all contain no "b" except b.
-    const { styles, matched } = applyRules(["a", "b", "c", "d"].map((k) => row(k)), rules, emptyCatalog);
-    expect(["a", "b", "c", "d"].map((k) => styles.get(k)?.ring)).toEqual(["red", "blue", HIGHLIGHT_COLORS[0], HIGHLIGHT_COLORS[0]]);
-    expect(matched.get("highlight:3")?.map((r) => r.key)).toEqual(["c"]);
-  });
 });

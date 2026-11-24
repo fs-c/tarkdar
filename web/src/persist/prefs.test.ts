@@ -27,6 +27,6 @@ describe("stored sidebar prefs", () => {
   });
 
   it("know their sections", () => {
-    expect(sidebarStore.normalize({ section: "nowhere", raidsLevel: "deep" })).toMatchObject({ section: "list", raidsLevel: "list" });
+    expect(sidebarStore.normalize({ section: "nowhere", raidsLevel: "deep" })).toMatchObject({ section: "players", raidsLevel: "list" });
   });
 });

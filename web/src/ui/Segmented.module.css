@@ -1,11 +1,10 @@
 @layer base, ui;
 @layer ui {
   /* As wide as its options: a flex column or grid cell (align/justify: stretch) doesn't widen it. */
-  .segmented { display: inline-flex; width: fit-content; max-width: 100%; overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); }
+  .segmented { display: inline-flex; gap: 2px; width: fit-content; max-width: 100%; padding: 2px; box-sizing: border-box; overflow: hidden; border-radius: 9px; background: var(--hover); }
   .option {
-    min-width: 38px; padding: 4px 12px; color: var(--muted); text-align: center;
-    & + & { border-left: 1px solid var(--border-strong); }
-    &:hover { background: var(--hover); color: var(--text); }
-    &[aria-checked="true"] { background: var(--accent-soft); color: var(--accent-text); }
+    min-width: 30px; padding: 2px 9px; border-radius: 7px; color: var(--muted); font-size: var(--fs-sm); text-align: center; white-space: nowrap;
+    &:hover { color: var(--text); }
+    &[aria-checked="true"] { background: var(--control); color: var(--text); }
   }
 }

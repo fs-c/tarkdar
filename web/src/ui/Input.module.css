@@ -1,10 +1,10 @@
 @layer base, ui;
 @layer ui {
   .field {
-    box-sizing: border-box; min-width: 0; padding: 4px 8px;
-    border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--chrome); color: var(--text); font: inherit;
+    box-sizing: border-box; min-width: 0; padding: 5px 9px;
+    border: 0; border-radius: 8px; background: var(--hover); color: var(--text); font: inherit;
     &::placeholder { color: var(--faint); }
-    &:focus { outline: none; border-color: var(--accent); }
+    &:focus { outline: none; background: var(--press); box-shadow: inset 0 0 0 1px var(--link-line); }
     &[aria-invalid="true"] { border-color: var(--danger); }
   }
   .color {

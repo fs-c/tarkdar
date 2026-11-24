@@ -8,7 +8,7 @@ import type { Style } from "../rules/rules";
 import { type Selection, selectedPosition } from "./pick";
 import type { Scene } from "./render";
 
-/** What the map shows of the state: the list's filters may leave things out (vehicles are never filtered). */
+/** What the map shows of the state (all of it: the display rules decide how, and whether, each thing shows). */
 type Shown = Pick<Scene, "players" | "loot" | "exfils" | "explosives">;
 
 interface TrailInput {
@@ -45,10 +45,11 @@ interface SceneInput {
   listShown: boolean;
   /** Coordinate-tool picks: drawn only with a map and the tool on. */
   debugPoints: WorldPos[];
-  /** What the rule hovered in the Filters view matches. */
+  /** Marked on the map (dashed rings): what a list's filter lets through, what the search previews. */
   hoverMatches: readonly AnyRow[];
   trails: Scene["trails"];
   bodies: boolean;
+  carried?: Scene["carried"];
 }
 
 /** Everything the radar draws, from what the app knows. */
@@ -68,5 +69,6 @@ export function buildScene(i: SceneInput): Scene {
     marked: i.hoverMatches.flatMap((r) => (r.pos ? [r.pos] : [])),
     trails: i.trails,
     bodies: i.bodies,
+    carried: i.carried,
   };
 }

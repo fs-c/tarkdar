@@ -1,28 +1,24 @@
 /* The WebGL canvas (added by Map3D) fills the host; the marker canvas lies on top and lets
    pointer events through to the map's camera controls. */
+/* Reaches under the sidebar card by as much again past the right edge (main clips it), so that the
+   map's middle, where it centres what it follows, is the middle of what's seen. */
 .radar {
-  position: absolute; inset: 0; touch-action: none; cursor: grab;
+  position: absolute; inset: 0; right: calc(-1 * var(--cover, 0px)); touch-action: none; cursor: grab;
   & > canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 }
 .markers { pointer-events: none; z-index: 1; }
-.status {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2; margin: 0;
-  padding: 8px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius);
-  background: var(--overlay-surface); color: var(--muted); font-size: var(--fs-sm);
-  &[data-tone="error"] { color: var(--danger); }
-}
 /* Indoor maps: which floor the map is cut open at. Stacked above the follow button, like the north
    button (Floating.module.css). */
 .floor {
-  display: grid; border-radius: var(--radius); overflow: hidden; cursor: default;
+  display: grid; gap: 1px; padding: 3px; box-sizing: border-box; cursor: default;
   & button {
-    display: grid; place-items: center; height: 30px; padding: 0; border: 0; background: none; color: var(--muted);
-    &:hover:not(:disabled) { color: var(--text); background: var(--overlay-surface); }
+    display: grid; place-items: center; height: 24px; padding: 0; border: 0; border-radius: var(--fr-in); background: none; color: var(--muted);
+    &:hover:not(:disabled) { color: var(--text); background: var(--hover); }
   }
 }
 /* Beats `.floor button` (and its hover colour) by specificity. */
 .floor button.floorLevel {
   font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
-  border-block: 1px solid var(--border); color: var(--muted);
+  height: 22px; font-weight: 600; color: var(--muted);
   &:not(:disabled) { color: var(--accent); }
 }

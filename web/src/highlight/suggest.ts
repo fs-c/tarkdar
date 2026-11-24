@@ -83,20 +83,35 @@ export function suggest(query: string, catalog: ItemCatalog): Suggestion[] {
   if (parsed.errors.length) return [{ label: raw, group: "Query", detail: parsed.errors[0], query: raw, error: true }];
   if (isStructured(raw)) return [{ label: raw, group: "Query", query: raw }];
 
-  const out: Suggestion[] = [{ label: `"${raw}"`, group: "Text", detail: "anything mentioning it", query: q }];
+  const text: Suggestion = { label: `"${raw}"`, group: "Text", detail: "anything mentioning it", query: q };
 
+  // A value is meant as one: before the text (Enter takes the first).
   const value = parseValue(q);
   if (value !== null) {
     const v = formatValue(value);
-    out.push({ label: `Items ≥ ${formatPrice(value)}/slot`, group: "Value", detail: "loose items, per inventory slot", query: `is:item value>=${v}` });
-    out.push({ label: `Gear ≥ ${formatPrice(value)}`, group: "Value", detail: "players and corpses, equipment value", query: `is:player,corpse value>=${v}` });
-    return out;
+    return [
+      { label: `Items ≥ ${formatPrice(value)}/slot`, group: "Value", detail: "loose items, per inventory slot", query: `is:item value>=${v}` },
+      { label: `Gear ≥ ${formatPrice(value)}`, group: "Value", detail: "players and corpses, equipment value", query: `is:player,corpse value>=${v}` },
+      text,
+    ];
   }
 
+  // A kind typed as such ("boss", "scavs") is meant as that kind: before the text, and before items
+  // named like it ("Scav backpack").
+  // Named like it first ("Bosses"), then known by it ("Special": bosses, guards, ...).
+  const exact: { sg: Suggestion; rank: number }[] = [];
+  const rest: Suggestion[] = [];
+  const same = (w: string) => w === q || w === `${q}s` || w === `${q}es` || `${w}s` === q || `${w}es` === q;
   for (const p of PRESETS) {
-    const words = `${p.label} ${p.words ?? ""}`.toLowerCase().split(/\s+/);
-    if (words.some((w) => w.startsWith(q))) out.push({ label: p.label, group: p.group, detail: p.query, query: p.query });
+    const named = p.label.toLowerCase().split(/\s+/);
+    const words = [...named, ...(p.words ?? "").toLowerCase().split(/\s+/)];
+    if (!words.some((w) => w.startsWith(q))) continue;
+    const sg: Suggestion = { label: p.label, group: p.group, detail: p.query, query: p.query };
+    if (named.some(same)) exact.push({ sg, rank: 0 });
+    else if (words.some(same)) exact.push({ sg, rank: 1 });
+    else rest.push(sg);
   }
+  const out: Suggestion[] = [...exact.sort((a, b) => a.rank - b.rank).map((x) => x.sg), text, ...rest];
 
   // Learning the syntax: a field's name gives an example of it.
   if (q.length >= 2 && !q.includes(" "))

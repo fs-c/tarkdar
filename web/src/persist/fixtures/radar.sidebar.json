@@ -1,5 +1,6 @@
 {
   "0": { "open": true, "section": "timeline" },
   "1": { "$v": 1, "data": { "open": false, "section": "map", "raidsLevel": "list" } },
-  "2": { "$v": 2, "data": { "open": true, "section": "map", "raidsLevel": "list" } }
+  "2": { "$v": 2, "data": { "open": true, "section": "map", "raidsLevel": "list" } },
+  "3": { "$v": 3, "data": { "open": true, "section": "loot", "raidsLevel": "timeline" } }
 }

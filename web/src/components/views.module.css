@@ -1,0 +1,52 @@
+/* The side panel's views (Players, Watch, Raids, ...): their filter box, group headers, rows. */
+
+/* A view's filter or search: always first, in the same spot. */
+.find {
+  display: flex; align-items: center; gap: 8px; margin: 2px 10px 6px; padding: 0 10px; height: 32px; box-sizing: border-box;
+  border-radius: 9px; background: var(--hover); color: var(--faint); cursor: text;
+  &:focus-within { background: var(--press); color: var(--muted); box-shadow: inset 0 0 0 1px var(--link-line); }
+  & input { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: var(--text); font: inherit; outline: none; }
+  & input::placeholder { color: var(--faint); }
+}
+.tools { display: flex; align-items: center; gap: 8px; padding: 0 10px 6px; font-size: var(--fs-sm); }
+.grow { flex: 1; }
+.empty { margin: 8px 16px; color: var(--faint); font-size: 12.5px; }
+
+/* A group's header: colour mark, name, count, its level; click to fold. */
+.group {
+  display: flex; align-items: center; gap: 7px; padding: 9px 12px 3px 16px; color: var(--text); font-size: 12.5px; cursor: pointer; user-select: none;
+  & b { font-weight: 600; }
+  &[data-folded="true"] b { color: var(--muted); }
+  &[data-static="true"] { cursor: default; margin-top: 6px; }
+}
+.count { color: var(--faint); font-variant-numeric: tabular-nums; }
+.tick { width: 3px; height: 12px; flex: none; padding: 0; border-radius: 2px; &:is(button):hover { box-shadow: 0 0 0 2px var(--border-strong); } }
+.chev { display: grid; color: var(--faint); transition: transform 0.1s; .group:hover & { color: var(--text); } .group[data-folded="true"] & { transform: rotate(-90deg); } }
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 10px 6px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--raised); }
+.swatch {
+  width: 15px; height: 15px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
+  &[aria-checked="true"] { box-shadow: 0 0 0 2px var(--chrome), 0 0 0 3.5px var(--text); }
+}
+
+/* A row: steps back from its group title; the one pointed at or selected comes forward. */
+.row {
+  display: grid; align-items: center; gap: 10px; height: 25px; padding: 0 10px 0 20px; margin: 0 6px; border-radius: 7px;
+  color: #b3bdc5; white-space: nowrap; cursor: pointer;
+  & > * { overflow: hidden; text-overflow: ellipsis; }
+  &:hover { background: var(--hover); color: var(--text); }
+  &[data-selected="true"] { background: var(--accent-soft); color: var(--text); }
+}
+.name { color: inherit; }
+.id { color: #7d8a94; .row:hover &, .row[data-selected="true"] & { color: var(--muted); } }
+.bold { color: var(--text); font-weight: 600; }
+/* Distance with an arrow pointing at it (from where you look); the farther, the dimmer. */
+.far { display: inline-flex; align-items: center; gap: 4px; color: #74818b; font-variant-numeric: tabular-nums; }
+.arrow { width: 10px; height: 10px; flex: none; fill: #56626b; }
+.pip { display: inline-block; width: 7px; height: 7px; margin: 0 0 1px 6px; transform: rotate(45deg); vertical-align: middle; }
+
+/* Players: the name, then the distance right after it. The dead and those who left: struck through. */
+.player { grid-template-columns: auto 1fr; }
+.player[data-gone="true"] {
+  & .name, & .id { color: var(--faint); text-decoration: line-through; text-decoration-color: rgba(148, 163, 175, 0.55); }
+  & .far { opacity: 0.6; }
+}

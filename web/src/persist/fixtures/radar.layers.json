@@ -1,0 +1,15 @@
+{
+  "0": {
+    "loot": "all",
+    "quest": "started",
+    "containers": true
+  },
+  "1": {
+    "$v": 1,
+    "data": {
+      "loot": "all",
+      "quest": "started",
+      "containers": true
+    }
+  }
+}

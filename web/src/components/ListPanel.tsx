@@ -1,24 +1,23 @@
-// List views: everything the radar knows, in sortable, filterable tables (one per category, picked
-// from the activity bar). Each tab has its own filters, and the map follows them (for that tab's kind
-// of thing). Highlighted rows (highlight/, the global search) are marked in their colour.
-// Hovering a row marks it on the map; clicking (or ↑/↓) selects it and centres the map on it.
+// List views (Loot: items and containers; Exfils): sortable tables with a filter each. A filter
+// narrows the list only; what it lets through is marked on the map while it's set, and "Watch these"
+// keeps it as a watch entry. Hovering a row marks it on the map; clicking (or ↑/↓) selects it and
+// centres the map on it.
 
 import { type OnChangeFn, type SortingState, useTable } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { RadarState } from "../stream/connection";
 import { type TabDef, TABS, features } from "../list/columns";
-import { DEFAULT_FILTERS, type RowBase, type TabFilter, type TabRows, isTabFiltered, selectionKey, tabOf, withDistances } from "../list/rows";
+import { DEFAULT_FILTERS, type RowBase, type TabFilter, type TabId, type TabRows, isTabFiltered, selectionKey, tabOf, withDistances } from "../list/rows";
 import { RowStyles } from "../list/RowStyles";
 import type { Style } from "../rules/rules";
 import type { ListPrefs, ListRows } from "../list/useListRows";
 import type { Selection } from "../draw/pick";
-import { Button, Chip, TextInput, cx, selectableRow } from "../ui";
+import { Button, Segmented, TextInput, cx, selectableRow } from "../ui";
 import s from "./ListPanel.module.css";
 
 const ROW_HEIGHT = 22;
 const HEADER_HEIGHT = 24;
-const MIN_VALUES = [0, 10_000, 25_000, 50_000, 100_000, 250_000];
 
 interface Props {
   state: RadarState;
@@ -34,10 +33,14 @@ interface Props {
   styles: ReadonlyMap<string, Style>;
   /** Set by the panel: focuses its search (the L key). */
   focusRef: React.RefObject<(() => void) | undefined>;
+  /** The tabs this view switches between (Loot: items and containers). */
+  tabs: readonly TabId[];
+  /** "Watch these": the filter text as a watch entry. */
+  onWatch?: (text: string) => void;
 }
 
-export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate, onHover, styles, focusRef }: Props) {
-  const { tab } = prefs;
+export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate, onHover, styles, focusRef, tabs, onWatch }: Props) {
+  const tab = tabs.includes(prefs.tab) ? prefs.tab : tabs[0]!;
   const filter = prefs.filters[tab];
   const { totals } = list;
   const filterRef = useRef<HTMLInputElement>(null);
@@ -57,18 +60,18 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
   );
 
   const setFilter = (patch: Partial<TabFilter>) =>
-    setPrefs((p) => ({ ...p, filters: { ...p.filters, [p.tab]: { ...p.filters[p.tab], ...patch } } }));
+    setPrefs((p) => ({ ...p, filters: { ...p.filters, [tab]: { ...p.filters[tab], ...patch } } }));
   const onSortingChange: OnChangeFn<SortingState> = (update) =>
     setPrefs((p) => ({
       ...p,
-      sorting: { ...p.sorting, [p.tab]: typeof update === "function" ? update(p.sorting[p.tab]) : update },
+      sorting: { ...p.sorting, [tab]: typeof update === "function" ? update(p.sorting[tab]) : update },
     }));
 
   // A selection made on the map switches to its tab (the table then scrolls to it).
   const selKey = selection ? selectionKey(selection) : null;
   useEffect(() => {
     const t = selection && tabOf(selection, state);
-    if (t) setPrefs((p) => (p.tab === t ? p : { ...p, tab: t }));
+    if (t && tabs.includes(t)) setPrefs((p) => (p.tab === t ? p : { ...p, tab: t }));
     // Only on selection changes, not on every data update.
   }, [selKey]);
 
@@ -91,12 +94,22 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
   return (
     <RowStyles.Provider value={styles}>
     <div className={s.list}>
+      {tabs.length > 1 && (
+        <div className={s.tabs}>
+          <Segmented
+            label="List"
+            options={tabs.map((t) => ({ value: t, label: <>{TABS[t].label} <span className="muted">{totals[t]}</span></> }))}
+            value={tab}
+            onChange={(t) => setPrefs((p) => ({ ...p, tab: t }))}
+          />
+        </div>
+      )}
       <div className={s.filters}>
         <TextInput
           ref={filterRef}
           className={s.search}
           type="search"
-          placeholder={`filter ${TABS[tab].label.toLowerCase()}  ( L )`}
+          placeholder={`Filter ${TABS[tab].label.toLowerCase()}`}
           value={filter.text}
           onChange={(e) => setFilter({ text: e.target.value })}
           onKeyDown={(e) => {
@@ -109,20 +122,6 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
             }
           }}
         />
-        {tab === "players" && (
-          <>
-            <Chip on={!!filter.alive} onClick={() => setFilter({ alive: !filter.alive })}>alive</Chip>
-            <Chip on={!!filter.humans} onClick={() => setFilter({ humans: !filter.humans })}>humans</Chip>
-            <Chip on={!!filter.special} onClick={() => setFilter({ special: !filter.special })}>special</Chip>
-          </>
-        )}
-        {tab === "items" && (
-          <select value={filter.minValue ?? 0} title="Minimum value per inventory slot" onChange={(e) => setFilter({ minValue: Number(e.target.value) })}>
-            {MIN_VALUES.map((v) => (
-              <option key={v} value={v}>{v === 0 ? "any ₽" : `≥ ${v / 1000}k ₽/slot`}</option>
-            ))}
-          </select>
-        )}
       </div>
       {tab === "players" && <TabTable key={tab} def={TABS.players} rows={rows.players} {...common} />}
       {tab === "items" && <TabTable key={tab} def={TABS.items} rows={rows.items} {...common} />}
@@ -135,7 +134,13 @@ export function ListPanel({ state, list, prefs, setPrefs, selection, onActivate,
             <Button variant="link" className={s.clear} onClick={() => setFilter(DEFAULT_FILTERS[tab])}>clear filter</Button>
           )}
         </span>
-        <span className="muted">{filtered && "map shows matches only · "}click: show on map · ↑↓ step · L close</span>
+        {filtered && filter.text.trim() && onWatch ? (
+          <Button onClick={() => onWatch(filter.text.trim())} title="Keep these as a watch entry">
+            Watch “{filter.text.trim()}”
+          </Button>
+        ) : (
+          <span className="muted">click: show on map · ↑↓ step</span>
+        )}
       </div>
     </div>
     </RowStyles.Provider>

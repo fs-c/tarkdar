@@ -1,5 +1,2 @@
 - backend/memory read optimization; there's noticeably more lag while the backend is running
     - still open: cache transform hierarchy/index lookups (2 of the 3 read rounds per positions tick), move builds/bone resolves off the live thread, publish players only on change, slower tripwire scan
-- cleanup/review round: follow-up (found 2026-11)
-    - `tools/maps3d/t3d/unity.py` `extract_scene` is a 320-line closure forest; split it when the game files are at hand (verify with a byte-identical cache)
-- more versatile highlighting; right now if you want something be always visible the only option is "ring"

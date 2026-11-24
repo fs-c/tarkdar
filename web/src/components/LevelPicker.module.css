@@ -1,0 +1,7 @@
+.glyph { flex: none; display: block; }
+.picker { display: inline-flex; flex: none; }
+.level {
+  width: 19px; height: 24px; display: grid; place-items: center; border-radius: 6px;
+  &:hover { background: var(--press); }
+  &[aria-checked="true"] { background: var(--hover); }
+}

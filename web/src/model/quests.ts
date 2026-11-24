@@ -59,6 +59,9 @@ export const objectiveLabel = (q: QuestState, o: QuestObjective): string => (q.k
 export interface QuestNeed {
   /** What it's for (objectiveLabel). */
   quest: string;
+  /** The quest's id and name (questLabel): what `quest:"<name>"` matches, a tracked quest's watch entry. */
+  questId?: string;
+  questName?: string;
   kind: NeedKind;
   count: number;
   /** How many are handed over already, if the game counts it. */
@@ -168,13 +171,13 @@ export function questNeeds(quests: readonly QuestState[] | null, counting: Count
     }
     const kind = q.kind ?? "side";
     for (const { objective: o, items, progress } of openObjectives(q))
-      add(q.id, o.id, items, { quest: objectiveLabel(q, o), kind, count: o.count, fir: !!o.fir, of: items.length, ...(progress ? { progress } : {}) });
+      add(q.id, o.id, items, { quest: objectiveLabel(q, o), questId: q.id, questName: questLabel(q), kind, count: o.count, fir: !!o.fir, of: items.length, ...(progress ? { progress } : {}) });
   }
   const live = new Set(quests.map((q) => q.id));
   for (const q of counting.imported ?? []) {
     if (live.has(q.id) || !counts(q.id, counting)) continue;
     for (const { objective: o, items } of openObjectives({ id: q.id, status: QUEST_STARTED, done: [], objectives: q.objectives }))
-      add(q.id, o.id, items, { quest: q.name, kind: "imported", count: o.count, fir: !!o.fir, of: items.length });
+      add(q.id, o.id, items, { quest: q.name, questId: q.id, questName: q.name, kind: "imported", count: o.count, fir: !!o.fir, of: items.length });
   }
   if (owned) allocateOwned(claims, owned);
   return needs;

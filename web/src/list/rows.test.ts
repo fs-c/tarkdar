@@ -144,17 +144,15 @@ describe("normalizeFilters", () => {
     expect(f.items).toEqual({ text: "gpu", minValue: 0 });
     expect(f.players).toEqual(DEFAULT_FILTERS.players);
   });
-  it("checks each field's type", () => {
+  it("keeps only the text (the chips and the minimum value are gone from the lists)", () => {
     const f = normalizeFilters({
-      items: { text: "x", minValue: "abc", alive: true },
-      players: { text: "", alive: "yes", humans: true, special: 1, minValue: 5 },
+      items: { text: "x", minValue: 50000 },
+      players: { text: "", alive: true, humans: true, special: 1 },
       exfils: { text: "e", minValue: Infinity },
     });
     expect(f.items).toEqual({ text: "x", minValue: 0 });
-    expect(f.players).toEqual({ text: "", alive: false, humans: true, special: false });
+    expect(f.players).toEqual({ text: "", alive: false, humans: false, special: false });
     expect(f.exfils).toEqual({ text: "e" });
-    expect(normalizeFilters({ items: { text: "", minValue: -5 } }).items.minValue).toBe(0);
-    expect(normalizeFilters({ items: { text: "", minValue: 1e6 } }).items.minValue).toBe(1e6);
   });
 });
 

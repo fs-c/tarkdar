@@ -4,6 +4,7 @@
 import "./prefs";
 import "../list/useListRows";
 import "../rules/store";
+import "../watch/prefs";
 import { allStores, decode, oldestVersion } from "./store";
 
 const fixtures = import.meta.glob<Record<string, unknown>>("./fixtures/*.json", { eager: true, import: "default" });

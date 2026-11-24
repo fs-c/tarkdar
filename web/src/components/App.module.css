@@ -1,11 +1,7 @@
-/* VS Code-style workbench: activity bar | side panel (when open) | main area, above the status bar.
-   The main area (the map and what floats over it) takes whatever width the side panel leaves. */
-.workbench {
-  position: fixed; top: 0; left: 0; right: 0; bottom: var(--status-h);
-  display: flex;
-}
-/* What floats over the map is placed by Floating.module.css (.area on this element). */
-.main { position: relative; flex: 1; min-width: 0; overflow: hidden; container: map / inline-size; }
+/* The map fills the window; the sidebar card (Sidebar.module.css) and the controls
+   (Floating.module.css) float over it. */
+.app { position: fixed; inset: 0; }
+.main { position: absolute; inset: 0; overflow: hidden; container: map / inline-size; }
 
-/* Follow-me toggle: a round button in the map's bottom right corner. Turning with the view: filled. */
+/* Follow (FollowButton), in the map's bottom right corner. Turning with the view: filled. */
 .follow[aria-pressed="true"][data-heading="true"] { background: var(--accent); color: var(--on-accent); }

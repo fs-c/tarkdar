@@ -155,37 +155,37 @@ for a raid → in raid → cooldown → waiting for a raid.
 
 - **Rows** (`web/src/list/rows.ts`). Everything the radar knows becomes one row per thing (what it is,
   the items it is or carries, its value: per inventory slot for loose items, the equipment's for
-  players and corpses). Display rules, highlights and list filters all match rows.
-- **Queries** (`web/src/highlight/query.ts`) say what a rule or a highlight matches, as text: free
-  words, `is:boss,raider`, `item:LEDX`, `cat:Electronics`, `value>=40k`, `pen>=40`, `class>=5`.
-  Spaces AND, commas OR, no negation (yet). Item conditions hold for things that are or carry such an
-  item. A query is compiled once per catalog (names resolved, item conditions as template sets); one
-  that doesn't parse or resolve matches nothing and says why. A syntax over a form: learnable, and the
-  same in the search and in the rule editor.
-- **Display rules** (`web/src/rules/`) decide how each thing looks and whether and when it shows: one
-  ordered list of rules, each a query and the style properties it sets (visibility from a level of
-  detail on, colour, emphasis, label, ring). A thing starts from its kind's base style; every rule that
-  matches sets its properties on top, later rules winning property by property. Only players are shown
-  by their base style; everything else is shown by a rule (each kind's catch-all default: "Items",
-  "Containers", ...), so switching off the rules that match a thing hides it. Bottom to top: the
-  rules by category (Players, Loot, Containers, Exfils, Explosives, Vehicles, then General, which spans kinds),
-  pinned rules, then highlights from the global search. Last, categories switched off (the old map
-  layers) hide their kinds of thing, except what's ringed: so highlights, and any rule that rings,
-  beat hiding. Map, figures, trails, picking and the list all read the result; the details panel shows
-  which rules made the selected thing's look.
-- **Every rule is the user's** (`web/src/components/MapPanel.tsx`, `web/src/rules/store.ts`). The store
-  starts from the defaults (`web/src/rules/defaults.ts`); any rule can be edited (name, query, style,
-  category), moved within its category, duplicated, removed and added. Rules made from a default keep
-  its id (`origin`): reset one, or restore the removed ones where they were. No migration: a stored
-  version other than the current one is replaced by the defaults. Loot density and the label threshold
-  are no settings of their own: they are the item rules' "shown" and "label".
-- **Pinned rules** are highlights kept for the current raid (stored with its key, dropped when the next
-  raid starts), editable like any rule; "keep" moves one into its category for good. Pinning changes
-  nothing about the look.
+  players and corpses, the quests that still need it). Display rules, watch entries and list filters
+  all match rows.
+- **Queries** (`web/src/highlight/query.ts`) say what a rule or a watch entry matches, as text: free
+  words, `is:boss,raider`, `item:LEDX`, `cat:Electronics`, `value>=40k`, `pen>=40`, `class>=5`,
+  `quest:story` or `quest:"Shortage"` (what that quest still needs: a tracked quest). Spaces AND,
+  commas OR, no negation (yet). Item conditions hold for things that are or carry such an item. A query
+  is compiled once per catalog (names resolved, item conditions as template sets); one that doesn't
+  parse or resolve matches nothing and says why.
+- **Display rules** (`web/src/rules/rules.ts`) are the engine underneath: an ordered list of rules,
+  each a query and the style properties it sets (visibility from a level of detail on, colour,
+  emphasis, label, ring). A thing starts from its kind's base style; every rule that matches sets its
+  properties on top, later rules winning property by property. Only players are shown by their base
+  style; everything else is shown by a rule. Map, figures, trails, picking and the list all read the
+  result; the details panel shows which rules made the selected thing's look.
+- **The watch model** (`web/src/watch/`) is what the user sets, compiled into those rules
+  (`watch/rules.ts`). One axis, importance, in four levels (Low, Normal, High, Top: each a preset of the
+  style properties, `watch/levels.ts`), applied to three things: player **tiers** (PMCs, bosses,
+  guards, raiders and rogues, Black Division, cultists, player scavs, scavs, infected, other: each
+  a level and a colour, `watch/tiers.ts`), the **layers** (what the map shows on its own: loot by value,
+  the items started quests need, corpses, containers, exfils, explosives), and the **watchlist**
+  (entries made from the search, a list's filter or a tracked quest: a query, a colour, a level; on
+  or off). The rules are ordered by level, so the highest level that applies to a thing wins, colour
+  and all; a watched thing shows whatever the layers say. Entries for things style the things;
+  players carrying one get a mark of their own next to them (`carriedMarks`, drawn by `render.ts`).
+  Entries for kinds of player raise those players to the entry's level, with a ring in its colour.
+  The rule store of before (`web/src/rules/store.ts`, `defaults.ts`) is only test fixtures now.
 - **Not rules, on purpose:** each kind's shape and what an emphasis means for it (`web/src/draw/style.ts`),
   a thing's state (the dead are grey, those who left faded, an exfil's colour is its status), the local
   player, and where labels go.
-- **List filters** (per tab) hide; the map follows each tab's filter for its own kind of thing.
+- **List filters** (per tab) narrow the list only; what one lets through is marked on the map while
+  it's set.
 - **What shows when** (`web/src/draw/declutter.ts`): the levels of detail behind loot density and labels,
   and in which order labels claim screen space (one placement pass for all labels, `render.ts`).
 

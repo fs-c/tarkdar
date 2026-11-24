@@ -13,6 +13,7 @@
 
 #include <eft_offsets.hpp>
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <string>
@@ -46,12 +47,10 @@ public:
         observedClass = heap.klass("ObservedPlayerView", "EFT.NextObservedPlayer", monoBehaviour);
 
         // GamePlayerOwner statics via the type-info table.
-        typeInfoTable = heap.alloc(8 * (off::GamePlayerOwner::TypeIndex + 16));
+        typeInfoTable = heap.alloc(8 * (std::max({off::GamePlayerOwner::TypeIndex, off::CameraManager::TypeIndex,
+                                                  off::LocalizationManager::TypeIndex}) + 16));
         heap.put<Address>(kGameAssembly + off::bootstrap::typeInfoTableRva, typeInfoTable);
-        ownerClass = heap.klass("GamePlayerOwner", "EFT");
-        ownerStatics = heap.alloc(0x40);
-        heap.put<Address>(ownerClass + kIl2Cpp.classStaticFields, ownerStatics);
-        heap.put<Address>(typeInfoTable + static_cast<Address>(off::GamePlayerOwner::TypeIndex) * 8, ownerClass);
+        ownerStatics = addStatics(off::GamePlayerOwner::TypeIndex, "GamePlayerOwner", "EFT");
 
         // GameObjectManager with one "GameWorld" object. Its components: [Transform, GameWorld].
         gom = heap.alloc(0x40);
@@ -75,7 +74,7 @@ public:
         setRoster(players);
 
         const Address transform = heap.alloc(0x100), component = heap.alloc(0x100);
-        heap.put<Address>(component + kUnity.componentManagedObject, world);
+        heap.setManaged(component, world);
         const Address entries = heap.alloc(2 * kUnity.componentEntryStride);
         heap.put<Address>(entries + kUnity.componentEntryComponent, transform);
         heap.put<Address>(entries + kUnity.componentEntryStride + kUnity.componentEntryComponent, component);
@@ -184,6 +183,15 @@ public:
         const Address list = mem::MemoryView(fake, kPid).read<Address>(world + off::ClientLocalGameWorld::RegisteredPlayers);
         heap.put<std::int32_t>(list + kIl2Cpp.listSize, count);
     }
+    // Registers a class at `typeIndex` in the type-info table and returns its (zeroed) statics block.
+    Address addStatics(std::uint32_t typeIndex, std::string_view name, std::string_view ns) {
+        const Address klass = heap.klass(name, ns);
+        const Address statics = heap.alloc(0x40);
+        heap.put<Address>(klass + kIl2Cpp.classStaticFields, statics);
+        heap.put<Address>(typeInfoTable + static_cast<Address>(typeIndex) * 8, klass);
+        return statics;
+    }
+
     void setMyPlayer(Address p) { heap.put<Address>(ownerStatics + off::GamePlayerOwner::MyPlayer, p); }
     void setLocation(std::u16string_view location) {
         heap.put<Address>(world + off::GameWorld::Location, heap.managedString(location));
@@ -229,7 +237,7 @@ private:
     std::unique_ptr<mem::Target> target;
     Address gameWorldClass = 0, clientWorldClass = 0, playerClass = 0, clientPlayerClass = 0;
     std::vector<Address> roster;   // as last set by setRoster / setRosterList
-    Address ownerClass = 0, ownerStatics = 0;
+    Address ownerStatics = 0;
     Address gom = 0;
 };
 

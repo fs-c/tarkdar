@@ -37,6 +37,37 @@ anyway.
 with `--type-info-rva`. **The Unity globals only validate in a raid** (they need live objects behind
 them); unvalidated ones are reported but not applied unless `--accept-unvalidated`.
 
+## Finding layouts by hand
+
+The dump only covers **managed** field offsets, type indices and the two Unity globals. The
+`managedLayout` (IL2CPP runtime structs) and `unityLayout` (native engine structs) blocks are
+maintained by hand, and an engine upgrade can move them without any warning from the updater.
+Symptoms of that: `radar-diagnose` fails a step although its offsets "resolved", e.g. "GamePlayerOwner
+has no static fields block" in a raid, players without positions, or unreadable cameras.
+
+`mem-peek` (`build/bin/mem-peek`) reads commands from stdin and prints memory with hints (pointer, C
+string it points to, managed class of the object it points to). See its header or `--help`.
+
+```sh
+D="qemu://hugepage-pid=$(pgrep -f 'guest=')"
+printf 'q up+2054CB0 8\nq 249200dcd60 c0\n' | ./build/bin/mem-peek --device "$D"   # a global and what it points to
+echo 'd 2537f6b4c70 60' | ./build/bin/mem-peek --device "$D"                      # floats: TRS, matrices
+echo 'w up+0 2245000 up.bin' | ./build/bin/mem-peek --device "$D"                 # module image, for objdump
+```
+
+Work from objects you can already reach through managed code: `GamePlayerOwner._myPlayer` gives the
+local player; its `UnityObject.CachedPtr` is the native component, which leads to the GameObject (name
+string), its component array (entry 0 is the Transform) and the TransformHierarchy (parent-index array
+starts with -1; the TRS array holds the player's position). For a global, disassemble the code that
+uses it (`objdump -D -b binary -mi386:x86-64 -Mintel` on the image) to read struct offsets off the
+instructions, then add a signature for it in `tools/il2cpp-dump/Dumper.cpp`.
+
+What changed in the Unity 6 update (SPT, 2026-11): `Il2CppClass.StaticFields` 0xB8 → 0xA0; native
+objects lost 0x10 of header (GameObject, Component, Camera fields mostly moved down by 0x10); a
+component's managed object sits behind a GC handle slot (`Component.ManagedHandle` →
+`ManagedHandle.Object`); the GameObjectManager keeps a sentinel list node {last, first} at 0x18; the
+camera managers became plain objects behind the static `CameraManager._instance`.
+
 ## Dump format
 
 ```jsonc

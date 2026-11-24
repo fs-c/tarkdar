@@ -83,14 +83,11 @@ CameraTracker::Found CameraTracker::resolve() const {
     if (!f.optic) f.optic = firstOptic;  // it only renders while scoped
 
     // The OpticCameraManager knows the optic camera for sure, and which sight is looked through.
-    auto componentOf = [&](Address camera, std::string_view className) -> Address {
-        const auto object = camera ? game_.scene.gameObjectOf(camera) : std::nullopt;
-        return object ? findManagedComponent(game_, *object, className).value_or(0) : 0;
-    };
-    f.opticManager = componentOf(f.optic, "OpticCameraManager");
-    if (!f.opticManager)
-        if (const Address manager = componentOf(f.fps, "EFT.CameraControl.CameraManager"))
-            f.opticManager = readPointer(game_, manager + off::CameraManager::OpticCameraManager, kFresh);
+    // Render-stack builds: CameraManager._instance (static, a CameraManagerRs) → its optic manager.
+    const auto table = game_.typeInfoTable();
+    const auto statics = table ? table->staticFields(off::CameraManager::TypeIndex) : std::nullopt;
+    if (const Address manager = statics ? readPointer(game_, *statics + off::CameraManager::Instance, kFresh) : 0)
+        f.opticManager = readPointer(game_, manager + off::CameraManagerRs::OpticCameraManager, kFresh);
     if (f.opticManager) {
         // Only a camera that reads: a wrong OpticCameraManager.Camera offset mustn't replace a good one.
         const Address managedCamera = readPointer(game_, f.opticManager + off::OpticCameraManager::Camera, kFresh);

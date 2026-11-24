@@ -115,7 +115,10 @@ std::optional<Address> Scene::transform(Address gameObject) const {
 
 std::optional<Address> Scene::managedObject(Address component) const {
     if (!MemoryView::isUserPointer(component)) return std::nullopt;
-    const Address m = mem_.read<Address>(component + layout_.componentManagedObject);
+    // Unity 6: the component holds a pointer to a GC handle slot, not the managed object itself.
+    const Address handle = mem_.read<Address>(component + layout_.componentManagedHandle);
+    if (!MemoryView::isUserPointer(handle)) return std::nullopt;
+    const Address m = mem_.read<Address>(handle + layout_.managedHandleObject);
     if (!MemoryView::isUserPointer(m)) return std::nullopt;
     return m;
 }

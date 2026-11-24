@@ -29,7 +29,7 @@ inline void setCameraComponents(FakeWorld& world, const FakeCamera& c, const std
     std::vector<Address> natives{world.heap.alloc(0x100), c.native};
     for (const Address m : managed) {
         const Address component = world.heap.alloc(0x100);
-        world.heap.put<Address>(component + kUnity.componentManagedObject, m);
+        world.heap.setManaged(component, m);
         natives.push_back(component);
     }
     const Address entries = world.heap.alloc(natives.size() * kUnity.componentEntryStride);
@@ -102,10 +102,14 @@ inline FakeWeapon setWeapon(FakeWorld& world, bool aiming, const std::vector<Fak
 inline void setAiming(FakeWorld& world, const FakeWeapon& w, bool aiming) {
     world.heap.put<std::uint8_t>(w.pwa + off::ProceduralWeaponAnimation::IsAiming, aiming ? 1 : 0);
 }
-// An OpticCameraManager (component of `optic`'s GameObject) whose Camera is `optic` and whose
-// CurrentOpticSight looks through the sight with this index (-1: none).
+// An OpticCameraManagerRs, reached through the CameraManager._instance singleton (a CameraManagerRs),
+// whose Camera is `optic` and whose CurrentOpticSight looks through the sight with this index (-1: none).
 inline Address addOpticCameraManager(FakeWorld& world, const FakeCamera& optic, const FakeWeapon& w, int currentSight) {
-    const Address manager = world.heap.object(world.heap.klass("OpticCameraManager", "EFT.CameraControl"), 0x100);
+    const Address manager = world.heap.object(world.heap.klass("OpticCameraManagerRs", "EFT.CameraControl"), 0x100);
+    const Address cameraManager = world.heap.object(world.heap.klass("CameraManagerRs", "EFT.CameraControl"), 0x100);
+    world.heap.put<Address>(cameraManager + off::CameraManagerRs::OpticCameraManager, manager);
+    const Address statics = world.addStatics(off::CameraManager::TypeIndex, "CameraManager", "EFT.CameraControl");
+    world.heap.put<Address>(statics + off::CameraManager::Instance, cameraManager);
     const Address managedCamera = world.heap.alloc(0x40);
     world.heap.put<Address>(managedCamera + kIl2Cpp.unityObjectCachedPtr, optic.native);
     world.heap.put<Address>(manager + off::OpticCameraManager::Camera, managedCamera);
@@ -115,7 +119,6 @@ inline Address addOpticCameraManager(FakeWorld& world, const FakeCamera& optic, 
         world.heap.put<Address>(sight + off::OpticSight::ScopeTransform, scope);
         world.heap.put<Address>(manager + off::OpticCameraManager::CurrentOpticSight, sight);
     }
-    setCameraComponents(world, optic, {manager});
     return manager;
 }
 

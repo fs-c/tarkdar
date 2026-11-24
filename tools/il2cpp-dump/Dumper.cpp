@@ -102,6 +102,10 @@ constexpr RipSignature kAllCameras[] = {
     {"camIndexed", "48 8B 05 ? ? ? ? 48 8B 38 48 8B 3C 3E 8B 87 74 03 00 00", 3, 7},
     {"camCount", "48 8B 05 ? ? ? ? 49 C7 C6 FF FF FF FF 8B 48 10 85 C9 0F 84 ? ? ? ?", 3, 7},
     {"camRbxIterator", "48 8B 1D ? ? ? ? 48 8B 73 ? 48 8B 43 ? 48 FF C6", 3, 7},
+    // Unity 6
+    {"camRemove", "48 8B 0D ? ? ? ? 48 8B 11 48 39 1C C2 74 ? 48 FF C0 49 3B C0 72", 3, 7},
+    {"camCountTest", "48 8B 05 ? ? ? ? 8B 48 10 85 C9 0F 84 ? ? ? ? 48 89", 3, 7},
+    {"camIndexed6", "48 8B 05 ? ? ? ? 48 8B 08 49 8B 46 08 48 8B 3C 0E 48 3B 87", 3, 7},
 };
 
 template <std::size_t N>
@@ -623,7 +627,9 @@ std::vector<UnityGlobal> Il2CppDumper::findUnityGlobals() const {
     out.push_back(choose("gameObjectManager", gom, [&](Address slot, UnityGlobal& g) {
         const Address mgr = mem_.read<Address>(slot, Freshness::Fresh);
         if (!MemoryView::isUserPointer(mgr)) return false;
-        for (const auto& [last, active] : {std::pair<std::uint32_t, std::uint32_t>{0x20, 0x28}, {0x28, 0x30}}) {
+        // {last, first} node pointers; Unity 6 keeps them as a sentinel node {prev, next} at 0x18.
+        for (const auto& [last, active] :
+             {std::pair<std::uint32_t, std::uint32_t>{0x18, 0x20}, {0x20, 0x28}, {0x28, 0x30}}) {
             const Address a = mem_.read<Address>(mgr + last, Freshness::Fresh);
             const Address b = mem_.read<Address>(mgr + active, Freshness::Fresh);
             if (MemoryView::isUserPointer(a) && MemoryView::isUserPointer(b) &&

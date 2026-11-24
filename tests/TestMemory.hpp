@@ -22,17 +22,17 @@ inline constexpr il2cpp::Layout kIl2Cpp{
     .listItems = 0x10, .listSize = 0x18,
     .dictEntries = 0x18, .dictCount = 0x20,
     .hashSetSlots = 0x18, .hashSetLastIndex = 0x24,
-    .className = 0x10, .classNamespace = 0x18, .classParent = 0x58, .classStaticFields = 0xB8,
+    .className = 0x10, .classNamespace = 0x18, .classParent = 0x58, .classStaticFields = 0xA0,
 };
 
 inline constexpr unity::Layout kUnity{
-    .gomLastActiveNode = 0x20, .gomActiveNodes = 0x28,
+    .gomLastActiveNode = 0x18, .gomActiveNodes = 0x20,
     .listNodeNext = 0x8, .listNodeObject = 0x10,
-    .gameObjectComponents = 0x58, .gameObjectComponentCount = 0x68, .gameObjectName = 0x88,
+    .gameObjectComponents = 0x48, .gameObjectComponentCount = 0x58, .gameObjectName = 0x78,
     .componentEntryStride = 0x10, .componentEntryComponent = 0x8,
-    .componentManagedObject = 0x20, .componentGameObject = 0x58,
-    .transformHierarchy = 0x70, .transformIndex = 0x78,
-    .hierarchyParentIndices = 0x40, .hierarchyLocalTransforms = 0x68,
+    .componentManagedHandle = 0x10, .componentGameObject = 0x48, .managedHandleObject = 0x0,
+    .transformHierarchy = 0x50, .transformIndex = 0x58,
+    .hierarchyParentIndices = 0x78, .hierarchyLocalTransforms = 0xA8,
 };
 
 // Bump allocator over a FakeBackend process, with helpers to lay out managed objects.
@@ -74,6 +74,13 @@ public:
         put<Address>(k + kIl2Cpp.classNamespace, cString(ns));
         put<Address>(k + kIl2Cpp.classParent, parent);
         return k;
+    }
+
+    // Points a native component at a managed object through a fresh GC handle slot.
+    void setManaged(Address component, Address managed) {
+        const Address slot = alloc(8);
+        put<Address>(slot + kUnity.managedHandleObject, managed);
+        put<Address>(component + kUnity.componentManagedHandle, slot);
     }
 
     Address object(Address klass, std::size_t size = 0x100) {

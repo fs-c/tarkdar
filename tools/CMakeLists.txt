@@ -53,3 +53,9 @@ if(RADAR_BUILD_TESTS)
         message(STATUS "maps3d tests skipped: tools/maps3d/.venv not found")
     endif()
 endif()
+
+# Interactive memory inspector (qwords with pointer/string/class hints, dwords/floats, raw dumps),
+# for working out engine layouts by hand.
+add_executable(mem-peek mem-peek/main.cpp)
+target_include_directories(mem-peek PRIVATE ${PROJECT_SOURCE_DIR})
+target_link_libraries(mem-peek PRIVATE radar_eft radar_vmm_backend radar_warnings)

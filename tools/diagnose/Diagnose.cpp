@@ -759,7 +759,7 @@ void checkStash(Report& r, const eft::Game& game, Address localPlayer) {
     const auto took = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0);
     if (!found) {
         r.fail(std::format("TarkovApplication not found among the active objects ({} ms)", took.count()),
-               "class name EFT.TarkovApplication; Scene components / Component.ManagedObject");
+               "class name EFT.TarkovApplication; Scene components / Component.ManagedHandle, ManagedHandle.Object");
     } else {
         const Address application = *found;
         r.ok(std::format("TarkovApplication {} (found after {} objects, {} ms)", hex(application), checked, took.count()));

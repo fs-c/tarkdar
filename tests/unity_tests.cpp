@@ -253,8 +253,8 @@ TEST_CASE("Scene components and managed component lookup") {
     const Address transform = heap.alloc(0x100);
     const Address otherComp = heap.alloc(0x100), worldComp = heap.alloc(0x100);
     const Address otherObj = heap.object(otherClass), worldObj = heap.object(clientWorldClass);
-    heap.put<Address>(otherComp + kUnity.componentManagedObject, otherObj);
-    heap.put<Address>(worldComp + kUnity.componentManagedObject, worldObj);
+    heap.setManaged(otherComp, otherObj);
+    heap.setManaged(worldComp, worldObj);
     heap.put<Address>(worldComp + kUnity.componentGameObject, go);
 
     // Component entries: {typeInfo, component}; Transform first, the GameWorld component third.

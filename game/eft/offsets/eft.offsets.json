@@ -3,41 +3,42 @@
   "note": "Initial values: live-EFT reference values from MeatyEFTRelease cac603e. Expect different values for SPT builds; regenerate with tools/update-offsets.py.",
   "build": {
     "GameAssembly.dll": {
-      "peTimestamp": "0x6AF739B7",
-      "imageSize": "0x79C2000"
+      "peTimestamp": "0x6B033115",
+      "imageSize": "0x7E8F000"
     },
     "UnityPlayer.dll": {
-      "peTimestamp": "0x693FDD26",
-      "imageSize": "0x1C57000"
+      "peTimestamp": "0x6AEA0BF9",
+      "imageSize": "0x2245000"
     }
   },
   "bootstrap": {
-    "typeInfoTableRva": "0x7180AD8"
+    "typeInfoTableRva": "0x75DA668"
   },
   "unityRvas": {
-    "gameObjectManager": "0x1A233A0",
-    "allCameras": "0x19F3080"
+    "gameObjectManager": "0x2054CB0",
+    "allCameras": "0x1F7DB00"
   },
   "unityLayout": {
-    "GameObjectManager.LastActiveNode": "0x20",
-    "GameObjectManager.ActiveNodes": "0x28",
+    "GameObjectManager.LastActiveNode": "0x18",
+    "GameObjectManager.ActiveNodes": "0x20",
     "ListNode.Next": "0x8",
     "ListNode.Object": "0x10",
-    "GameObject.Components": "0x58",
-    "GameObject.ComponentCount": "0x68",
-    "GameObject.Name": "0x88",
+    "GameObject.Components": "0x48",
+    "GameObject.ComponentCount": "0x58",
+    "GameObject.Name": "0x78",
     "ComponentEntry.Stride": "0x10",
     "ComponentEntry.Component": "0x8",
-    "Component.ManagedObject": "0x20",
-    "Component.GameObject": "0x58",
-    "Transform.Hierarchy": "0x70",
-    "Transform.Index": "0x78",
-    "TransformHierarchy.ParentIndices": "0x40",
-    "TransformHierarchy.LocalTransforms": "0x68",
-    "Camera.WorldToCamera": "0xA8",
-    "Camera.ViewProjection": "0x128",
-    "Camera.FieldOfView": "0x1A8",
-    "Camera.Aspect": "0x518",
+    "Component.ManagedHandle": "0x10",
+    "ManagedHandle.Object": "0x0",
+    "Component.GameObject": "0x48",
+    "Transform.Hierarchy": "0x50",
+    "Transform.Index": "0x58",
+    "TransformHierarchy.ParentIndices": "0x78",
+    "TransformHierarchy.LocalTransforms": "0xA8",
+    "Camera.WorldToCamera": "0x98",
+    "Camera.ViewProjection": "0x118",
+    "Camera.FieldOfView": "0x198",
+    "Camera.Aspect": "0x510",
     "CameraList.Items": "0x0",
     "CameraList.Count": "0x8",
     "CameraList.Count64": "0x10"
@@ -58,7 +59,7 @@
     "Il2CppClass.Name": "0x10",
     "Il2CppClass.Namespace": "0x18",
     "Il2CppClass.Parent": "0x58",
-    "Il2CppClass.StaticFields": "0xB8",
+    "Il2CppClass.StaticFields": "0xA0",
     "Il2CppClass.ByvalArg": "0x20",
     "Il2CppClass.DeclaringType": "0x50",
     "Il2CppClass.Fields": "0x80",
@@ -78,14 +79,21 @@
       "name": "TypeIndex",
       "class": "EFT.GamePlayerOwner",
       "required": true,
-      "value": "0x2215"
+      "value": "0x2118"
+    },
+    {
+      "group": "CameraManager",
+      "name": "TypeIndex",
+      "class": "EFT.CameraControl.CameraManager",
+      "required": false,
+      "value": "0x347F"
     },
     {
       "group": "LocalizationManager",
       "name": "TypeIndex",
       "class": "EFT.LocalizationManager",
       "required": false,
-      "value": "0x21AE"
+      "value": "0x20B1"
     }
   ],
   "fields": [
@@ -339,7 +347,7 @@
       "field": "_btrState",
       "static": false,
       "required": false,
-      "value": "0xC28"
+      "value": "0x6F0"
     },
     {
       "group": "ObservedPlayerView",
@@ -384,7 +392,7 @@
       "field": "<GameWorld>k__BackingField",
       "static": false,
       "required": true,
-      "value": "0x690"
+      "value": "0x778"
     },
     {
       "group": "Player",
@@ -393,7 +401,7 @@
       "field": "Corpse",
       "static": false,
       "required": true,
-      "value": "0x728"
+      "value": "0x810"
     },
     {
       "group": "Player",
@@ -402,7 +410,7 @@
       "field": "<Location>k__BackingField",
       "static": false,
       "required": true,
-      "value": "0x928"
+      "value": "0xA18"
     },
     {
       "group": "Player",
@@ -411,7 +419,7 @@
       "field": "<Profile>k__BackingField",
       "static": false,
       "required": true,
-      "value": "0x9C0"
+      "value": "0xAB0"
     },
     {
       "group": "Player",
@@ -420,7 +428,7 @@
       "field": "_inventoryController",
       "static": false,
       "required": true,
-      "value": "0xA38"
+      "value": "0xB28"
     },
     {
       "group": "Player",
@@ -429,7 +437,7 @@
       "field": "_handsController",
       "static": false,
       "required": true,
-      "value": "0xA40"
+      "value": "0xB30"
     },
     {
       "group": "Player",
@@ -438,7 +446,7 @@
       "field": "_playerLookRaycastTransform",
       "static": false,
       "required": true,
-      "value": "0xAE0"
+      "value": "0xBE0"
     },
     {
       "group": "Player",
@@ -447,7 +455,7 @@
       "field": "<PlayerBones>k__BackingField",
       "static": false,
       "required": true,
-      "value": "0xB48"
+      "value": "0xC50"
     },
     {
       "group": "SimpleCharacterController",
@@ -798,7 +806,7 @@
       "field": "_magSlotCache",
       "static": false,
       "required": true,
-      "value": "0xC8"
+      "value": "0xD8"
     },
     {
       "group": "Magazine",
@@ -1140,7 +1148,7 @@
       "field": "_item",
       "static": false,
       "required": true,
-      "value": "0xF0"
+      "value": "0x100"
     },
     {
       "group": "LootItemMod",
@@ -1158,7 +1166,7 @@
       "field": "<InteractingPlayer>k__BackingField",
       "static": false,
       "required": true,
-      "value": "0x160"
+      "value": "0x180"
     },
     {
       "group": "LootableContainer",
@@ -1167,7 +1175,7 @@
       "field": "ItemOwner",
       "static": false,
       "required": true,
-      "value": "0x178"
+      "value": "0x198"
     },
     {
       "group": "LootableContainerItemOwner",
@@ -1339,30 +1347,39 @@
     },
     {
       "group": "CameraManager",
-      "name": "OpticCameraManager",
+      "name": "Instance",
       "class": "EFT.CameraControl.CameraManager",
-      "field": "<OpticCameraManager>k__BackingField",
+      "field": "_instance",
+      "static": true,
+      "required": false,
+      "value": "0x0"
+    },
+    {
+      "group": "CameraManagerRs",
+      "name": "OpticCameraManager",
+      "class": "EFT.CameraControl.CameraManagerRs",
+      "field": "_opticCameraManager",
       "static": false,
       "required": false,
-      "value": "0x10"
+      "value": "0x80"
     },
     {
       "group": "OpticCameraManager",
       "name": "Camera",
-      "class": "EFT.CameraControl.OpticCameraManager",
+      "class": "EFT.CameraControl.OpticCameraManagerRs",
       "field": "<Camera>k__BackingField",
       "static": false,
       "required": false,
-      "value": "0x68"
+      "value": "0x90"
     },
     {
       "group": "OpticCameraManager",
       "name": "CurrentOpticSight",
-      "class": "EFT.CameraControl.OpticCameraManager",
+      "class": "EFT.CameraControl.OpticCameraManagerRs",
       "field": "<CurrentOpticSight>k__BackingField",
       "static": false,
       "required": false,
-      "value": "0x70"
+      "value": "0x98"
     },
     {
       "group": "OpticSight",
@@ -1371,7 +1388,7 @@
       "field": "ScopeTransform",
       "static": false,
       "required": false,
-      "value": "0x40"
+      "value": "0x58"
     },
     {
       "group": "LocalizationManager",
@@ -1461,7 +1478,7 @@
       "field": "<AllProfiles>k__BackingField",
       "static": false,
       "required": false,
-      "value": "0x138"
+      "value": "0x158"
     },
     {
       "group": "ClientBackendSession",
@@ -1470,7 +1487,7 @@
       "field": "_profile",
       "static": false,
       "required": false,
-      "value": "0x140"
+      "value": "0x160"
     }
   ],
   "literals": [

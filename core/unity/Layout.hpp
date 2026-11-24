@@ -23,8 +23,9 @@ struct Layout {
     std::uint32_t componentEntryComponent;
 
     // Component
-    std::uint32_t componentManagedObject;  // managed (C#) wrapper object
+    std::uint32_t componentManagedHandle;  // GC handle slot holding the managed (C#) wrapper object
     std::uint32_t componentGameObject;     // owning GameObject*
+    std::uint32_t managedHandleObject;     // managed object within the handle slot
 
     // Transform → TransformHierarchy
     std::uint32_t transformHierarchy;  // TransformHierarchy*

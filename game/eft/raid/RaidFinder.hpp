@@ -42,10 +42,9 @@ struct LocalPlayerWorld {
 
 // Searches for a running raid. Call poll() periodically (the lifecycle uses 2.5 s).
 //
-// Strategies, in order:
-//  1. GamePlayerOwner._myPlayer (static, via the IL2CPP type-info table) → Player.GameWorld.
-//  2. Scene scan: active GameObjects named "GameWorld" → their EFT.GameWorld component. Expensive,
-//     so only after kSceneScanDelay of searching and then at most every kSceneScanInterval.
+// Finds the world through GamePlayerOwner._myPlayer (static, via the IL2CPP type-info table) →
+// Player.GameWorld. The scene scan (active GameObjects named "GameWorld") is only a cross-check for
+// diagnostics: under Unity 6 the active-object list holds hundreds of thousands of objects in a raid.
 //
 // A Pending world is retried for up to kMaxPendingAttempts polls before being dropped (it can be
 // found and become pending again later). The world of the last ended raid is never accepted again
@@ -55,8 +54,6 @@ struct LocalPlayerWorld {
 class RaidFinder {
 public:
     static constexpr int kMaxPendingAttempts = 6;
-    static constexpr auto kSceneScanDelay = std::chrono::seconds(6);
-    static constexpr auto kSceneScanInterval = std::chrono::seconds(20);
     static constexpr auto kEndedWorldGrace = std::chrono::seconds(30);
 
     struct Result {
@@ -66,15 +63,16 @@ public:
 
     explicit RaidFinder(Game game) : game_(std::move(game)) {}
 
-    // Starts a new search (resets timers and pending state, keeps the ended-world guard).
-    void restart(sched::Clock::time_point now);
+    // Starts a new search (resets the pending state, keeps the ended-world guard).
+    void restart();
     Result poll(sched::Clock::time_point now);
     void markEnded(Address localGameWorld) {
         endedWorld_ = localGameWorld;
         endedReadySince_.reset();
     }
 
-    // The individual strategies, without timing or pending logic (also used by diagnostics).
+    // The individual strategies, without pending logic. poll() only uses viaGamePlayerOwner;
+    // viaSceneScan is for diagnostics.
     // nullopt: the strategy found no candidate world at all.
     std::optional<WorldCheck> viaGamePlayerOwner(sched::Clock::time_point now = sched::Clock::now());
     std::optional<WorldCheck> viaSceneScan(sched::Clock::time_point now = sched::Clock::now());
@@ -83,8 +81,6 @@ private:
     WorldCheck check(sched::Clock::time_point now, Address localGameWorld, Address localPlayer, Address gameWorldObject);
 
     Game game_;
-    sched::Clock::time_point searchStart_{};
-    std::optional<sched::Clock::time_point> lastSceneScan_;
     std::optional<RaidCandidate> pending_;
     int pendingAttempts_ = 0;
     Address endedWorld_ = 0;

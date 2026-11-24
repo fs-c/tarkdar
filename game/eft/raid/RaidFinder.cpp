@@ -75,9 +75,7 @@ std::optional<LocalPlayerWorld> localPlayerWorld(const Game& game) {
     return r;
 }
 
-void RaidFinder::restart(sched::Clock::time_point now) {
-    searchStart_ = now;
-    lastSceneScan_.reset();
+void RaidFinder::restart() {
     pending_.reset();
     pendingAttempts_ = 0;
 }
@@ -156,14 +154,7 @@ RaidFinder::Result RaidFinder::poll(sched::Clock::time_point now) {
         }
     }
 
-    if (!result.raid && !consider(viaGamePlayerOwner(now))) {
-        const bool scanAllowed = now - searchStart_ >= kSceneScanDelay &&
-                                 (!lastSceneScan_ || now - *lastSceneScan_ >= kSceneScanInterval);
-        if (scanAllowed) {
-            lastSceneScan_ = now;
-            consider(viaSceneScan(now));
-        }
-    }
+    if (!result.raid) consider(viaGamePlayerOwner(now));
 
     if (result.raid) {
         pending_.reset();

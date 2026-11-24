@@ -6,8 +6,8 @@
 namespace radar::eft {
 
 std::optional<std::string> RaidMonitor::check(const Game& game, std::chrono::steady_clock::time_point now) {
-    // Only trust the static once it has pointed at this raid's world: a raid found by the scene scan
-    // may coexist with a stale _myPlayer from an earlier raid.
+    // Only trust the static once it has pointed at this raid's world: a raid found some other way
+    // (diagnostics' scene scan, tests) may coexist with a stale _myPlayer from an earlier raid.
     const auto local = localPlayerWorld(game);
     if (local && local->world == localGameWorld_) ownerConfirmed_ = true;
     if (ownerConfirmed_ && local && local->world != localGameWorld_) {

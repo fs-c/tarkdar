@@ -82,11 +82,19 @@ std::optional<Address> Stash::findApplication(const Game& game, std::size_t* che
     return found;
 }
 
-Address Stash::sessionProfile(const Game& game, Address application) {
-    const Address backEnd = readPointer(game, application + off::ClientApplication::ClientBackEnd, Freshness::Fresh);
-    const Address session = backEnd ? readPointer(game, backEnd + off::ClientBackend::Session, Freshness::Fresh) : 0;
+Address Stash::profileOfSession(const Game& game, Address session) {
     if (!session || !game.managed.isInstanceOf(session, kSessionClass)) return 0;
     return readPointer(game, session + off::ClientBackendSession::Profile, Freshness::Fresh);
+}
+
+Address Stash::sessionProfile(const Game& game, Address application) {
+    const Address backEnd = readPointer(game, application + off::ClientApplication::ClientBackEnd, Freshness::Fresh);
+    return profileOfSession(game, backEnd ? readPointer(game, backEnd + off::ClientBackend::Session, Freshness::Fresh) : 0);
+}
+
+Address Stash::playerSessionProfile(const Game& game, Address localPlayer) {
+    if (!localPlayer) return 0;
+    return profileOfSession(game, readPointer(game, localPlayer + off::ClientPlayer::Session, Freshness::Fresh));
 }
 
 std::optional<Stash::Contents> Stash::readContents(const Game& game, Address profile) {
@@ -122,23 +130,21 @@ std::optional<Stash::Contents> Stash::readContents(const Game& game, Address pro
 }
 
 void Stash::update() {
-    if (application_ && !game_.managed.isInstanceOf(application_, kApplicationClass)) application_ = 0;
-    if (!application_) application_ = findApplication(game_).value_or(0);
-    const Address profile = application_ ? sessionProfile(game_, application_) : 0;
+    const Address profile = playerSessionProfile(game_, session_->start.localPlayer);
     auto contents = profile ? readContents(game_, profile) : std::nullopt;
     if (!contents) {
         if (!loggedFailure_)
-            log::info("stash: not readable (application {:#x}, session profile {:#x}); trying again every {} s",
-                      application_, profile, kInterval.count());
+            log::info("stash: not readable (local player {:#x}, session profile {:#x}); trying again every {} s",
+                      session_->start.localPlayer, profile, kInterval.count());
         loggedFailure_ = true;
         return;  // keep the last good one
     }
     if (contents->truncated) log::info("stash: item tree cut at {} items", kLimits.maxNodes);
     if (contents == last_) return;
-    last_ = std::move(contents);
     world_.stash.publish(StashSnapshot{.raidId = session_->id, .revision = ++revision_, .known = true,
-                                       .profileId = last_->profileId, .stash = last_->stash,
-                                       .equipment = last_->equipment});
+                                       .profileId = contents->profileId, .stash = contents->stash,
+                                       .equipment = contents->equipment});
+    last_ = std::move(contents);
 }
 
 }  // namespace radar::eft

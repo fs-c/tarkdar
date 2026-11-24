@@ -96,55 +96,26 @@ TEST_CASE("RaidFinder") {
     SUBCASE("finds a raid through GamePlayerOwner") {
         const Address world = w.newWorld(u"Interchange", 3);
         eft::RaidFinder finder(w.attachGame());
-        finder.restart(t0);
+        finder.restart();
         const auto r = finder.poll(t0);
         REQUIRE(r.raid);
         CHECK(r.raid->localGameWorld == world);
         CHECK(r.raid->localPlayer == w.localPlayer);
     }
 
-    SUBCASE("scene scan is the fallback, delayed and rate-limited") {
-        const Address world = w.newWorld(u"Interchange", 3);
-        w.setMyPlayer(0);
-        eft::RaidFinder finder(w.attachGame());
-        finder.restart(t0);
-        CHECK_FALSE(finder.poll(t0).raid);  // too early for a scene scan
-        CHECK_FALSE(finder.poll(t0 + seconds(5)).raid);
-        auto r = finder.poll(t0 + seconds(6));
-        REQUIRE(r.raid);
-        CHECK(r.raid->localGameWorld == world);
-        CHECK(r.raid->gameWorldObject == w.gameWorldObject);
-    }
-
-    SUBCASE("scene scans are at most one per interval within a search") {
+    SUBCASE("a world the local player isn't in yet isn't found (no scene scan)") {
         w.newWorld(u"Interchange", 3);
         w.setMyPlayer(0);
-        w.heap.put<std::uint64_t>(w.gameWorldObject + test::kUnity.gameObjectComponentCount, 0);  // not findable yet
         eft::RaidFinder finder(w.attachGame());
-        finder.restart(t0);
-        CHECK_FALSE(finder.poll(t0 + seconds(6)).raid);  // scans, finds nothing
-        w.heap.put<std::uint64_t>(w.gameWorldObject + test::kUnity.gameObjectComponentCount, 2);
-        CHECK_FALSE(finder.poll(t0 + seconds(10)).raid);  // no scan yet
-        CHECK(finder.poll(t0 + seconds(26)).raid);         // next scan
-    }
-
-    SUBCASE("a pending world found by scan is retried directly") {
-        w.newWorld(u"Interchange", 0);
-        w.setMyPlayer(0);
-        eft::RaidFinder finder(w.attachGame());
-        finder.restart(t0);
-        const auto r = finder.poll(t0 + seconds(6));
-        CHECK_FALSE(r.raid);
-        CHECK(r.pending);
-        w.setRoster(2);
-        w.heap.put<std::uint64_t>(w.gameWorldObject + test::kUnity.gameObjectComponentCount, 0);  // hide from scans
-        CHECK(finder.poll(t0 + seconds(8)).raid);
+        finder.restart();
+        CHECK_FALSE(finder.poll(t0 + seconds(60)).raid);
+        CHECK_FALSE(finder.poll(t0 + seconds(60)).pending);
     }
 
     SUBCASE("pending world is promoted when it becomes ready, or dropped") {
         w.newWorld(u"Woods", 0);
         eft::RaidFinder finder(w.attachGame());
-        finder.restart(t0);
+        finder.restart();
         auto r = finder.poll(t0);
         CHECK_FALSE(r.raid);
         CHECK(r.pending);
@@ -155,10 +126,10 @@ TEST_CASE("RaidFinder") {
     SUBCASE("the ended raid's world is not accepted again while it lingers") {
         const Address world = w.newWorld(u"Woods", 4);
         eft::RaidFinder finder(w.attachGame());
-        finder.restart(t0);
+        finder.restart();
         REQUIRE(finder.poll(t0).raid);
         finder.markEnded(world);
-        finder.restart(t0);
+        finder.restart();
         CHECK_FALSE(finder.poll(t0).raid);  // still looks like a raid: lingering
 
         SUBCASE("a new world is accepted") {
@@ -244,7 +215,7 @@ TEST_CASE("RaidFinder: the ended-world guard lifts after the grace period") {
     const Address world = w.newWorld(u"Woods", 4);
     eft::RaidFinder finder(w.attachGame());
     const auto t0 = Clock::now();
-    finder.restart(t0);
+    finder.restart();
     REQUIRE(finder.poll(t0).raid);
     finder.markEnded(world);
     CHECK_FALSE(finder.poll(t0 + std::chrono::seconds(1)).raid);

@@ -51,7 +51,7 @@ void Lifecycle::run(std::stop_token stop) {
             offsetsMismatch_ = logBuildCheck(checkBuild(target_));
             game = Game::fromTarget(target_);
             finder.emplace(*game);  // new process: no ended-world guard carried over
-            finder->restart(sched::Clock::now());
+            finder->restart();
         }
 
         const auto result = finder->poll(sched::Clock::now());
@@ -67,7 +67,7 @@ void Lifecycle::run(std::stop_token stop) {
         if (target_.state() != mem::Target::State::Attached) continue;  // process gone: nothing to wait for
         publish(Status::State::Cooldown);
         if (!sched::sleepFor(stop, kCooldown)) break;
-        finder->restart(sched::Clock::now());
+        finder->restart();
     }
     session_.store(nullptr);
 }

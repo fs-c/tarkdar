@@ -1346,6 +1346,15 @@
       "value": "0x1B8"
     },
     {
+      "group": "ClientPlayer",
+      "name": "Session",
+      "class": "EFT.ClientPlayer",
+      "field": "_session",
+      "static": false,
+      "required": false,
+      "value": "0x1CF0"
+    },
+    {
       "group": "CameraManager",
       "name": "Instance",
       "class": "EFT.CameraControl.CameraManager",

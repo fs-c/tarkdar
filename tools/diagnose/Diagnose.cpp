@@ -745,10 +745,22 @@ void checkStash(Report& r, const eft::Game& game, Address localPlayer) {
         profiles.emplace_back(std::move(who), p);
     };
 
+    // The Stash subsystem's path in a raid: the local player's session.
+    Address playerSession = 0;
     if (localPlayer) {
         const Address p = eft::readPointer(game, localPlayer + off::Player::Profile, mem::Freshness::Fresh);
         if (p) addProfile("in-raid (Player.Profile)", p);
         else r.fail("local player's profile unreadable", "Player.Profile");
+        const Address session = eft::readPointer(game, localPlayer + off::ClientPlayer::Session, mem::Freshness::Fresh);
+        playerSession = eft::Stash::playerSessionProfile(game, localPlayer);
+        if (playerSession) {
+            r.ok(std::format("ClientPlayer._session {} ({}) → profile {}", hex(session), classOf(game, session), hex(playerSession)));
+            addProfile("session via ClientPlayer._session", playerSession);
+        } else {
+            r.fail(std::format("ClientPlayer._session {} ({}) has no ClientBackendSession profile", hex(session),
+                               session ? classOf(game, session) : "-"),
+                   "ClientPlayer.Session, ClientBackendSession.Profile");
+        }
     } else {
         r.info("not in a raid: only the menu-side profile is probed");
     }
@@ -824,12 +836,14 @@ void checkStash(Report& r, const eft::Game& game, Address localPlayer) {
     }
     for (const auto& [who, p] : profiles) probeProfile(r, game, who, p);
 
-    // What the backend's Stash subsystem publishes (the `stash` message).
-    const Address sessionProfile = found ? eft::Stash::sessionProfile(game, *found) : 0;
+    // What the backend's Stash subsystem publishes (the `stash` message): in a raid through the local
+    // player's session; outside one (where the subsystem doesn't run) through the application.
+    const Address sessionProfile = localPlayer ? playerSession : found ? eft::Stash::sessionProfile(game, *found) : 0;
     const auto contents = sessionProfile ? eft::Stash::readContents(game, sessionProfile) : std::nullopt;
     if (!contents) {
         r.fail("Stash subsystem: session profile or its stash unreadable",
-               "literals ClientApplication.ClientBackEnd, ClientBackend.Session; ClientBackendSession.Profile; Inventory.Stash");
+               localPlayer ? "ClientPlayer.Session; ClientBackendSession.Profile; Inventory.Stash"
+                           : "literals ClientApplication.ClientBackEnd, ClientBackend.Session; ClientBackendSession.Profile; Inventory.Stash");
     } else {
         std::int64_t units = 0, fir = 0;
         for (const auto& o : contents->stash) units += o.count, fir += o.fir;

@@ -2,13 +2,18 @@
 // (currently tarkov.dev, see catalog.ts). Containers aren't items there, so their names come from the
 // small static table below.
 
+/** Where an item's price comes from: the flea market, the best trader offer (better than the flea or
+ *  no flea data), or the game's base price (neither). */
+export type PriceSource = "flea" | "trader" | "base";
+
 export interface ItemInfo {
   name: string;
   shortName: string;
-  /** Per-unit value in roubles: the 24 h flea average, or the game's base price if the item has no
-   *  flea data (e.g. currencies). Undefined if neither is known. */
+  /** Per-unit value in roubles: what it realistically sells for, on the flea market or to a trader,
+   *  or the game's base price if neither is known (e.g. currencies); see catalog.ts estimatePrice.
+   *  Undefined if there's no price at all. */
   price?: number;
-  priceSource?: "flea" | "base";
+  priceSource?: PriceSource;
   /** Handbook category ids, the item's own and all above it ("Electronics", "Barter items"). */
   categories?: readonly string[];
   /** Inventory slots it takes (width × height); undefined: one. */

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { memoryCache } from "./cache";
-import { SlimCatalog, loadCatalog, slimCategories, slimItems } from "./catalog";
+import { SlimCatalog, estimatePrice, loadCatalog, slimCategories, slimItems } from "./catalog";
 import { totalValue } from "./items";
 
 const itemsFeed = {
@@ -63,6 +63,44 @@ describe("slimItems", () => {
   });
   it("rejects an unexpected format", () => {
     expect(() => slimItems({ nope: 1 }, enFeed)).toThrow();
+  });
+});
+
+describe("estimatePrice", () => {
+  // Cases from tarkov.dev's PvP feed (2026-11-24).
+  const trader = (price: number) => [{ trader: "54cb50c76803fa8b248b4571", priceRUB: price }];
+  it("is the flea price in a steady market", () => {
+    expect(estimatePrice({ avg24hPrice: 61183, lastLowPrice: 65000, changeLast48h: -14645, lastOfferCount: 15 })).toEqual({ price: 65000, source: "flea" });
+    expect(estimatePrice({ avg24hPrice: 900 })).toEqual({ price: 900, source: "flea" });
+  });
+  it("is no more than the cheapest offer: nobody buys above it", () => {
+    // Blue Folders: one 2.2M offer pulled the average up
+    expect(estimatePrice({ avg24hPrice: 531222, lastLowPrice: 300000, changeLast48h: 42689, lastOfferCount: 20 })?.price).toBe(300000);
+    // Radian Model 1: a 1.25M average yesterday, 555k today, but it's offered at 50k
+    expect(estimatePrice({ avg24hPrice: 555555, lastLowPrice: 50000, changeLast48h: -700000, lastOfferCount: 3 })?.price).toBe(50000);
+  });
+  it("ignores a lone troll offer as the cheapest", () => {
+    // USEC cottage key: the only offer is at 200k, it sold for ~26k
+    expect(estimatePrice({ avg24hPrice: 26333, lastLowPrice: 200000, changeLast48h: -3000, lastOfferCount: 1 })?.price).toBe(29333);
+    // the average is a troll offer, no history (change 0): the lower of the two
+    expect(estimatePrice({ avg24hPrice: 100000, lastLowPrice: 5000, changeLast48h: 0, lastOfferCount: 2 })?.price).toBe(5000);
+  });
+  it("caps a thin market at 10× what traders sell it for", () => {
+    // HK 416 buffer tube: one offer at 1M, Peacekeeper sells it for 6238
+    const tube = { avg24hPrice: 1004074, lastLowPrice: 1004074, changeLast48h: 0, lastOfferCount: 1, buyFromTrader: trader(6238) };
+    expect(estimatePrice(tube)).toEqual({ price: 62380, source: "flea" });
+    expect(estimatePrice({ ...tube, lastOfferCount: 9 })?.price).toBe(1004074); // a liquid market is trusted
+  });
+  it("is at least what a trader pays", () => {
+    // SCAR-L upper dumped at 70 ₽, Mechanic pays 2925
+    const upper = { avg24hPrice: 70, lastLowPrice: 70, lastOfferCount: 1, sellToTrader: [...trader(1200), ...trader(2925)] };
+    expect(estimatePrice(upper)).toEqual({ price: 2925, source: "trader" });
+    expect(estimatePrice({ basePrice: 18397, sellToTrader: trader(8278) })).toEqual({ price: 8278, source: "trader" }); // no flea data
+    expect(estimatePrice({ basePrice: 18397, sellToTrader: [{ trader: "flea-market", priceRUB: 9000 }] })?.source).toBe("base");
+  });
+  it("falls back to the base price, or nothing", () => {
+    expect(estimatePrice({ basePrice: 122 })).toEqual({ price: 122, source: "base" });
+    expect(estimatePrice({ avg24hPrice: null, basePrice: 0, sellToTrader: [] })).toBeUndefined();
   });
 });
 

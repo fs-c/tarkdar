@@ -119,7 +119,7 @@ function Details({ selection: sel, state, catalog, questNeeds }: Props) {
         <h3 className={s.title}>{name ?? l.kind}</h3>
         <Line label="kind" value={l.kind} />
         {!!info?.price && (
-          <Line label="price" value={`${formatPrice(info.price)} ₽${info.priceSource === "base" ? " (base price)" : ""}`} />
+          <Line label="price" value={`${formatPrice(info.price)} ₽${info.priceSource === "flea" ? "" : ` (${info.priceSource === "trader" ? "trader" : "base price"})`}`} />
         )}
         {needs?.length ? <Line label="needed for" value={needs.map(formatQuestNeed).join("; ")} /> : null}
         {l.tpl && <Line label="template" value={l.tpl} />}

@@ -1,5 +1,6 @@
 - backend/memory read optimization; there's noticeably more lag while the backend is running
     - still open: cache transform hierarchy/index lookups (2 of the 3 read rounds per positions tick), move builds/bone resolves off the live thread, publish players only on change, slower tripwire scan
-- improve item price calculation, sometimes the prices from tarkov.dev are very skewed because of low sample size
 - UI
     - don't show play bar when live
+    - refine quests popup (should close when sidebar closes, could be smaller?)
+        - frequently in a situation where I want to check quest details (either from the quests tab or from the watch bar, and annoyed when clicking on a quest doesn't do anything)

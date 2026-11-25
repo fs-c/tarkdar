@@ -82,8 +82,3 @@
   position: absolute; top: 45%; left: calc(var(--cover) + (100% - var(--cover)) / 2); z-index: 3;
   transform: translate(-50%, -50%); max-width: calc(100% - var(--cover) - 2 * var(--float-edge));
 }
-/* A pop-out next to the sidebar card (the quest picker): the map's full height. */
-.flyout {
-  position: absolute; left: var(--float-left); top: var(--float-edge); bottom: var(--float-edge); z-index: 6;
-  width: min(380px, calc(100% - var(--float-left) - var(--float-edge)));
-}

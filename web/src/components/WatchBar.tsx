@@ -3,7 +3,9 @@
 // how many there are now; clicking one opens its menu under it (level, on/off, show the nearest,
 // remove). What doesn't fit goes behind "+N", the least important first (off, then by level, then
 // the oldest). Focusing the field opens what's under it: while typing, what the text could mean
-// (Enter watches it, at High); otherwise every entry, with its switch, level and remove.
+// (Enter watches it, at High; a quest: tracks it, or a tracked one opens it); otherwise every entry,
+// with its switch, level and remove. A quest opens in the Watch view's quest browser, to see what it
+// still needs: a tracked one's name (in its chip's menu, in the list), or a tracked one in the search.
 
 import { Crosshair, ScrollText, Search, Trash2, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -26,6 +28,7 @@ export interface QuestChoice {
   detail: string;
   /** What tracking it watches. */
   query: string;
+  tracked: boolean;
 }
 
 /** What the search can add: a suggestion (a query), or a quest to track. */
@@ -38,7 +41,7 @@ interface Props {
   /** Everything there is (the suggestions' counts). */
   rows: readonly AnyRow[];
   catalog: ItemCatalog;
-  /** Quests that need items (and whether each is tracked): "Track" from the search. */
+  /** Quests that need items (and whether each is tracked): "Track" from the search, or open one. */
   quests: readonly QuestChoice[];
   onAdd: (sg: Suggestion) => void;
   onTrack: (quest: QuestChoice) => void;
@@ -50,13 +53,15 @@ interface Props {
   onStep: (e: WatchEntry) => void;
   /** Open the Watch view. */
   onOpenView: () => void;
+  /** Open the Watch view's quest browser at this quest. */
+  onOpenQuest: (id: string) => void;
 }
 
 /** Least important first: off ones, then by level, then the oldest. */
 const byUnimportance = (entries: readonly WatchEntry[]) =>
   entries.map((e, i) => ({ e, i })).sort((a, b) => Number(a.e.on) - Number(b.e.on) || levelRank(a.e.level) - levelRank(b.e.level) || a.i - b.i).map((x) => x.e);
 
-export function WatchBar({ entries, hits, rows, catalog, quests, onAdd, onTrack, onChange, onRemove, onPreview, onStep: step, onOpenView }: Props) {
+export function WatchBar({ entries, hits, rows, catalog, quests, onAdd, onTrack, onChange, onRemove, onPreview, onStep: step, onOpenView, onOpenQuest }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -79,7 +84,7 @@ export function WatchBar({ entries, hits, rows, catalog, quests, onAdd, onTrack,
   }, [query, catalog, quests]);
   const counts = useMemo(() => choices.map((c) => (c.kind === "query" ? matchingRows(rows, c.sg.query, catalog).length : null)), [choices, rows, catalog]);
   const current = open ? choices[Math.min(active, choices.length - 1)] : undefined;
-  const previewQuery = current?.kind === "query" && !current.sg.error ? current.sg.query : current?.kind === "quest" ? current.quest.query : null;
+  const previewQuery = current?.kind === "query" && !current.sg.error ? current.sg.query : current?.kind === "quest" && !current.quest.tracked ? current.quest.query : null;
 
   useEffect(() => onPreview(previewQuery), [previewQuery]);
   useEffect(() => () => onPreview(null), []);
@@ -125,7 +130,8 @@ export function WatchBar({ entries, hits, rows, catalog, quests, onAdd, onTrack,
     if (c.kind === "query") {
       if (c.sg.error) return;
       onAdd(c.sg);
-    } else onTrack(c.quest);
+    } else if (c.quest.tracked) onOpenQuest(c.quest.id);
+    else onTrack(c.quest);
     setQuery("");
     setActive(0);
     close();
@@ -153,6 +159,24 @@ export function WatchBar({ entries, hits, rows, catalog, quests, onAdd, onTrack,
   const shown = entries.filter((e) => !hidden.includes(e.id));
   const behind = entries.filter((e) => hidden.includes(e.id));
   const n = (e: WatchEntry) => hits.get(e.id)?.length ?? 0;
+  // An entry's name; a tracked quest's opens the quest (when there's one to show), after `done`.
+  const label = (e: WatchEntry, done: () => void) =>
+    e.questId && quests.some((q) => q.id === e.questId) ? (
+      <button
+        type="button"
+        className={s.entryLabel + " " + s.questLink}
+        title="The quest in the Watch view: what it still needs"
+        onClick={(ev) => {
+          ev.stopPropagation();
+          done();
+          onOpenQuest(e.questId!);
+        }}
+      >
+        {e.label}
+      </button>
+    ) : (
+      <span className={s.entryLabel}>{e.label}</span>
+    );
   // Its chip went behind "+N" or the entry is gone: so is its menu.
   const menuEntry = menu ? shown.find((e) => e.id === menu.id) : undefined;
 
@@ -241,7 +265,7 @@ export function WatchBar({ entries, hits, rows, catalog, quests, onAdd, onTrack,
                 onClick={() => onChange(menuEntry.id, { on: !menuEntry.on })}
               />
               <span className={s.name}>
-                {menuEntry.questId && <ScrollText size={11} className={s.questIcon} />} <span className={s.entryLabel}>{menuEntry.label}</span>{" "}
+                {menuEntry.questId && <ScrollText size={11} className={s.questIcon} />} {label(menuEntry, () => setMenu(null))}{" "}
                 <span className={s.times}>×{n(menuEntry)}</span>
               </span>
             </div>
@@ -290,7 +314,9 @@ export function WatchBar({ entries, hits, rows, catalog, quests, onAdd, onTrack,
                       {c.kind === "query" ? c.sg.label : c.quest.name}
                       {(c.kind === "query" ? c.sg.detail : c.quest.detail) && <span className={s.detail}> {c.kind === "query" ? c.sg.detail : c.quest.detail}</span>}
                     </span>
-                    <span className={s.count}>{c.kind === "query" ? counts[i] : "track"}</span>
+                    <span className={s.count} data-enter={c.kind === "quest" ? (c.quest.tracked ? "open" : "track") : "watch"}>
+                      {c.kind === "query" ? counts[i] : c.quest.tracked ? "tracked" : "track"}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -309,7 +335,7 @@ export function WatchBar({ entries, hits, rows, catalog, quests, onAdd, onTrack,
                       }}
                     />
                     <span className={s.name}>
-                      {e.questId && <ScrollText size={11} className={s.questIcon} />} <span className={s.entryLabel}>{e.label}</span> <span className={s.times}>×{n(e)}</span>
+                      {e.questId && <ScrollText size={11} className={s.questIcon} />} {label(e, close)} <span className={s.times}>×{n(e)}</span>
                     </span>
                     <button
                       type="button"

@@ -1,4 +1,4 @@
-// Quests as the Watch view and the quest picker see them: started quests (and imported ones, not
+// Quests as the Watch view and its quest browser see them: started quests (and imported ones, not
 // started yet) that still need items, each with its open objectives; and the watch entry that tracks
 // one (watching what it still needs, `quest:"<name>"`, or its id for quests without a name).
 

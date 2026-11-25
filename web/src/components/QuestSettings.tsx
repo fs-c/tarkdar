@@ -1,6 +1,6 @@
 // Settings → Quests: whether what's owned covers what quests need, and quests imported from
 // tarkov.dev (not started yet, whose items count already). Which quests are tracked is the Watch
-// view's (the quest picker); quests don't count or not one by one any more.
+// view's (its quest browser); quests don't count or not one by one any more.
 
 import { X } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";

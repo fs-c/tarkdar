@@ -33,8 +33,8 @@ import { LayersCard } from "./LayersCard";
 import { MapNotices, type Notice } from "./MapNotices";
 import { StateDialog, type StateDialogProps } from "./StateDialog";
 import { WatchBar } from "./WatchBar";
+import type { QuestBrowse } from "./QuestBrowser";
 import { WatchView } from "./WatchView";
-import { QuestPicker } from "./QuestPicker";
 import { PlayersView } from "./PlayersView";
 import { LootView } from "./LootView";
 import { ExfilsView } from "./ExfilsView";
@@ -177,7 +177,13 @@ export function App() {
     markSeen([q.id]);
   };
   const untrackQuest = (id: string) => setEntries((es) => es.filter((e) => e.questId !== id));
-  const [picker, setPicker] = useState<{ tab: string | null } | null>(null);
+  // The Watch view's quest browser (null: the watchlist), and the quest to show in it. Only while the
+  // Watch view is open: folding the panel or switching views goes back to the watchlist.
+  const [browse, setBrowse] = useState<QuestBrowse | null>(null);
+  const openQuest = (id: string | null) => {
+    setBrowse((b) => ({ focus: id, n: (b?.n ?? 0) + 1 }));
+    setUi((u) => ({ ...u, open: true, section: "watch" }));
+  };
 
   // The overlay (radar-backend --overlay, deprecated): configured from here, from the live raid only (a
   // replay or an earlier moment leaves it as it was).
@@ -197,6 +203,9 @@ export function App() {
   const view: ViewId = ui.section;
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("markers");
   const togglePanel = () => setUi((u) => ({ ...u, open: !u.open }));
+  useEffect(() => {
+    if (!ui.open || ui.section !== "watch") setBrowse(null);
+  }, [ui.open, ui.section]);
   const uiRef = useRef(ui);
   uiRef.current = ui;
   /** The views with a filter (Raids: its list of raids). */
@@ -469,21 +478,22 @@ export function App() {
         return <ExfilsView exfils={list.all.exfils} local={viewpoint} selection={selection} onActivate={showOnMap} onHover={setHovered} />;
       case "watch":
         return (
-          <PanelBody>
           <WatchView
             entries={entries}
             counts={watchCounts}
-            quests={questsById}
+            quests={quests}
+            questsById={questsById}
             newQuests={newQuests}
-            pickerOpen={!!picker}
+            browse={browse}
+            onBrowse={(on) => (on ? openQuest(null) : setBrowse(null))}
             onStep={stepEntry}
             onChange={changeEntry}
             onRemove={removeEntry}
             onWatchSomething={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "/" }))}
-            onPicker={(tab) => setPicker((p) => (p && !tab ? null : { tab: tab === "new" ? "New" : null }))}
-            onDismissNew={() => markSeen(newQuests.map((q) => q.id))}
+            onTrack={trackQuest}
+            onUntrack={untrackQuest}
+            onDismiss={markSeen}
           />
-          </PanelBody>
         );
       case "raids":
         return ui.raidsLevel === "timeline" ? (
@@ -593,7 +603,7 @@ export function App() {
             hits={watchHits}
             rows={everything}
             catalog={catalog}
-            quests={quests.filter((q) => !tracked.has(q.id)).map((q) => ({ id: q.id, name: q.name, detail: q.tab, query: q.query }))}
+            quests={quests.map((q) => ({ id: q.id, name: q.name, detail: q.tab, query: q.query, tracked: tracked.has(q.id) }))}
             onAdd={addSuggestion}
             onTrack={(q) => trackQuest(q)}
             onChange={changeEntry}
@@ -601,18 +611,7 @@ export function App() {
             onPreview={setPreview}
             onStep={stepEntry}
             onOpenView={() => setUi((u) => ({ ...u, open: true, section: "watch" }))}
-          />
-        )}
-        {picker && (
-          <QuestPicker
-            quests={quests}
-            newIds={new Set(newQuests.map((q) => q.id))}
-            tracked={tracked}
-            startTab={picker.tab}
-            onTrack={trackQuest}
-            onUntrack={(q) => untrackQuest(q.id)}
-            onDismiss={(id) => markSeen([id])}
-            onClose={() => setPicker(null)}
+            onOpenQuest={openQuest}
           />
         )}
         {selection && (

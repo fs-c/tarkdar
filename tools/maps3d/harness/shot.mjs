@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Screenshots of a dataset through the map's own camera API (not the fixed harness views):
-//   node shot.mjs --data customs --out /tmp/shots/a --settings '{"orthographic":true}' \
+//   node shot.mjs --data customs --out /tmp/shots/a --settings '{"projection":"orthographic"}' \
 //        --bg 11161c --views '[{"name":"all"},{"name":"dorms","center":[200,0,150],"span":250,"tilt":0,"heading":0}]'
 // center: game world [x, y, z]; span: metres across the view height; tilt: degrees from vertical;
 // floor: cut the map open to show the floor at this height (indoor maps).

@@ -38,6 +38,12 @@ const CONTOUR_INTERVAL = 2;
 const FIELD_OF_VIEW = 25;
 const HALF_FOV_TAN = Math.tan(THREE.MathUtils.degToRad(FIELD_OF_VIEW / 2));
 
+/**
+ * A perspective narrowed to this share of the field of view (setPerspective) is as good as parallel:
+ * a 50 m tower at the edge of a 1 km view leans by half a metre. The orthographic camera takes over.
+ */
+const PARALLEL_SHARE = 0.04;
+
 /** Closest zoom: metres of ground across the height of the view. */
 const MIN_SPAN = 6.6;
 /** Farthest zoom, in map sizes. */
@@ -45,7 +51,7 @@ const MAX_SPAN_FACTOR = 2.5;
 
 // Tiles (tiles.ts).
 /** Tilted less than this (radians) the view counts as straight down: a 50 m tower leans by 10 cm. */
-const FLAT_TILT = 2e-3;
+export const FLAT_TILT = 2e-3;
 /** After the zoom or the look of the map changed, tiles are painted once it has stayed the same for this long (ms). */
 const SETTLE = 120;
 /** A view that moves more than this many device pixels in a frame outruns the tiles: none are painted until it has been slower for CALM ms. */
@@ -430,6 +436,8 @@ export class Stage {
 
   private disposed = false;
   private home = { position: new THREE.Vector3(0, 1000, 1), target: new THREE.Vector3() };
+  /** tan(field of view / 2) of the perspective camera: narrower while it turns into a parallel projection. */
+  private fovTan = HALF_FOV_TAN;
 
   constructor(
     container: HTMLElement,
@@ -450,7 +458,6 @@ export class Stage {
     this.controls.screenSpacePanning = false; // pan along the ground
     this.controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
     this.controls.maxPolarAngle = Math.PI * 0.45;
-    this.controls.minDistance = MIN_SPAN / 2 / HALF_FOV_TAN;
     this.controls.zoomSpeed = 1.6;
     this.setControlScheme("map");
 
@@ -715,25 +722,33 @@ export class Stage {
       position: new THREE.Vector3(center.x - lean * Math.sin(heading), center.y + distance, center.z + lean * Math.cos(heading)),
       target: center,
     };
-    this.controls.maxDistance = distance * MAX_SPAN_FACTOR;
     this.controls.minZoom = 1 / MAX_SPAN_FACTOR;
     this.controls.maxZoom = this.radius / MIN_SPAN;
     this.updateFrustums();
+    this.updateZoomLimits();
     this.resetView();
   }
 
   resetView(): void {
     this.camera.position.copy(this.home.position);
     this.controls.target.copy(this.home.target);
-    this.orthographic.zoom = 1;
-    this.orthographic.updateProjectionMatrix();
-    this.controls.update();
+    this.setSpan(this.radius);
+  }
+
+  /**
+   * The closest and farthest zoom as camera distances (OrbitControls dollies the perspective camera).
+   * The orthographic camera zooms instead, from the full perspective's distance (setSpan).
+   */
+  private updateZoomLimits(): void {
+    const tan = this.camera === this.perspective ? this.fovTan : HALF_FOV_TAN;
+    this.controls.minDistance = MIN_SPAN / 2 / tan;
+    this.controls.maxDistance = (this.radius * MAX_SPAN_FACTOR) / 2 / tan;
   }
 
   /** Metres of ground across the height of the view (at the camera target): the zoom, for either camera. */
   span(): number {
     if (this.camera === this.orthographic) return this.radius / this.orthographic.zoom;
-    return 2 * this.camera.position.distanceTo(this.controls.target) * Math.tan(THREE.MathUtils.degToRad(this.perspective.fov / 2));
+    return 2 * this.camera.position.distanceTo(this.controls.target) * this.fovTan;
   }
 
   setSpan(metres: number): void {
@@ -745,21 +760,51 @@ export class Stage {
       this.orthographic.zoom = this.radius / span;
       this.orthographic.updateProjectionMatrix();
     } else {
-      offset.setLength(span / 2 / Math.tan(THREE.MathUtils.degToRad(this.perspective.fov / 2)));
+      offset.setLength(span / 2 / this.fovTan);
     }
     this.camera.position.copy(this.controls.target).add(offset);
     this.controls.update();
   }
 
-  /** Switches the projection, keeping what is in view: target, direction and zoom. */
-  setOrthographic(on: boolean): void {
-    const next = on ? this.orthographic : this.perspective;
-    if (next === this.camera) return;
+  /**
+   * How much perspective there is, keeping what is in view: target, direction and zoom. 1: the
+   * full field of view, 0: a parallel projection (the orthographic camera). In between the field
+   * of view narrows and the camera backs away to keep the zoom (a dolly zoom): what stands up
+   * leans less and less, so going from one projection to the other can be shown as a movement.
+   */
+  setPerspective(amount: number): void {
+    const share = THREE.MathUtils.clamp(amount, 0, 1);
+    const next = share < PARALLEL_SHARE ? this.orthographic : this.perspective;
+    const fovTan = next === this.perspective ? HALF_FOV_TAN * share : this.fovTan;
+    if (next === this.camera && fovTan === this.fovTan) return;
     const span = this.span();
-    next.position.copy(this.camera.position);
-    this.camera = next;
-    this.controls.object = next;
+    if (fovTan !== this.fovTan) {
+      this.fovTan = fovTan;
+      this.perspective.fov = THREE.MathUtils.radToDeg(2 * Math.atan(fovTan));
+      this.perspective.updateProjectionMatrix();
+    }
+    if (next !== this.camera) {
+      next.position.copy(this.camera.position);
+      this.camera = next;
+      this.controls.object = next;
+    }
+    this.updateZoomLimits();
     this.setSpan(span);
+  }
+
+  /** Radians from looking straight down. */
+  tilt(): number {
+    return this.controls.getPolarAngle();
+  }
+
+  /** Tilts the camera around its target (radians from straight down), keeping heading and zoom. */
+  setTilt(radians: number): void {
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    const spherical = new THREE.Spherical().setFromVector3(offset);
+    spherical.phi = radians;
+    spherical.makeSafe();
+    this.camera.position.copy(this.controls.target).add(offset.setFromSpherical(spherical));
+    this.controls.update();
   }
 
   /** Direction the top of the screen points to, in radians clockwise from north. */
@@ -970,7 +1015,7 @@ export class Stage {
       this.renderer.setRenderTarget(this.target);
       this.renderer.render(this.scene, camera);
       const parallel = camera === this.orthographic;
-      const pixel = (parallel ? this.radius / this.orthographic.zoom : 2 * Math.tan(THREE.MathUtils.degToRad(this.perspective.fov / 2))) / size.y;
+      const pixel = (parallel ? this.radius / this.orthographic.zoom : 2 * this.fovTan) / size.y;
       // The statistics are the map's, not the outline pass's.
       const { calls, triangles } = this.renderer.info.render;
       this.finish(this.target, null, camera, pixel, 1);

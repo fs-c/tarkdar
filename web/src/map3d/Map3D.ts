@@ -8,7 +8,9 @@
 //
 // An orthographic view straight down is drawn from tiles (stage.ts, tiles.ts): a frame is then
 // a few textured squares. Tiles are painted on animation frames of their own, a few at a time,
-// until the view has all it needs.
+// until the view has all it needs. The "auto" projection makes the most of that: orthographic
+// while looking straight down, perspective once tilted, changing over a few frames (a dolly zoom,
+// Stage.setPerspective) when the user tilts the map out of the bird's eye view or back into it.
 //
 // Coordinates: the public API speaks the game's world coordinates ([x east, y up, z north],
 // as in protocol.ts). Internally z is negated (three.js is right-handed).
@@ -18,8 +20,8 @@ import type { Projector } from "../draw/projector";
 import type { WorldPos } from "../model/protocol";
 import { type Bounds, loadMapData, type MapData } from "./dataset";
 import { InstanceRenderer } from "./instances";
-import { DEFAULT_MAP_SETTINGS, type MapColors, type MapSettings, PLAN_PALETTES } from "./settings";
-import { Stage } from "./stage";
+import { DEFAULT_MAP_SETTINGS, type MapColors, type MapSettings, PLAN_PALETTES, type Projection } from "./settings";
+import { FLAT_TILT, Stage } from "./stage";
 
 /** Where the camera is (map debugging). */
 export interface MapView {
@@ -54,6 +56,14 @@ const MOVE_FAST = 3;
 const TURN_TIME = 140;
 /** ... and this close (radians) it has arrived. */
 const TURN_ARRIVED = 2e-3;
+/** Auto projection: looking down this steeply (radians from straight down) is the bird's eye view, orthographic. */
+const BIRDS_EYE = THREE.MathUtils.degToRad(3);
+/** ... going from one projection to the other takes this long (ms). */
+const PROJECTION_TIME = 300;
+/** ... a bird's eye view let go of a little tilted is levelled: the tilt shrinks to 1/e in this many ms. */
+const LEVEL_TIME = 60;
+/** ... to this tilt (radians): a hair off vertical, as the home view (Stage.frame), so that it keeps its heading. */
+const LEVEL_TILT = 1e-4;
 /** Categories that only make sense with textures; never drawn. */
 const HIDDEN = ["shadow", "decal", "background"];
 
@@ -111,6 +121,13 @@ export class Map3D {
   private readonly turn = { goal: 0, active: false, time: 0 };
   private flight: { start: number; duration: number; from: THREE.Vector3; fromSpan: number; span: number | null; to: () => WorldPos | null } | null = null;
   private floor: number | null = null;
+  /**
+   * The projection shown: `progress` 0 is orthographic, 1 perspective, in between a transition
+   * (eased into Stage.setPerspective). `setting`: what it was settled for; `active`: frames to come.
+   */
+  private readonly projection = { progress: 1, active: false, time: 0, setting: null as Projection | null };
+  /** The user is moving the camera (a drag): a bird's eye view is levelled once they let go. */
+  private handling = false;
   private readonly scratch = new THREE.Vector3();
   private readonly scratch2 = new THREE.Vector3();
 
@@ -236,6 +253,13 @@ export class Map3D {
       }
       this.requestRender();
     });
+    stage.controls.addEventListener("start", () => {
+      this.handling = true;
+    });
+    stage.controls.addEventListener("end", () => {
+      this.handling = false;
+      this.requestFrame(); // a bird's eye view may need levelling
+    });
     this.rebuild();
     this.applySettings();
   }
@@ -252,6 +276,9 @@ export class Map3D {
     this.motion.active = false;
     this.flight = null;
     this.turn.active = false;
+    // A new stage starts out in perspective.
+    Object.assign(this.projection, { progress: 1, active: false, setting: null });
+    this.handling = false;
     this.instances?.dispose();
     for (const g of this.grid) g.dispose();
     this.grid = [];
@@ -301,7 +328,7 @@ export class Map3D {
     // A stored palette may predate a colour added since.
     stage.setPalette({ ...PLAN_PALETTES.paper, ...this.settings.palette });
     stage.setControlScheme(this.settings.controls);
-    stage.setOrthographic(this.settings.orthographic);
+    if (this.projection.setting !== this.settings.projection) this.settleProjection();
     this.requestRender();
   }
 
@@ -336,7 +363,7 @@ export class Map3D {
 
   /** The frame asked for will render the map (and so call `onRender`). For use in `onFrame`. */
   get renderDue(): boolean {
-    return this.dirty || this.flight !== null || this.turn.active || this.motion.active;
+    return this.dirty || this.flight !== null || this.turn.active || this.motion.active || this.projection.active;
   }
 
   /** A map frame is cheap: a few tiles or a grid, not the whole scene. */
@@ -359,12 +386,13 @@ export class Map3D {
       if (this.flight) this.flightStep(now);
       if (this.turn.active) this.turnStep(now);
       if (this.motion.active) this.moveStep(now);
+      this.projectionStep(now);
       if (this.dirty) this.renderNow();
     } finally {
       this.ticking = false;
     }
     // Still under way, or asked for while this frame was made.
-    if (this.dirty || this.again || this.flight || this.turn.active || this.motion.active) this.schedule();
+    if (this.dirty || this.again || this.flight || this.turn.active || this.motion.active || this.projection.active) this.schedule();
   };
 
   /** Render immediately (the measurement harness; everything else uses requestRender). */
@@ -560,6 +588,49 @@ export class Map3D {
   resetView(): void {
     this.cancelFlight();
     this.own((stage) => stage.resetView());
+    this.settleProjection();
+  }
+
+  /**
+   * The projection the settings ask for, at once: a new map, a changed setting, a camera put
+   * somewhere by code (the view jumps anyway; and the measurement harness renders right after).
+   */
+  private settleProjection(): void {
+    const stage = this.stage;
+    if (!stage) return;
+    const p = this.projection;
+    const setting = this.settings.projection;
+    p.setting = setting;
+    p.progress = setting === "orthographic" || (setting === "auto" && stage.tilt() <= BIRDS_EYE) ? 0 : 1;
+    p.active = false;
+    this.own(() => stage.setPerspective(p.progress));
+  }
+
+  /**
+   * Auto projection, once a frame: a step towards orthographic in the bird's eye view and towards
+   * perspective out of it. A bird's eye view the user let go of a little tilted is levelled, so
+   * that it is drawn from tiles.
+   */
+  private projectionStep(now: number): void {
+    const { projection: p, stage } = this;
+    if (!stage || this.settings.projection !== "auto") return;
+    // The first step of a change takes no time: the frames that follow give it its pace.
+    const elapsed = p.active ? Math.min(100, Math.max(0, now - p.time)) : 0;
+    p.time = now;
+    const tilt = stage.tilt();
+    const goal = tilt <= BIRDS_EYE ? 0 : 1;
+    if (p.progress !== goal) {
+      const step = elapsed / PROJECTION_TIME;
+      p.progress = goal > p.progress ? Math.min(goal, p.progress + step) : Math.max(goal, p.progress - step);
+      const t = p.progress;
+      this.own(() => stage.setPerspective(t * t * (3 - 2 * t)));
+    }
+    const level = goal === 0 && !this.handling && tilt > FLAT_TILT;
+    if (level) {
+      const next = tilt * Math.exp(-elapsed / LEVEL_TIME);
+      this.own(() => stage.setTilt(next <= FLAT_TILT ? LEVEL_TILT : next));
+    }
+    p.active = p.progress !== goal || level;
   }
 
   /** Camera position and target in world coordinates (debug reports). */
@@ -587,11 +658,15 @@ export class Map3D {
   setPose(position: WorldPos, target: WorldPos): void {
     const stage = this.stage;
     if (!stage) return;
+    // A pose's distance is the zoom with the full field of view: not one narrowed halfway through a transition.
+    const p = this.projection.progress;
+    if (p > 0 && p < 1) this.own(() => stage.setPerspective(1));
     this.own(() => {
       stage.camera.position.set(position[0], position[1], -position[2]);
       stage.controls.target.set(target[0], target[1], -target[2]);
       stage.controls.update();
     });
+    this.settleProjection();
   }
 
   // ---- projection -----------------------------------------------------------------------------

@@ -27,19 +27,20 @@ For looking rather than measuring, `shot.mjs` takes screenshots through the map'
 settings (styles, projection), as the radar shows it:
 
 ```bash
-node shot.mjs --data customs --out /tmp/shots --settings '{"style":"plan","orthographic":true}' \
+node shot.mjs --data customs --out /tmp/shots --settings '{"style":"plan","projection":"orthographic"}' \
   --views '[{"name":"all"},{"name":"tilted","center":[150,0,0],"span":320,"tilt":45,"heading":20}]'
 ```
 
 `center` is a game world position, `span` the metres across the height of the view, `tilt` degrees
-from vertical.
+from vertical. The projection is perspective unless the settings say otherwise (the radar's
+default, "auto", would make some views orthographic: runs before it would not compare).
 
 `bench.mjs` measures frame times on this machine's GPU, panning as following a player does:
 
 ```bash
-node bench.mjs --data customs --settings '{"style":"plan","orthographic":true}'              # from tiles
-node bench.mjs --data customs --settings '{"style":"plan","orthographic":true}' --no-tiles   # drawn directly
-node bench.mjs --data streets --size 2560x1440 --spans 150,350 --settings '{"orthographic":true}'
+node bench.mjs --data customs --settings '{"style":"plan","projection":"orthographic"}'              # from tiles
+node bench.mjs --data customs --settings '{"style":"plan","projection":"orthographic"}' --no-tiles   # drawn directly
+node bench.mjs --data streets --size 2560x1440 --spans 150,350 --settings '{"projection":"orthographic"}'
 ```
 
 It runs Chromium's own build (not the headless shell) on the GPU through Vulkan and prints which

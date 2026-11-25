@@ -12,11 +12,13 @@ const params = new URLSearchParams(location.search);
 const map = new Map3D(document.getElementById("app")!, Number.parseInt(params.get("bg") ?? "9aacbd", 16));
 const globals = window as unknown as { __map?: Map3D; __mapError?: string; __defaults?: unknown; __palettes?: unknown };
 globals.__palettes = PLAN_PALETTES;
-globals.__defaults = DEFAULT_MAP_SETTINGS;
+// Perspective, not the radar's "auto": the same views as in runs from before there was one.
+const defaults = { ...DEFAULT_MAP_SETTINGS, projection: "perspective" as const };
+globals.__defaults = defaults;
 
 map.load(`/data/${params.get("data") ?? "customs"}`).then(
   () => {
-    map.setSettings({ ...DEFAULT_MAP_SETTINGS, colored: params.get("color") === "1", trees: false, style: params.get("style") === "plan" ? "plan" : "realistic" });
+    map.setSettings({ ...defaults, colored: params.get("color") === "1", trees: false, style: params.get("style") === "plan" ? "plan" : "realistic" });
     globals.__map = map;
   },
   (e: unknown) => (globals.__mapError = e instanceof Error ? e.message : String(e)),

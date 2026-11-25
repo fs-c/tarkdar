@@ -5,7 +5,7 @@
 // the few changes older builds needed.
 
 import { DEFAULT_EVENT_GROUPS, type EventGroup } from "../stream/events";
-import { DEFAULT_MAP_SETTINGS, type MapSettings, type MapStyle, type PlanPalette } from "../map3d/settings";
+import { DEFAULT_MAP_SETTINGS, type MapSettings, type MapStyle, type PlanPalette, type Projection } from "../map3d/settings";
 import { DEFAULT_OVERLAY_PREFS, type OverlayPrefs } from "../overlay/marks";
 import { DEFAULT_THEME_ID, THEME_IDS } from "../theme/themes";
 import type { QuestObjective } from "../model/protocol";
@@ -25,6 +25,7 @@ export interface MapPrefs extends MapSettings {
 
 const MAP_STYLES: readonly MapStyle[] = ["realistic", "plan"];
 const MAP_CONTROLS: readonly MapSettings["controls"][] = ["map", "wasd"];
+const PROJECTIONS: readonly Projection[] = ["auto", "perspective", "orthographic"];
 
 const mapDefaults = (): MapPrefs => ({ ...DEFAULT_MAP_SETTINGS, customPalette: null, coordinatePick: false, bodies: true });
 /** Palettes stored before a colour was added get the default's, and so does any colour that isn't "#rrggbb". */
@@ -36,15 +37,24 @@ function fullPalette(p: unknown): PlanPalette {
 
 export const mapStore = defineStore<MapPrefs>({
   key: "radar.map",
-  version: 1,
+  version: 2,
   scope: "user",
   defaults: mapDefaults,
+  migrations: {
+    // `orthographic` became `projection`, which has "auto" now. Its false was the default then (perspective), not a choice: auto.
+    1: (d) => {
+      if (!isObject(d)) return d;
+      const { orthographic, ...rest } = d;
+      return orthographic === true ? { ...rest, projection: "orthographic" } : rest;
+    },
+  },
   normalize: (data) => {
     const p = flatNormalize(mapDefaults)(data);
     return {
       ...p,
       style: oneOf(p.style, MAP_STYLES, DEFAULT_MAP_SETTINGS.style),
       controls: oneOf(p.controls, MAP_CONTROLS, DEFAULT_MAP_SETTINGS.controls),
+      projection: oneOf(p.projection, PROJECTIONS, DEFAULT_MAP_SETTINGS.projection),
       palette: fullPalette(p.palette),
       customPalette: p.customPalette && fullPalette(p.customPalette),
     };

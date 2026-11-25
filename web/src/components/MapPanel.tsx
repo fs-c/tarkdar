@@ -98,11 +98,12 @@ export function MapPanel(p: Props) {
           <Segmented
             label="Projection"
             options={[
-              { value: false, label: "Perspective" },
-              { value: true, label: "Orthographic", title: "Parallel projection: buildings never lean" },
+              { value: "auto" as const, label: "Auto", title: "Orthographic looking straight down, perspective once tilted" },
+              { value: "perspective" as const, label: "Perspective" },
+              { value: "orthographic" as const, label: "Orthographic", title: "Parallel projection: buildings never lean" },
             ]}
-            value={p.prefs.orthographic}
-            onChange={(orthographic) => p.onPrefs((m) => ({ ...m, orthographic }))}
+            value={p.prefs.projection}
+            onChange={(projection) => p.onPrefs((m) => ({ ...m, projection }))}
           />
         </div>
         <div className={s.choice}>

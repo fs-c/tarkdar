@@ -91,8 +91,14 @@ the count of each object type (`typeCounts`). Scenes do not reference NavMesh da
   button turns back to it), `+`/`-` zoom, `F` follows the local player.
 - **Map → Controls → WASD**: `W A S D` move along the ground (Shift: faster, speed follows the
   zoom), drag tilts and turns the camera, right-drag moves the map.
-- **Map → Projection**: perspective (25° field of view) or orthographic (parallel: buildings
-  never lean). Switching keeps target, direction and zoom.
+- **Map → Projection**: perspective (25° field of view), orthographic (parallel: buildings
+  never lean), or **auto** (the default): orthographic in the bird's eye view (within 3° of
+  straight down), perspective once tilted. Tilting out of the bird's eye view or back into it
+  changes the projection over 0.3 s as a dolly zoom: the field of view narrows as the camera
+  backs away, keeping the zoom, until at a twenty-fifth of it the orthographic camera takes over
+  (`Stage.setPerspective`). A bird's eye view let go of slightly tilted is levelled, so that it
+  is drawn from tiles. A camera put somewhere by code (reset, a pose) gets its projection at once.
+  Switching keeps target, direction and zoom.
 - **The style button** in the map's top right corner opens a row of the styles with a small
   preview of each: Realistic, the pre-made plan palettes, and your own palette if you made one
   (`components/StyleSwitch.tsx`). `M` switches between realistic and plan.
@@ -362,7 +368,7 @@ rendered side by side the two differ by SSIM 0.997, which is z-fighting speckle 
 differently.
 
 Frame times are measured by `harness/bench.mjs` (`node bench.mjs --data customs --settings
-'{"style":"plan","orthographic":true}'`, `--no-tiles` for the direct rendering): see "The
+'{"style":"plan","projection":"orthographic"}'`, `--no-tiles` for the direct rendering): see "The
 top-down view" for the numbers. It prints the GPU it ran on; without one (SwiftShader) the times
 mean nothing.
 

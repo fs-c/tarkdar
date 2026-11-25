@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Frame times on this machine's GPU, through the map's own camera API:
-//   node bench.mjs --data customs --settings '{"style":"plan","orthographic":true}' [--no-tiles]
+//   node bench.mjs --data customs --settings '{"style":"plan","projection":"orthographic"}' [--no-tiles]
 // Each case pans the camera a little per frame (as following a player does) and renders `frames`
 // frames back to back, waiting for the GPU (a readPixels) every five: the time per frame is what
 // the GPU can do, not what the page asked for. A top-down orthographic view is drawn from tiles

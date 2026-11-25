@@ -1,4 +1,5 @@
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, mapStore, sidebarSizeStore, sidebarStore } from "./prefs";
+import { decode } from "./store";
 import { DEFAULT_MAP_SETTINGS } from "../map3d/settings";
 
 describe("stored map prefs", () => {
@@ -6,6 +7,15 @@ describe("stored map prefs", () => {
     const m = mapStore.normalize({ style: "cubist", controls: "gamepad" });
     expect(m).toMatchObject({ style: "realistic", controls: "map" });
     expect(mapStore.normalize({ style: "plan", controls: "wasd" })).toMatchObject({ style: "plan", controls: "wasd" });
+  });
+
+  it("keep the orthographic projection chosen before there was an automatic one", () => {
+    const load = (data: unknown, v = 1) => decode(mapStore, JSON.stringify({ $v: v, data })).value.projection;
+    expect(load({ orthographic: true })).toBe("orthographic");
+    expect(load({ orthographic: false })).toBe("auto");
+    expect(load({})).toBe("auto");
+    expect(load({ projection: "perspective" }, 2)).toBe("perspective");
+    expect(load({ projection: "fisheye" }, 2)).toBe("auto");
   });
 
   it("keep palette colours only when they're #rrggbb", () => {

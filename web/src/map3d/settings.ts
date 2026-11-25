@@ -104,6 +104,8 @@ export function paletteOf(palette: PlanPalette): PlanPaletteName | null {
   return null;
 }
 
+export type Projection = "auto" | "perspective" | "orthographic";
+
 export interface MapSettings extends ColorGrade {
   style: MapStyle;
   /** Colours of the plan style. */
@@ -113,8 +115,12 @@ export interface MapSettings extends ColorGrade {
   trees: boolean;
   contours: boolean;
   wireframe: boolean;
-  /** Parallel projection: no perspective, buildings never lean. */
-  orthographic: boolean;
+  /**
+   * "perspective": buildings lean away from the centre of the view. "orthographic": a parallel
+   * projection, buildings never lean. "auto": orthographic while looking straight down (bird's
+   * eye: drawn from tiles, Stage), perspective once tilted; it changes smoothly from one to the other.
+   */
+  projection: Projection;
   /**
    * "map": drag moves the map, right-drag tilts and turns it.
    * "wasd": W A S D move, drag tilts and turns the camera, right-drag moves the map.
@@ -129,7 +135,7 @@ export const DEFAULT_MAP_SETTINGS: MapSettings = {
   trees: true,
   contours: true,
   wireframe: false,
-  orthographic: false,
+  projection: "auto",
   controls: "map",
   ...COLOR_SCHEMES.standard,
 };

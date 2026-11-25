@@ -241,7 +241,7 @@ export function App() {
     radar.current?.centerOn(pos);
   };
   const raid = `${review?.info.name ?? "live"}:${state.status?.state === "inRaid" ? state.raid : null}`;
-  const { selection, selectedLook, select, clear: clearSelection, showOnMap, pickEvent } = useSelection({
+  const { selection, selectedRow, selectedLook, select, clear: clearSelection, showOnMap, pickEvent } = useSelection({
     raid,
     state,
     everything,
@@ -621,8 +621,18 @@ export function App() {
             state={state}
             catalog={catalog}
             questNeeds={questNeeds}
+            row={selectedRow}
+            local={viewpoint}
             look={selectedLook}
             history={timeline && range && at !== null ? { timeline, at, start: range[0], onPick: pickEvent } : null}
+            entries={entries}
+            carried={selection.kind === "player" ? carried.get(selection.id) : undefined}
+            tracked={tracked}
+            debugOpen={mapPrefs.debugDetails}
+            trail={selection.kind === "player" && timeline ? { on: trailPrefs.selected, toggle: () => setTrailPrefs((t) => ({ ...t, selected: !t.selected })) } : null}
+            onCentre={() => showOnMap(selection)}
+            onWatch={addEntry}
+            onClose={clearSelection}
           />
         )}
       </main>

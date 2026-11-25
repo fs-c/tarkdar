@@ -21,13 +21,15 @@ export interface MapPrefs extends MapSettings {
   coordinatePick: boolean;
   /** Up close, players are drawn as figures from their skeleton (3D map). */
   bodies: boolean;
+  /** The details card's Debug section starts unfolded. */
+  debugDetails: boolean;
 }
 
 const MAP_STYLES: readonly MapStyle[] = ["realistic", "plan"];
 const MAP_CONTROLS: readonly MapSettings["controls"][] = ["map", "wasd"];
 const PROJECTIONS: readonly Projection[] = ["auto", "perspective", "orthographic"];
 
-const mapDefaults = (): MapPrefs => ({ ...DEFAULT_MAP_SETTINGS, customPalette: null, coordinatePick: false, bodies: true });
+const mapDefaults = (): MapPrefs => ({ ...DEFAULT_MAP_SETTINGS, customPalette: null, coordinatePick: false, bodies: true, debugDetails: false });
 /** Palettes stored before a colour was added get the default's, and so does any colour that isn't "#rrggbb". */
 function fullPalette(p: unknown): PlanPalette {
   const out = { ...DEFAULT_MAP_SETTINGS.palette };

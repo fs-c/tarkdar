@@ -31,6 +31,9 @@ export function DebugSections(p: DebugProps) {
   const toggle = (key: keyof MapPrefs) => () => p.onPrefs((m) => ({ ...m, [key]: !m[key] }));
   return (
     <>
+      <Section title="Debug · Details">
+        <ToggleRow label="Debug info in the details" hint="Open by default" checked={p.prefs.debugDetails} onChange={toggle("debugDetails")} />
+      </Section>
       <QuestSection report={p.quests} duplicates={p.duplicates} />
       {p.mapShown && (
         <Section title="Debug · Map">

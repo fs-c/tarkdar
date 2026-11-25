@@ -2,26 +2,76 @@
 .details {
   box-sizing: border-box; overflow: auto; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r);
   background: var(--overlay-surface); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); box-shadow: var(--shadow-pop);
+  font-size: var(--fs-md);
 }
-.title { margin: 0 0 6px; font-size: var(--fs-lg); }
-.heading { margin: 10px 0 4px; color: var(--muted); font-size: var(--fs-xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
-.label { color: var(--muted); }
 
-.items {
-  margin: 0; padding-left: 16px;
-  & li { margin: 1px 0; font: var(--fs-sm) var(--mono); }
+/* Title: colour dot, name, a state chip, close. */
+.title { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 15px; font-weight: 600; }
+.name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.close { flex: none; margin: -4px -6px -4px auto; }
+.bold { font-weight: 700; }
+.id { color: var(--faint); font-weight: 400; }
+.quest { color: var(--quest); }
+.dot { display: inline-block; flex: none; width: 8px; height: 8px; margin-right: 1px; border-radius: 50%; }
+.title .dot { margin-right: 2px; }
+.list .dot { margin-right: 7px; }
+.pip { display: inline-block; flex: none; width: 7px; height: 7px; margin: 0 6px 1px 1px; transform: rotate(45deg); vertical-align: middle; }
+.chip {
+  flex: none; margin-left: 6px; padding: 1px 7px; border-radius: 9px; background: var(--control); color: var(--muted);
+  font-size: var(--fs-xs); font-weight: 400;
+  .title & { margin-left: 2px; }
 }
+
+/* The line under the title: what it is, its state, distance, value. */
+.sub { margin: 3px 0 8px; color: var(--muted); & > span { vertical-align: baseline; } }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+.gap { margin-top: 10px; }
+
+.heading { margin: 12px 0 4px; color: var(--faint); font-size: var(--fs-sm); font-weight: 600; }
+.list {
+  margin: 0; padding: 0; list-style: none;
+  & li { padding: 1px 0; }
+}
+.kv {
+  display: grid; grid-template-columns: 70px 1fr; gap: 1px 8px;
+  & > span { overflow-wrap: anywhere; }
+  & > span:nth-child(odd) { color: var(--muted); }
+}
+
+/* Folded sections: All equipment, Debug. */
+.fold, .debug {
+  margin-top: 10px; color: var(--muted);
+  & > summary { cursor: pointer; color: var(--faint); font-size: var(--fs-sm); &:hover { color: var(--muted); } }
+}
+.debug > .kv { margin-top: 4px; font-size: var(--fs-sm); }
+.items {
+  margin: 4px 0 0; padding-left: 14px;
+  .fold > & { padding-left: 0; list-style: none; }
+  & li { margin: 1px 0; font-size: var(--fs-sm); color: var(--text); }
+  & ul li { color: #b3bdc5; }
+}
+
+.acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
 
 .history {
   max-height: 160px; overflow: auto; margin: 4px 0 0; padding: 0; list-style: none;
   & li { margin: 1px 0; }
 }
 .event {
-  color: var(--text); font-size: var(--fs-sm);
+  color: var(--text); font-size: var(--fs-sm); text-align: left;
   &:hover { color: var(--link); }
   &[data-tone="death"] { color: var(--danger-text); }
   &[data-future="true"] { opacity: 0.45; }
 }
 .time { color: var(--faint); font: var(--fs-xs) var(--mono); }
-.look { margin: 0; padding: 0; list-style: none; }
+
+/* Debug: the rules behind the look. */
+.look {
+  display: grid; grid-template-columns: 70px 1fr; gap: 1px 8px; margin-top: 1px; font-size: var(--fs-sm);
+  & > div, & > ul { grid-column: 2; }
+  & ul { margin: 0; padding: 0; list-style: none; }
+}
+.lookKey { grid-row: span 3; }
+.lookRule { color: var(--text); }
 .overridden { color: var(--faint); text-decoration: line-through; }

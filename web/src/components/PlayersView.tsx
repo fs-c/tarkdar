@@ -163,15 +163,15 @@ function PlayerLine({ p, from, marks, selected, onActivate, onHover }: LineProps
 export type Viewpoint = { pos: WorldPos; yaw: number } | null;
 
 /** "↗ 34 m": the distance, and an arrow pointing at it from where you look (up: ahead); the farther,
- *  the dimmer. */
-export function Distance({ row, from }: { row: { dist?: number; pos: WorldPos | null; dh?: number }; from: Viewpoint }) {
+ *  the dimmer (`plain`: not dimmed, in the text's colour). */
+export function Distance({ row, from, plain = false }: { row: { dist?: number; pos: WorldPos | null; dh?: number }; from: Viewpoint; plain?: boolean }) {
   if (row.dist === undefined) return null;
   const d = row.dist;
-  const fade = Math.max(0.4, Math.min(1, 1.15 - d / 400));
+  const fade = plain ? undefined : Math.max(0.4, Math.min(1, 1.15 - d / 400));
   // The direction to it (0 = +z, 90 = +x, like yaw), relative to where you look.
   const bearing = from && row.pos ? (Math.atan2(row.pos[0] - from.pos[0], row.pos[2] - from.pos[2]) * 180) / Math.PI - from.yaw : null;
   return (
-    <span className={v.far} style={{ opacity: fade }} title={row.dh !== undefined && Math.abs(row.dh) >= 2 ? `${Math.round(Math.abs(row.dh))} m ${row.dh > 0 ? "above" : "below"} you` : undefined}>
+    <span className={cx(v.far, plain && v.plain)} style={{ opacity: fade }} title={row.dh !== undefined && Math.abs(row.dh) >= 2 ? `${Math.round(Math.abs(row.dh))} m ${row.dh > 0 ? "above" : "below"} you` : undefined}>
       {bearing !== null && d >= 1 && (
         <svg className={v.arrow} viewBox="0 0 24 24" style={{ transform: `rotate(${bearing}deg)` }} aria-hidden="true">
           <path d="M12 3l6 16-6-4-6 4z" />

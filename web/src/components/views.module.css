@@ -47,6 +47,7 @@
 /* Distance with an arrow pointing at it (from where you look); the farther, the dimmer. */
 .far { display: inline-flex; align-items: center; gap: 4px; color: #74818b; font-variant-numeric: tabular-nums; }
 .arrow { width: 10px; height: 10px; flex: none; fill: #56626b; }
+.far.plain { color: inherit; & .arrow { fill: currentColor; } }
 .pip { display: inline-block; width: 7px; height: 7px; margin: 0 0 1px 6px; transform: rotate(45deg); vertical-align: middle; }
 
 /* Players: the name, then the distance right after it. The dead and those who left: struck through. */

@@ -48,5 +48,5 @@ export function useSelection({ raid, state, everything, rules, catalog, hidden, 
     centerOn(d.pos);
   };
 
-  return { selection, selectedLook, select, clear, showOnMap, pickEvent };
+  return { selection, selectedRow, selectedLook, select, clear, showOnMap, pickEvent };
 }

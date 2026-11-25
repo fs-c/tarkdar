@@ -83,10 +83,15 @@ export const isSpecific = (n: QuestNeed): boolean => n.of <= SPECIFIC_ITEMS;
 
 /** "Shooter Born in Heaven (×3, FIR)", "Charity (2/5, FIR, have 1)", "First in Line (×3, any of 60, have all)". */
 export function formatQuestNeed(n: QuestNeed): string {
+  const extra = questNeedExtra(n);
+  return extra ? `${n.quest} (${extra})` : n.quest;
+}
+
+/** What formatQuestNeed puts in brackets: "×3, FIR", "1/2, have 1"; "" for none. */
+export function questNeedExtra(n: QuestNeed): string {
   const amount = n.progress ? `${n.progress}/${n.count}` : n.count > 1 ? `×${n.count}` : "";
   const have = n.covered ? "have all" : n.have ? `have ${n.have}` : "";
-  const extra = [amount, n.fir ? "FIR" : "", n.of > 1 ? `any of ${n.of}` : "", have].filter(Boolean).join(", ");
-  return extra ? `${n.quest} (${extra})` : n.quest;
+  return [amount, n.fir ? "FIR" : "", n.of > 1 ? `any of ${n.of}` : "", have].filter(Boolean).join(", ");
 }
 
 const itemsKey = (items: readonly string[]) => [...items].sort().join(",");

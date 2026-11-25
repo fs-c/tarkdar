@@ -25,7 +25,7 @@ const state = {
     loot(11, "item", "bolts"),
     loot(12, "quest", "unknown"),
     loot(20, "container", "578f8782245977354405a1e3"),
-    loot(21, "corpse", "", { contents: [{ tpl: "m4", slot: "FirstPrimaryWeapon" }, { tpl: "helmet", slot: "Headwear" }] }),
+    loot(21, "corpse", "", { contents: [{ tpl: "m4", slot: "FirstPrimaryWeapon" }, { tpl: "helmet", slot: "Headwear", fir: true }] }),
   ],
   exfils: [{ id: 1, kind: "regular" as const, name: "Gate 3", status: 4, pos: null }],
   explosives: { grenades: [{ id: 1, pos: [1, 0, 1] as [number, number, number] }], tripwires: [{ id: 1, from: [0, 0, 0] as [number, number, number], to: [4, 0, 0] as [number, number, number] }] },
@@ -177,12 +177,16 @@ describe("carried quest items", () => {
   const needs = questNeeds([{ id: "q", status: 2, done: [], kind: "side", name: "Gunsmith", objectives: [{ id: "o", type: "handover", items: ["helmet"], count: 1, fir: true }] }])!.items;
 
   it("mark players (but you) and corpses that carry what a quest needs", () => {
-    const equipment = new Map([[1, { id: 1, slots: [{ tpl: "helmet" }] }], [3, { id: 3, slots: [{ tpl: "helmet" }] }]]);
+    const equipment = new Map([[1, { id: 1, slots: [{ tpl: "helmet", fir: true }] }], [3, { id: 3, slots: [{ tpl: "helmet", fir: true }] }]]);
     const players = playerRows(state.players, equipment, catalog, needs);
     expect(players[0]!.questNeeded).toBeUndefined(); // you
     expect(players[2]).toMatchObject({ questNeeded: true, questKinds: ["side"], questNeeds: ["Gunsmith (FIR)"] });
     const corpse = lootRows(state.loot, catalog, new Map(), needs).containers.find((r) => r.kind === "corpse")!;
     expect(corpse).toMatchObject({ questNeeded: true, questNeeds: ["Gunsmith (FIR)"] });
+    // brought into the raid, not found there: looting it doesn't make it FIR
+    const brought = playerRows(state.players, new Map([[3, { id: 3, slots: [{ tpl: "helmet" }] }]]), catalog, needs)[2]!;
+    expect(brought.questNeeded).toBeUndefined();
+    expect(brought.questFir).toBeUndefined();
     expect(playerRows(state.players, state.equipment, catalog, needs)[2]!.questNeeded).toBeUndefined(); // only an m4
   });
 });

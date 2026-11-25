@@ -9,6 +9,7 @@ node_modules/
 /web/dist/
 *.jsonl
 /recordings/
+*.tsbuildinfo
 
 # Large data files live in the asset store, listed in assets.json (tools/assets.py pull).
 .assets.env

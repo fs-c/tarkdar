@@ -214,7 +214,8 @@ function Line({ label, value }: { label: string; value: string }) {
 function NeededSection(props: { nodes: ItemNode[] | undefined; catalog: ItemCatalog; questNeeds: Props["questNeeds"] }) {
   const { nodes, catalog, questNeeds } = props;
   if (!nodes?.length || !questNeeds.size) return null;
-  const items = carriedNeededItems(carried(nodes, catalog).tpls, questNeeds);
+  const c = carried(nodes, catalog);
+  const items = carriedNeededItems(c.tpls, questNeeds, c.fir);
   if (!items.length) return null;
   return (
     <>
@@ -264,6 +265,7 @@ function ItemTree({ nodes, catalog }: { nodes: ItemNode[]; catalog: ItemCatalog 
             {n.slot && <span className={s.label}>{n.slot}: </span>}
             <span title={info ? `${info.name}\n${n.tpl}` : undefined}>{info?.shortName ?? n.tpl}</span>
             {!!n.count && n.count > 1 && <span className="muted"> ×{n.count}</span>}
+            {n.fir && <span className="muted" title="found in raid (Item.SpawnedInSession)"> FIR</span>}
             {!!info?.price && (
               <Price base={base}>{` ${formatPrice(info.price * (n.count ?? 1))}`}</Price>
             )}

@@ -138,13 +138,24 @@ describe("carriedNeeds", () => {
       quest("a", [obj("o1", "handover", ["ushanka", "kolpak"], { count: 2, fir: true })]),
       quest("b", [obj("o2", "find", broad)]),
     ])!.items;
-    expect(carriedNeeds(["rig", "ushanka", "kolpak"], needs).map(formatQuestNeed)).toEqual(["Quest (×2, FIR, any of 2)"]);
+    expect(carriedNeeds(["rig", "ushanka", "kolpak"], needs, new Map([["kolpak", 1]])).map(formatQuestNeed)).toEqual(["Quest (×2, FIR, any of 2)"]);
     expect(carriedNeeds(["med0"], needs)).toEqual([]);
+  });
+
+  it("found-in-raid objectives only count for carried copies that are found in raid", () => {
+    const needs = questNeeds([
+      quest("a", [obj("o1", "handover", ["ushanka"], { count: 1, fir: true })]),
+      quest("b", [obj("o2", "handover", ["kolpak"], { count: 1 })]),
+    ])!.items;
+    expect(carriedNeeds(["ushanka"], needs)).toEqual([]); // brought into the raid: not FIR
+    expect(carriedNeeds(["ushanka", "ushanka"], needs, new Map([["ushanka", 1]]))).toHaveLength(1);
+    expect(carriedNeeds(["kolpak"], needs).map(formatQuestNeed)).toEqual(["Quest"]); // no FIR needed
+    expect(carriedNeededItems(["ushanka", "kolpak"], needs).map((g) => g.tpl)).toEqual(["kolpak"]);
   });
 
   it("names the carried items behind them, with how many are carried", () => {
     const needs = questNeeds([quest("a", [obj("o1", "handover", ["ushanka", "kolpak"], { count: 2, fir: true })])])!.items;
-    const got = carriedNeededItems(["kolpak", "rig", "ushanka", "kolpak"], needs);
+    const got = carriedNeededItems(["kolpak", "rig", "ushanka", "kolpak", "ushanka"], needs, new Map([["kolpak", 2], ["ushanka", 1]]));
     expect(got.map((g) => [g.tpl, g.count, g.needs.map(formatQuestNeed)])).toEqual([
       ["kolpak", 2, ["Quest (×2, FIR, any of 2)"]],
       ["ushanka", 1, ["Quest (×2, FIR, any of 2)"]],

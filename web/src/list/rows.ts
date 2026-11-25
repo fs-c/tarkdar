@@ -8,7 +8,7 @@ import { type ItemCatalog, containerName, equipmentValue, slotValue } from "../m
 import { exfilStatus } from "../model/exfils";
 import { type Selection, midpoint, selectionKey } from "../draw/pick";
 import type { Exfil, ExplosivesData, ItemNode, LootEntry, Player, PlayerEquipment, Vehicle, WorldPos } from "../model/protocol";
-import { type NeedKind, type QuestNeed, carriedNeeds, formatQuestNeed, isOpen, neededKinds, needsFir } from "../model/quests";
+import { type FirCounts, type NeedKind, type QuestNeed, carriedNeeds, formatQuestNeed, isOpen, neededKinds, needsFir } from "../model/quests";
 import { type PlayerType, SPECIAL_TYPES, bossGroups, identityText, playerType } from "../model/roles";
 
 export type TabId = "players" | "items" | "containers" | "exfils";
@@ -45,7 +45,7 @@ export interface RowBase {
    *  corpses: they carry such an item (the "Carrying needed items" rule). */
   questNeeded?: boolean;
   /** One of those needs is found-in-raid (quest items: any), so buying won't do: `is:fir`, what the
-   *  default rules highlight. Gear taken off a body is found in raid, so carried items count. */
+   *  default rules highlight. Carried items only count for it if they are found in raid themselves. */
   questFir?: boolean;
   /** The kinds of quest those needs are for: `quest:story` etc. */
   questKinds?: readonly NeedKind[];
@@ -138,31 +138,36 @@ function base(sel: Selection, subject: SubjectKind, pos: WorldPos | null, search
   return { key: selectionKey(sel), sel, subject, pos, search, tpls };
 }
 
-/** Templates and names of everything in an item tree (equipment), for matching and search. */
-export function carried(nodes: ItemNode[] | undefined, catalog: ItemCatalog): { tpls: string[]; names: string[] } {
+/** Templates and names of everything in an item tree (equipment), for matching and search, and how
+ *  many copies of each template are found in raid. */
+export function carried(nodes: ItemNode[] | undefined, catalog: ItemCatalog): { tpls: string[]; names: string[]; fir: FirCounts } {
   const tpls: string[] = [];
   const names: string[] = [];
+  const fir = new Map<string, number>();
   const walk = (ns: ItemNode[]) => {
     for (const n of ns) {
       tpls.push(n.tpl);
+      if (n.fir) fir.set(n.tpl, (fir.get(n.tpl) ?? 0) + 1);
       const info = catalog.lookup(n.tpl);
       if (info) names.push(info.name, info.shortName);
       if (n.items?.length) walk(n.items);
     }
   };
   if (nodes) walk(nodes);
-  return { tpls, names };
+  return { tpls, names, fir };
 }
 
 interface Gear {
   readonly tpls: readonly string[];
+  /** Template → found-in-raid copies carried (carried()). */
+  readonly fir: FirCounts;
   /** The carried items' names, for the search text. */
   readonly text: string;
   /** equipmentValue; undefined when nothing was read or it's worth nothing known. */
   readonly value: number | undefined;
 }
 
-const NO_GEAR: Gear = { tpls: NO_TPLS, text: "", value: undefined };
+const NO_GEAR: Gear = { tpls: NO_TPLS, fir: new Map(), text: "", value: undefined };
 /** Per catalogue, per item tree: equipment arrives far less often than positions (a new tree only
  *  with a new equipment message), so a players tick reuses what the last one worked out. */
 const gearCache = new WeakMap<ItemCatalog, WeakMap<ItemNode[], Gear>>();
@@ -174,8 +179,8 @@ function gearOf(nodes: ItemNode[] | undefined, catalog: ItemCatalog): Gear {
   if (!byTree) gearCache.set(catalog, (byTree = new WeakMap()));
   let gear = byTree.get(nodes);
   if (!gear) {
-    const { tpls, names } = carried(nodes, catalog);
-    byTree.set(nodes, (gear = { tpls, text: text(...names), value: equipmentValue(nodes, catalog) || undefined }));
+    const { tpls, names, fir } = carried(nodes, catalog);
+    byTree.set(nodes, (gear = { tpls, fir, text: text(...names), value: equipmentValue(nodes, catalog) || undefined }));
   }
   return gear;
 }
@@ -200,7 +205,7 @@ function gearNeeds(gear: Gear, needs: NeedsMap): GearNeeds {
   if (!byGear) gearNeedsCache.set(needs, (byGear = new WeakMap()));
   let out = byGear.get(gear);
   if (!out) {
-    const list = carriedNeeds(gear.tpls, needs);
+    const list = carriedNeeds(gear.tpls, needs, gear.fir);
     const kinds = neededKinds(list, true);
     const names = questNamesOf(list);
     out = list.length ? { questNeeds: list.map(formatQuestNeed), questNeeded: true, ...(needsFir(list, true) ? { questFir: true } : {}), questKinds: kinds, ...(names.length ? { questNames: names } : {}) } : NOT_NEEDED;

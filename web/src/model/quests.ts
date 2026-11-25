@@ -261,13 +261,25 @@ export function needsFir(needs: readonly QuestNeed[] | undefined, questItem: boo
   return !!needs?.some((n) => isOpen(n) && (questItem || (isSpecific(n) && n.fir)));
 }
 
+/** Template id → how many of the carried copies are found in raid (Item.SpawnedInSession). */
+export type FirCounts = ReadonlyMap<string, number>;
+const NO_FIR: FirCounts = new Map();
+
+/** The needs a carried template counts for: specific open ones; a found-in-raid objective only if
+ *  a copy is found in raid (looting a body doesn't make its gear FIR, what it brought in isn't). */
+function carriedFor(tpl: string, needs: ReadonlyMap<string, readonly QuestNeed[]>, fir: FirCounts): QuestNeed[] {
+  const anyFir = (fir.get(tpl) ?? 0) > 0;
+  return (needs.get(tpl) ?? []).filter((n) => isOpen(n) && isSpecific(n) && (!n.fir || anyFir));
+}
+
 /**
  * The carried items behind carriedNeeds: each template a quest needs (in the order first carried),
- * how many of it are carried, and the needs it's for.
+ * how many of it count (only the FIR copies if every need it's for is found-in-raid), and the needs.
  */
 export function carriedNeededItems(
   tpls: readonly string[],
   needs: ReadonlyMap<string, readonly QuestNeed[]>,
+  fir: FirCounts = NO_FIR,
 ): { tpl: string; count: number; needs: QuestNeed[] }[] {
   if (!needs.size) return [];
   const out = new Map<string, { tpl: string; count: number; needs: QuestNeed[] }>();
@@ -277,19 +289,21 @@ export function carriedNeededItems(
       hit.count++;
       continue;
     }
-    const list = (needs.get(tpl) ?? []).filter((n) => isOpen(n) && isSpecific(n));
+    const list = carriedFor(tpl, needs, fir);
     if (list.length) out.set(tpl, { tpl, count: 1, needs: list });
   }
+  for (const e of out.values()) if (e.needs.every((n) => n.fir)) e.count = Math.min(e.count, fir.get(e.tpl) ?? 0);
   return [...out.values()];
 }
 
 /**
  * What a player or corpse carries that a started quest needs: the needs specific enough to highlight
- * (isSpecific), one per objective. Gear taken off a body is found in raid, so FIR objectives count.
+ * (isSpecific), one per objective. Found-in-raid objectives only count for carried copies that are
+ * found in raid (`fir`): what a PMC brought into the raid stays not FIR when looted.
  */
-export function carriedNeeds(tpls: readonly string[], needs: ReadonlyMap<string, readonly QuestNeed[]>): QuestNeed[] {
+export function carriedNeeds(tpls: readonly string[], needs: ReadonlyMap<string, readonly QuestNeed[]>, fir: FirCounts = NO_FIR): QuestNeed[] {
   if (!needs.size) return [];
   const out = new Set<QuestNeed>();
-  for (const tpl of tpls) for (const n of needs.get(tpl) ?? []) if (isOpen(n) && isSpecific(n)) out.add(n);
+  for (const tpl of new Set(tpls)) for (const n of carriedFor(tpl, needs, fir)) out.add(n);
   return [...out];
 }

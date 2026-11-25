@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { History, Loader, Play, RefreshCw, TriangleAlert, Unplug } from "lucide-react";
 import { type RadarState, wsUrl } from "../stream/connection";
 import { useCatalog } from "../model/useCatalog";
@@ -111,8 +111,11 @@ export function App() {
   const map = (locationId ? findMap(mapIndex, locationId) : undefined) ?? null;
   const radar = useRef<RadarHandle>(null);
   const [mapStatus, setMapStatus] = useState<MapStatus>({ progress: null, error: null });
-  /** How far the sidebar card reaches into the map (px): the map's controls start right of it. */
-  const [cover, setCover] = useState(0);
+  /** How far the sidebar card reaches into the map (px): the map's controls start right of it, and
+   *  its middle moves with it. Set straight on <main> (--cover), as it changes every frame while the
+   *  panel unfolds or folds: the map follows, nothing else needs to render. */
+  const mainRef = useRef<HTMLElement>(null);
+  const setCover = useCallback((px: number) => mainRef.current?.style.setProperty("--cover", `${px}px`), []);
   const [follow, setFollow] = useState(true);
   // While following: the map turns with the local player's view direction.
   const [followHeading, setFollowHeading] = useState(false);
@@ -547,7 +550,7 @@ export function App() {
 
   return (
     <div className={s.app}>
-      <main className={cx(s.main, f.area)} data-style-switch={!!(map || inRaid || review)} data-details={!!selection} style={{ "--cover": `${cover}px` } as React.CSSProperties}>
+      <main className={cx(s.main, f.area)} data-style-switch={!!(map || inRaid || review)} data-details={!!selection} ref={mainRef}>
         <Suspense fallback={null}>
           <Radar
             ref={radar}
@@ -625,11 +628,9 @@ export function App() {
       </main>
       <SidebarCard onCover={setCover}>
         <ActivityBar active={ui.open ? view : null} onPick={pickView} badges={badges} notes={{ raids: liveRaid ? "a raid is live" : review ? "replaying" : "", settings: statusWarn ? "something needs attention (Status)" : "" }} />
-        {ui.open && (
-          <SidePanel view={view} onClose={togglePanel}>
-            {panel}
-          </SidePanel>
-        )}
+        <SidePanel open={ui.open} view={view} onClose={togglePanel}>
+          {panel}
+        </SidePanel>
       </SidebarCard>
     </div>
   );

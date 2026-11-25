@@ -217,7 +217,7 @@ export class Map3D {
   /** Puts a stage on screen, its camera framing `bounds`. */
   private start(stage: Stage, bounds: Bounds): void {
     this.stage = stage;
-    this.resize();
+    stage.setSize(this.container.clientWidth, this.container.clientHeight);
     stage.frame(bounds, this.up);
     this.expectedTarget.copy(stage.controls.target);
     this.expectedHeading = stage.heading();
@@ -305,10 +305,15 @@ export class Map3D {
     this.requestRender();
   }
 
+  /**
+   * Resizing clears the canvas, so the map is rendered again right away, before the page is painted:
+   * while the size keeps changing (the sidebar folding, its sash dragged) no frame shows it blank.
+   */
   private resize(): void {
     if (!this.stage) return;
     this.stage.setSize(this.container.clientWidth, this.container.clientHeight);
-    this.requestRender();
+    if (this.ticking) this.requestRender();
+    else this.renderNow();
   }
 
   /** Ask for the map to be rendered; several requests before the next animation frame make one. */

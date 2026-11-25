@@ -1,9 +1,10 @@
 // Navigation: one frosted card floating over the map's left edge (SidebarCard), with an
 // always-visible rail of icons and a collapsible panel showing the picked view. Clicking the active
-// icon collapses the panel.
+// icon collapses the panel; it unfolds and folds away (the card's edge, and with it the map's middle,
+// moving along). Switching views, the rail's accent mark slides to the new icon and the view slides in.
 
 import { Binoculars, ChevronLeft, DoorOpen, History, type LucideIcon, Package, Settings, Users } from "lucide-react";
-import { type PointerEvent, type ReactNode, useLayoutEffect, useRef } from "react";
+import { type PointerEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, useSidebarSize } from "../persist/prefs";
 import type { Section } from "../persist/prefs";
 import { Button, cx } from "../ui";
@@ -54,12 +55,39 @@ interface ActivityBarProps {
 }
 
 export function ActivityBar({ active, onPick, badges, notes = {} }: ActivityBarProps) {
+  const navRef = useRef<HTMLElement>(null);
+  const markRef = useRef<HTMLSpanElement>(null);
+  // The accent mark beside the active icon: one for the rail, so it slides from icon to icon (and
+  // keeps its place while the panel is folded, popping in there again).
+  const placed = useRef(false);
+  useLayoutEffect(() => {
+    const nav = navRef.current!, mark = markRef.current!;
+    const place = () => {
+      const button = active && nav.querySelector<HTMLElement>(`[data-view="${active}"]`);
+      const top = button ? `${button.offsetTop + MARK_INSET}px` : mark.style.top;
+      // The first time, straight there (popping in still): no sliding down from the rail's top.
+      if (!placed.current) mark.style.transition = "transform 0.2s ease, opacity 0.2s ease";
+      mark.dataset.on = String(!!button);
+      mark.style.top = top;
+      if (!placed.current) {
+        void mark.offsetTop; // the place without transition, before it's turned back on
+        mark.style.transition = "";
+        placed.current = !!button;
+      }
+    };
+    place();
+    const observer = new ResizeObserver(place); // the settings icon moves with the window's height
+    observer.observe(nav);
+    return () => observer.disconnect();
+  }, [active]);
+
   const item = (v: ViewId) => {
     const Icon = ICONS[v];
     const badge = badges[v];
     return (
       <button
         key={v}
+        data-view={v}
         className={s.activity}
         aria-pressed={v === active}
         title={VIEW_TITLES[v] + (notes[v] ? ` · ${notes[v]}` : "") + (v === active ? " (click to fold)" : "")}
@@ -73,7 +101,8 @@ export function ActivityBar({ active, onPick, badges, notes = {} }: ActivityBarP
     );
   };
   return (
-    <nav className={s.activityBar}>
+    <nav ref={navRef} className={s.activityBar}>
+      <span ref={markRef} className={s.mark} />
       {TOP.map(item)}
       <div className={s.spacer} />
       {item("settings")}
@@ -81,11 +110,16 @@ export function ActivityBar({ active, onPick, badges, notes = {} }: ActivityBarP
   );
 }
 
+/** The accent mark's distance from its icon's top and bottom edges (px). */
+const MARK_INSET = 11;
+
 function compact(n: number): string {
   return n > 999 ? `${Math.floor(n / 1000)}k` : String(n);
 }
 
 interface SidePanelProps {
+  /** Unfolded; folded, the panel takes no room (but stays on screen while it folds away). */
+  open: boolean;
   view: ViewId;
   onClose: () => void;
   children: ReactNode;
@@ -95,14 +129,50 @@ interface SidePanelProps {
 const MIN_WIDTH = MIN_SIDEBAR_WIDTH;
 /** Room always left for the map. */
 const MAP_MIN = 160;
+/** The rail's order, top to bottom. */
+const ORDER: ViewId[] = [...TOP, "settings"];
+/** Switching views: the new one comes in quickly and settles. */
+const SETTLE = "cubic-bezier(0.2, 0.8, 0.3, 1)";
 
-export function SidePanel({ view, onClose, children }: SidePanelProps) {
+export function SidePanel({ open, view, onClose, children }: SidePanelProps) {
   const [{ width }, setSize] = useSidebarSize();
   const drag = useRef<{ x: number; width: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  // On screen: unfolded, or still folding away.
+  const [shown, setShown] = useState(open);
+  if (open && !shown) setShown(true);
+  useEffect(() => {
+    if (open) return;
+    // Gone once folded (at once without motion). Unfolded again before that: it stays.
+    let live = true;
+    Promise.all(drawerRef.current!.getAnimations().map((a) => a.finished)).then(
+      () => live && setShown(false),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [open]);
+
+  // Switching views: the new one slides in from the side of the rail its icon is on (below, above).
+  // Not as it unfolds: that's motion enough.
+  const last = useRef({ view, open });
+  useLayoutEffect(() => {
+    const { view: from, open: wasOpen } = last.current;
+    last.current = { view, open };
+    const panel = panelRef.current;
+    if (from === view || !wasOpen || !open || !panel || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const dir = Math.sign(ORDER.indexOf(view) - ORDER.indexOf(from));
+    const [header, ...body] = panel.children;
+    header?.querySelector("h2")?.animate([{ opacity: 0, transform: `translateY(${dir * 6}px)` }, {}], { duration: 200, easing: SETTLE });
+    for (const el of body) el.animate([{ opacity: 0, transform: `translateY(${dir * 10}px)` }, {}], { duration: 240, delay: 30, easing: SETTLE, fill: "backwards" });
+  }, [view, open]);
 
   const onSashDown = (e: PointerEvent) => {
     drag.current = { x: e.clientX, width: panelRef.current?.offsetWidth ?? width };
+    setDragging(true);
     e.currentTarget.setPointerCapture(e.pointerId);
   };
   const onSashMove = (e: PointerEvent) => {
@@ -112,27 +182,40 @@ export function SidePanel({ view, onClose, children }: SidePanelProps) {
     const max = window.innerWidth - left - MAP_MIN;
     setSize({ width: Math.round(Math.max(MIN_WIDTH, Math.min(max, d.width + e.clientX - d.x))) });
   };
+  const onSashUp = () => {
+    drag.current = null;
+    setDragging(false);
+  };
 
+  // The drawer clips the panel, which keeps its width: folding, the view slides away instead of squeezing.
   return (
-    <aside ref={panelRef} className={s.sidebar} style={{ width }}>
-      <div
-        className={s.sash}
-        role="separator"
-        aria-orientation="vertical"
-        title="Drag to resize, double-click to reset"
-        onPointerDown={onSashDown}
-        onPointerMove={onSashMove}
-        onPointerUp={() => (drag.current = null)}
-        onPointerCancel={() => (drag.current = null)}
-        onDoubleClick={() => setSize({ width: DEFAULT_SIDEBAR_WIDTH })}
-      />
-      <header className={s.header}>
-        <h2 className={s.title}>{VIEW_TITLES[view]}</h2>
-        <Button variant="icon" title="Fold the panel" onClick={onClose}>
-          <ChevronLeft size={16} />
-        </Button>
-      </header>
-      {children}
-    </aside>
+    <>
+      <div ref={drawerRef} className={s.drawer} data-dragging={dragging} style={{ width: open ? width : 0 }}>
+        {shown && (
+          <aside ref={panelRef} className={s.sidebar} style={{ width }} inert={!open}>
+            <header className={s.header}>
+              <h2 className={s.title}>{VIEW_TITLES[view]}</h2>
+              <Button variant="icon" title="Fold the panel" onClick={onClose}>
+                <ChevronLeft size={16} />
+              </Button>
+            </header>
+            {children}
+          </aside>
+        )}
+      </div>
+      {open && (
+        <div
+          className={s.sash}
+          role="separator"
+          aria-orientation="vertical"
+          title="Drag to resize, double-click to reset"
+          onPointerDown={onSashDown}
+          onPointerMove={onSashMove}
+          onPointerUp={onSashUp}
+          onPointerCancel={onSashUp}
+          onDoubleClick={() => setSize({ width: DEFAULT_SIDEBAR_WIDTH })}
+        />
+      )}
+    </>
   );
 }

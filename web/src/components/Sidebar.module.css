@@ -9,7 +9,7 @@
 
 /* ---- the rail ---- */
 .activityBar {
-  flex: none; width: var(--rail-w); box-sizing: border-box; padding: 6px 0;
+  position: relative; flex: none; width: var(--rail-w); box-sizing: border-box; padding: 6px 0;
   display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
 .spacer { flex: 1; }
@@ -18,8 +18,15 @@
   &:hover { color: var(--text); background: var(--hover); }
   &[aria-pressed="true"] {
     color: var(--text); background: var(--press);
-    &::before { content: ""; position: absolute; left: -6px; top: 11px; bottom: 11px; width: 3px; border-radius: 0 2px 2px 0; background: var(--accent); }
   }
+}
+/* The accent mark beside the active icon (placed by ActivityBar): it slides from icon to icon, and
+   pops in and out as the panel unfolds and folds. */
+.mark {
+  position: absolute; left: 0; top: 0; z-index: 1; width: 3px; height: calc(40px - 2 * 11px); border-radius: 0 2px 2px 0; background: var(--accent);
+  pointer-events: none; transform: scaleY(0); opacity: 0;
+  transition: top 0.22s ease-out, transform 0.2s ease, opacity 0.2s ease;
+  &[data-on="true"] { transform: none; opacity: 1; }
 }
 .badge {
   position: absolute; right: 1px; bottom: 3px; min-width: 15px; height: 15px; box-sizing: border-box; padding: 0 4px;
@@ -33,13 +40,22 @@
 }
 
 /* ---- the panel ---- */
-/* Width set inline (resizable); the max keeps some map visible when the window shrinks after a resize. */
-.sidebar {
-  position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 260px; box-sizing: border-box;
+/* Width set inline (resizable, 0 folded), and eased: unfolding and folding away, the card's right edge
+   moves and the map's middle with it (App, Radar.module.css). Not while the sash is dragged: it
+   follows the pointer. The max keeps some map visible when the window shrinks after a resize. */
+.drawer {
+  flex: none; display: flex; min-height: 0; overflow: hidden; border-radius: 0 var(--r) var(--r) 0;
   max-width: calc(100vw - var(--rail-w) - 2 * var(--gap) - 160px);
-  border-left: 1px solid var(--border); border-radius: 0 var(--r) var(--r) 0;
+  transition: width 0.2s ease;
+  &[data-dragging="true"] { transition: none; }
 }
-/* Drag handle over the card's right edge. */
+/* The panel keeps its width (set inline too) while the drawer clips it, so its content never reflows. */
+.sidebar {
+  position: relative; flex: none; display: flex; flex-direction: column; min-height: 0; min-width: 260px; box-sizing: border-box;
+  max-width: calc(100vw - var(--rail-w) - 2 * var(--gap) - 160px);
+  border-left: 1px solid var(--border);
+}
+/* Drag handle over the card's right edge (placed in the card, beside the drawer, which would clip it). */
 .sash {
   position: absolute; top: var(--r); bottom: var(--r); right: -4px; z-index: 2; width: 6px; cursor: ew-resize; touch-action: none; border-radius: 3px;
   &:hover, &:active { background: var(--accent); transition: background 0.1s 0.15s; }
@@ -47,3 +63,6 @@
 /* A view's title: level with the rail's first icon. */
 .header { display: flex; flex: none; align-items: center; height: 52px; box-sizing: border-box; padding: 6px 8px 0 16px; }
 .title { flex: 1; margin: 0; color: var(--text); font-size: 15px; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) {
+  .drawer, .mark { transition: none; }
+}

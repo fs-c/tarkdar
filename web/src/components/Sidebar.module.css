@@ -1,17 +1,14 @@
-/* The sidebar: one frosted card floating over the map's left edge, holding the icons (the rail) and,
-   when a view is open, its panel, with a line between them. */
-.card {
-  position: absolute; z-index: 10; top: var(--gap); left: var(--gap); bottom: var(--gap);
-  display: flex; min-height: 0; box-sizing: border-box;
-  border: 1px solid var(--border); border-radius: var(--r); background: var(--surface);
-  backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); box-shadow: var(--shadow-float);
-}
+/* The sidebar: down the window's left edge, on the plain control plane (App), its top level with the
+   top bar: the icons (the rail, the logo on top) and, when a view is open, its panel (its title in the
+   top bar), with a line between them below the top bar. */
+.card { position: relative; z-index: 10; display: flex; min-height: 0; box-sizing: border-box; padding-bottom: var(--gap); }
 
 /* ---- the rail ---- */
 .activityBar {
-  position: relative; flex: none; width: var(--rail-w); box-sizing: border-box; padding: 6px 0;
+  position: relative; flex: none; width: var(--rail-w); box-sizing: border-box; padding: 0 0 6px;
   display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
+.brand { flex: none; height: var(--top-h); margin-bottom: 4px; display: grid; place-items: center; color: var(--accent); }
 .spacer { flex: 1; }
 .activity {
   position: relative; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; color: var(--faint);
@@ -40,11 +37,11 @@
 }
 
 /* ---- the panel ---- */
-/* Width set inline (resizable, 0 folded), and eased: unfolding and folding away, the card's right edge
-   moves and the map's middle with it (App, Radar.module.css). Not while the sash is dragged: it
-   follows the pointer. The max keeps some map visible when the window shrinks after a resize. */
+/* Width set inline (resizable, 0 folded), and eased: unfolding and folding away, the portal's left
+   edge moves and the map's middle with it. Not while the sash is dragged: it follows the pointer.
+   The max keeps some map visible when the window shrinks after a resize. */
 .drawer {
-  flex: none; display: flex; min-height: 0; overflow: hidden; border-radius: 0 var(--r) var(--r) 0;
+  flex: none; display: flex; min-height: 0; overflow: hidden;
   max-width: calc(100vw - var(--rail-w) - 2 * var(--gap) - 160px);
   transition: width 0.2s ease;
   &[data-dragging="true"] { transition: none; }
@@ -53,16 +50,17 @@
 .sidebar {
   position: relative; flex: none; display: flex; flex-direction: column; min-height: 0; min-width: 260px; box-sizing: border-box;
   max-width: calc(100vw - var(--rail-w) - 2 * var(--gap) - 160px);
-  border-left: 1px solid var(--border);
+  &::before { content: ""; position: absolute; left: 0; top: var(--top-h); bottom: 0; border-left: 1px solid var(--border); }
 }
-/* Drag handle over the card's right edge (placed in the card, beside the drawer, which would clip it). */
+/* Drag handle in the gap between the panel and the portal (placed in the card, beside the drawer,
+   which would clip it). */
 .sash {
-  position: absolute; top: var(--r); bottom: var(--r); right: -4px; z-index: 2; width: 6px; cursor: ew-resize; touch-action: none; border-radius: 3px;
+  position: absolute; top: calc(var(--top-h) + var(--portal-r)); bottom: calc(var(--gap) + var(--portal-r)); right: calc(1px - var(--gap)); z-index: 2; width: 6px; cursor: ew-resize; touch-action: none; border-radius: 3px;
   &:hover, &:active { background: var(--accent); transition: background 0.1s 0.15s; }
 }
-/* A view's title: level with the rail's first icon. */
-.header { display: flex; flex: none; align-items: center; height: 52px; box-sizing: border-box; padding: 6px 8px 0 16px; }
-.title { flex: 1; margin: 0; color: var(--text); font-size: 15px; font-weight: 600; }
+/* A view's title: in the top bar, beside the rail's logo. */
+.header { display: flex; flex: none; align-items: center; height: var(--top-h); box-sizing: border-box; padding: 0 6px 0 16px; }
+.title { flex: 1; margin: 0; color: var(--text); font-size: var(--fs-lg); font-weight: 600; letter-spacing: 0.01em; }
 @media (prefers-reduced-motion: reduce) {
   .drawer, .mark { transition: none; }
 }

@@ -14,7 +14,7 @@ export interface ChromeColors {
   press: string; // pressed and selected controls, a step above hover
   control: string; // switch track, count badges
   overlay: string; // floating buttons over the map
-  overlaySurface: string; // floating panels over the map
+  overlaySurface: string; // frosted glass: the control plane around the map, and the panels and menus over it
   shadow: string; // the colour of every shadow (--shadow-float, --shadow-pop)
   swatchRing: string; // the thin ring around a rule's colour swatch
 
@@ -96,7 +96,7 @@ const dark: Theme = {
     press: "rgba(255, 255, 255, 0.09)",
     control: "rgba(255, 255, 255, 0.11)",
     overlay: "rgba(19, 23, 27, 0.86)",
-    overlaySurface: "rgba(26, 31, 36, 0.95)",
+    overlaySurface: "rgba(11, 15, 19, 0.82)",
     shadow: "rgba(0, 0, 0, 0.45)",
     swatchRing: "rgba(0, 0, 0, 0.35)",
 

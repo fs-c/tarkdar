@@ -1,9 +1,10 @@
-// Navigation: one frosted card floating over the map's left edge (SidebarCard), with an
-// always-visible rail of icons and a collapsible panel showing the picked view. Clicking the active
-// icon collapses the panel; it unfolds and folds away (the card's edge, and with it the map's middle,
-// moving along). Switching views, the rail's accent mark slides to the new icon and the view slides in.
+// Navigation: down the window's left edge, beside the map's portal (SidebarCard), an always-visible
+// rail of icons (the logo on top) and a collapsible panel showing the picked view, its title level with
+// the top bar. Clicking the active icon collapses
+// the panel; it unfolds and folds away (the portal's edge, and with it the map's middle, moving
+// along). Switching views, the rail's accent mark slides to the new icon and the view slides in.
 
-import { Binoculars, ChevronLeft, DoorOpen, History, type LucideIcon, Package, Settings, Users } from "lucide-react";
+import { Binoculars, ChevronLeft, DoorOpen, History, type LucideIcon, Package, Radio, Settings, Users } from "lucide-react";
 import { type PointerEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, useSidebarSize } from "../persist/prefs";
 import type { Section } from "../persist/prefs";
@@ -22,27 +23,9 @@ const ICONS: Record<ViewId, LucideIcon> = { players: Users, loot: Package, exfil
 /** A rail icon's badge: a count; a count that wants attention ("new"); or a dot (live: red, else amber). */
 export type Badge = number | { n: number; tone: "new" } | { dot: "live" | "warn" };
 
-/** The card around the rail and the panel. Reports how far it reaches into the map (its right edge,
- *  px from the window's left), which is where the map's own controls start. */
-export function SidebarCard({ onCover, children }: { onCover: (px: number) => void; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const el = ref.current!;
-    const report = () => onCover(Math.round(el.getBoundingClientRect().right));
-    report();
-    const observer = new ResizeObserver(report);
-    observer.observe(el);
-    addEventListener("resize", report);
-    return () => {
-      observer.disconnect();
-      removeEventListener("resize", report);
-    };
-  }, [onCover]);
-  return (
-    <div ref={ref} className={s.card}>
-      {children}
-    </div>
-  );
+/** The rail and the panel, side by side. */
+export function SidebarCard({ className, children }: { className?: string; children: ReactNode }) {
+  return <div className={cx(s.card, className)}>{children}</div>;
 }
 
 interface ActivityBarProps {
@@ -103,6 +86,9 @@ export function ActivityBar({ active, onPick, badges, notes = {} }: ActivityBarP
   return (
     <nav ref={navRef} className={s.activityBar}>
       <span ref={markRef} className={s.mark} />
+      <div className={s.brand} title="radar">
+        <Radio size={20} strokeWidth={1.8} />
+      </div>
       {TOP.map(item)}
       <div className={s.spacer} />
       {item("settings")}

@@ -1,9 +1,10 @@
 /* The WebGL canvas (added by Map3D) fills the host; the marker canvas lies on top and lets
    pointer events through to the map's camera controls. */
-/* Reaches under the sidebar card by as much again past the right edge (main clips it), so that the
-   map's middle, where it centres what it follows, is the middle of what's seen. */
+/* Reaches past the portal (App's <main>) under the frosted control plane, by as much on each side as on
+   the opposite one (--bleed-x, --bleed-y: the farther window edge), so that the map's middle, where it
+   centres what it follows, is the portal's. */
 .radar {
-  position: absolute; inset: 0; right: calc(-1 * var(--cover, 0px)); touch-action: none; cursor: grab;
+  position: absolute; inset: calc(-1 * var(--bleed-y, 0px)) calc(-1 * var(--bleed-x, 0px)); touch-action: none; cursor: grab;
   & > canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 }
 .markers { pointer-events: none; z-index: 1; }

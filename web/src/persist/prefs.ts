@@ -241,7 +241,7 @@ export const useSidebarPrefs = () => usePersisted(sidebarStore);
 
 /** The side panel's width (px): its default, and the range a stored width is kept to (the narrowest
  *  the sash allows; the widest is generous, the sash itself leaves room for the map). */
-export const DEFAULT_SIDEBAR_WIDTH = 420;
+export const DEFAULT_SIDEBAR_WIDTH = 340;
 export const MIN_SIDEBAR_WIDTH = 260;
 export const MAX_SIDEBAR_WIDTH = 2000;
 

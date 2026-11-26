@@ -1,11 +1,11 @@
-// The Loot view: loose items (by value per slot, or nearest first) or containers (nearest first), with
-// a filter. What the filter lets through is marked on the map while it's set, and "Watch" keeps it as a
+// The Loot view: loose items (by value per slot, or nearest first: the column heads) or containers
+// (nearest first), with a filter. What the filter lets through is marked on the map while it's set, and "Watch" keeps it as a
 // watch entry. Each row: a mark when it's watched or a quest needs it (in that colour), the name (quest
 // items in the quest colour), the value, and the distance with an arrow pointing at it. Hovering a row
 // marks it on the map; clicking selects it and shows it there.
 
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Binoculars, Search } from "lucide-react";
+import { ArrowDown, Binoculars, Search } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { Selection } from "../draw/pick";
 import { formatPrice } from "../model/items";
@@ -118,6 +118,7 @@ export function LootView({ state, list, prefs, setPrefs, local, marks, markedMax
       <div className={v.tools}>
         <Segmented
           label="Loot"
+          className={v.tabs}
           options={[
             { value: "items" as const, label: <>Items <span className={v.count}>{totals.items}</span></> },
             { value: "containers" as const, label: <>Containers <span className={v.count}>{totals.containers}</span></> },
@@ -125,28 +126,32 @@ export function LootView({ state, list, prefs, setPrefs, local, marks, markedMax
           value={tab}
           onChange={setTab}
         />
-        <span className={v.grow} />
-        {tab === "items" && (
-          <Segmented
-            label="Sort"
-            options={[
-              { value: "value" as const, label: "By value", title: "The most valuable per inventory slot first" },
-              { value: "dist" as const, label: "Nearest" },
-            ]}
-            value={prefs.sort}
-            onChange={(sort) => setPrefs((p) => ({ ...p, sort }))}
-          />
-        )}
       </div>
       {term && rows.length > 0 && (
         <div className={v.tools}>
-          <span className={v.faint}>{rows.length > markedMax ? `The first ${markedMax} of ${rows.length}` : rows.length} marked on the map</span>
+          <span className={cx(v.faint, v.clip)}>{rows.length > markedMax ? `The first ${markedMax} of ${rows.length}` : rows.length} marked on the map</span>
           <span className={v.grow} />
           {tab === "items" && (
-            <Button className={v.primary} title="Keep these as a watch entry" onClick={() => onWatch(term)}>
-              <Binoculars size={13} /> Watch “{term}”
+            <Button className={cx(v.primary, v.watchTerm)} title={`Keep “${term}” as a watch entry`} onClick={() => onWatch(term)}>
+              <Binoculars size={13} /> <span className={v.clip}>Watch “{term}”</span>
             </Button>
           )}
+        </div>
+      )}
+      {rows.length > 0 && (
+        <div className={cx(v.thing, v.heads)}>
+          <span />
+          <span>{tab === "items" ? "Item" : "Container"}</span>
+          {tab === "items" ? (
+            <SortHead on={prefs.sort === "value"} title="The most valuable per inventory slot first" onClick={() => setPrefs((p) => ({ ...p, sort: "value" }))}>
+              Value
+            </SortHead>
+          ) : (
+            <span>Value</span>
+          )}
+          <SortHead on={tab !== "items" || prefs.sort === "dist"} title="Nearest first" onClick={tab === "items" ? () => setPrefs((p) => ({ ...p, sort: "dist" })) : undefined}>
+            Dist.
+          </SortHead>
         </div>
       )}
       {rows.length === 0 && <p className={v.empty}>{totals[tab] === 0 ? (tab === "items" ? "No loose items (yet)" : "No containers (yet)") : "Nothing matches"}</p>}
@@ -168,6 +173,16 @@ export function LootView({ state, list, prefs, setPrefs, local, marks, markedMax
         })}
       </div>
     </PanelBody>
+  );
+}
+
+/** A column head that sorts by its column (on: sorted by it; no onClick: the only order there is). */
+function SortHead({ on, title, onClick, children }: { on: boolean; title: string; onClick?: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" className={v.sortHead} aria-pressed={on} disabled={!onClick} title={on ? `Sorted: ${title.toLowerCase()}` : `Sort: ${title.toLowerCase()}`} onClick={onClick}>
+      {children}
+      <ArrowDown size={11} strokeWidth={2.2} />
+    </button>
   );
 }
 

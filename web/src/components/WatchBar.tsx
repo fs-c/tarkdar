@@ -181,9 +181,9 @@ export function WatchBar({ entries, hits, rows, catalog, quests, onAdd, onTrack,
   const menuEntry = menu ? shown.find((e) => e.id === menu.id) : undefined;
 
   return (
-    <div className={f.topLeft} ref={rootRef}>
+    <div className={s.root} ref={rootRef}>
       <div className={s.wrap}>
-        <div ref={barRef} className={f.surface + " " + s.bar} data-open={open} onClick={(e) => e.target === e.currentTarget && inputRef.current?.focus()}>
+        <div ref={barRef} className={s.bar} data-open={open} onClick={(e) => e.target === e.currentTarget && inputRef.current?.focus()}>
           {shown.map((e) => (
             <button
               key={e.id}

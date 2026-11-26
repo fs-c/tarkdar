@@ -1,12 +1,11 @@
 // The Watch view: the watchlist (what the watch bar shows), each entry with its switch (the dot), its
-// name and how many there are now, what it matches (the query, editable; for a tracked quest what it
-// still needs), and its level. Clicking a row steps to the nearest match, then the next. Below, the
+// name and how many there are now, what it matches (the query; for a tracked quest what it still
+// needs), and its level. Clicking a row steps to the nearest match, then the next. Below, the
 // tracked quests, with the new ones (started since they were last seen) to review, and the way to
 // track one: the quest browser, the view's second level (also from the watch bar, at a quest; folding
 // the panel or switching views leaves it).
 
-import { Pencil, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { Plus, X } from "lucide-react";
 import { PanelBody } from "../ui";
 import type { WatchEntry } from "../watch/prefs";
 import { type QuestEntry, needsLine } from "../watch/quests";
@@ -40,7 +39,6 @@ interface Props {
 }
 
 export function WatchView({ entries, counts, quests, questsById, newQuests, browse, onBrowse, onStep, onChange, onRemove, onWatchSomething, onTrack, onUntrack, onDismiss }: Props) {
-  const [editing, setEditing] = useState<string | null>(null);
   const items = entries.filter((e) => !e.questId);
   const tracked = entries.filter((e) => e.questId);
 
@@ -75,44 +73,14 @@ export function WatchView({ entries, counts, quests, questsById, newQuests, brow
         />
         <span className={s.name}>
           <span className={s.label}>{e.label}</span> <span className={s.n}>×{n}</span>
-          {editing === e.id ? (
-            <input
-              autoFocus
-              className={s.query}
-              defaultValue={e.query}
-              onClick={(ev) => ev.stopPropagation()}
-              onBlur={(ev) => {
-                if (ev.target.value.trim()) onChange(e.id, { query: ev.target.value.trim() });
-                setEditing(null);
-              }}
-              onKeyDown={(ev) => {
-                if (ev.key === "Enter") ev.currentTarget.blur();
-                if (ev.key === "Escape") setEditing(null);
-              }}
-            />
-          ) : (
-            <span className={s.what} data-mono={!e.questId}>
-              {e.questId ? (q ? needsLine(q) : "nothing left to find, or not in this raid's quests") : e.query}
-            </span>
-          )}
+          <span className={s.what} data-mono={!e.questId}>
+            {e.questId ? (q ? needsLine(q) : "nothing left to find, or not in this raid's quests") : e.query}
+          </span>
         </span>
-        <span className={s.hover}>
-          {!e.questId && (
-            <button
-              type="button"
-              className={s.icon}
-              title="Edit the query"
-              onClick={(ev) => {
-                ev.stopPropagation();
-                setEditing(e.id);
-              }}
-            >
-              <Pencil size={13} />
-            </button>
-          )}
+        <span className={s.end}>
           <button
             type="button"
-            className={s.icon}
+            className={s.remove}
             title={e.questId ? "Stop tracking" : "Remove"}
             onClick={(ev) => {
               ev.stopPropagation();
@@ -121,8 +89,8 @@ export function WatchView({ entries, counts, quests, questsById, newQuests, brow
           >
             <X size={14} />
           </button>
+          <LevelPicker level={e.level} color={e.on ? e.color : "#8a96a0"} label={e.label} onChange={(level) => onChange(e.id, { level })} />
         </span>
-        <LevelPicker level={e.level} color={e.on ? e.color : "#8a96a0"} label={e.label} onChange={(level) => onChange(e.id, { level })} />
       </div>
     );
   };

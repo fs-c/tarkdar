@@ -1,7 +1,7 @@
 /* Placed below the top right corner by Floating.module.css. */
 .details {
   box-sizing: border-box; overflow: auto; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r);
-  background: var(--overlay-surface); backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur); box-shadow: var(--shadow-pop);
+  background: var(--overlay-surface); backdrop-filter: var(--blur); box-shadow: var(--shadow-pop);
   font-size: var(--fs-md);
 }
 

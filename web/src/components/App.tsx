@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { History, Loader, Play, RefreshCw, TriangleAlert, Unplug } from "lucide-react";
 import { type RadarState, wsUrl } from "../stream/connection";
 import { useCatalog } from "../model/useCatalog";
@@ -111,11 +111,28 @@ export function App() {
   const map = (locationId ? findMap(mapIndex, locationId) : undefined) ?? null;
   const radar = useRef<RadarHandle>(null);
   const [mapStatus, setMapStatus] = useState<MapStatus>({ progress: null, error: null });
-  /** How far the sidebar card reaches into the map (px): the map's controls start right of it, and
-   *  its middle moves with it. Set straight on <main> (--cover), as it changes every frame while the
-   *  panel unfolds or folds: the map follows, nothing else needs to render. */
+  /** How far the map reaches past the portal (under the frosted control plane), on each side: as far
+   *  as the farther window edge, so its middle stays the portal's. Set straight on <main> (--bleed-x,
+   *  --bleed-y): it changes every frame while the panel unfolds or folds, nothing needs to render. */
   const mainRef = useRef<HTMLElement>(null);
-  const setCover = useCallback((px: number) => mainRef.current?.style.setProperty("--cover", `${px}px`), []);
+  useLayoutEffect(() => {
+    const main = mainRef.current!;
+    const update = () => {
+      const r = main.getBoundingClientRect();
+      const left = r.left + main.clientLeft, top = r.top + main.clientTop;
+      const x = Math.max(left, innerWidth - left - main.clientWidth), y = Math.max(top, innerHeight - top - main.clientHeight);
+      main.style.setProperty("--bleed-x", `${Math.ceil(x)}px`);
+      main.style.setProperty("--bleed-y", `${Math.ceil(y)}px`);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(main);
+    addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      removeEventListener("resize", update);
+    };
+  }, []);
   const [follow, setFollow] = useState(true);
   // While following: the map turns with the local player's view direction.
   const [followHeading, setFollowHeading] = useState(false);
@@ -560,7 +577,33 @@ export function App() {
 
   return (
     <div className={s.app}>
-      <main className={cx(s.main, f.area)} data-style-switch={!!(map || inRaid || review)} data-details={!!selection} ref={mainRef}>
+      <SidebarCard className={cx(s.sidebar, s.chrome)}>
+        <ActivityBar active={ui.open ? view : null} onPick={pickView} badges={badges} notes={{ raids: liveRaid ? "a raid is live" : review ? "replaying" : "", settings: statusWarn ? "something needs attention (Status)" : "" }} />
+        <SidePanel open={ui.open} view={view} onClose={togglePanel}>
+          {panel}
+        </SidePanel>
+      </SidebarCard>
+      <header className={cx(s.top, s.chrome)}>
+        {conn.connected && !conn.protocolMismatch && (
+          <WatchBar
+            entries={entries}
+            hits={watchHits}
+            rows={everything}
+            catalog={catalog}
+            quests={quests.map((q) => ({ id: q.id, name: q.name, detail: q.tab, query: q.query, tracked: tracked.has(q.id) }))}
+            onAdd={addSuggestion}
+            onTrack={(q) => trackQuest(q)}
+            onChange={changeEntry}
+            onRemove={removeEntry}
+            onPreview={setPreview}
+            onStep={stepEntry}
+            onOpenView={() => setUi((u) => ({ ...u, open: true, section: "watch" }))}
+            onOpenQuest={openQuest}
+          />
+        )}
+      </header>
+      <div className={s.frost} aria-hidden />
+      <main ref={mainRef} className={cx(s.main, f.area)} data-style-switch={!!(map || inRaid || review)} data-details={!!selection}>
         <Suspense fallback={null}>
           <Radar
             ref={radar}
@@ -597,23 +640,6 @@ export function App() {
             }}
           />
         )}
-        {conn.connected && !conn.protocolMismatch && (
-          <WatchBar
-            entries={entries}
-            hits={watchHits}
-            rows={everything}
-            catalog={catalog}
-            quests={quests.map((q) => ({ id: q.id, name: q.name, detail: q.tab, query: q.query, tracked: tracked.has(q.id) }))}
-            onAdd={addSuggestion}
-            onTrack={(q) => trackQuest(q)}
-            onChange={changeEntry}
-            onRemove={removeEntry}
-            onPreview={setPreview}
-            onStep={stepEntry}
-            onOpenView={() => setUi((u) => ({ ...u, open: true, section: "watch" }))}
-            onOpenQuest={openQuest}
-          />
-        )}
         {selection && (
           <DetailsPanel
             selection={selection}
@@ -635,12 +661,6 @@ export function App() {
           />
         )}
       </main>
-      <SidebarCard onCover={setCover}>
-        <ActivityBar active={ui.open ? view : null} onPick={pickView} badges={badges} notes={{ raids: liveRaid ? "a raid is live" : review ? "replaying" : "", settings: statusWarn ? "something needs attention (Status)" : "" }} />
-        <SidePanel open={ui.open} view={view} onClose={togglePanel}>
-          {panel}
-        </SidePanel>
-      </SidebarCard>
     </div>
   );
 }

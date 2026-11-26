@@ -1,8 +1,13 @@
-/* A bar floating over the bottom of the map, as wide as the bottom row (placed by Floating.module.css). */
+/* A bar floating over the bottom of the map, as wide as the bottom row (placed by Floating.module.css).
+   Quiet until it's pointed at or used (the map is what's looked at): thinner glass, no shadow, a slim
+   scrubber with faint ticks; then the glass and the scrubber of the other controls. */
 .pill {
   box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 4px;
   color: var(--muted); white-space: nowrap;
+  background: color-mix(in srgb, var(--overlay) 55%, transparent); border-color: transparent; box-shadow: none;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
+.pill:is(:hover, :has(:focus-visible, [aria-expanded="true"])) { background: var(--overlay); border-color: var(--border); box-shadow: var(--shadow-float); }
 
 /* live at "now": just a chip */
 .chip {
@@ -12,7 +17,10 @@
 .liveIcon { color: var(--danger); }
 .liveTag { color: var(--danger); font-weight: 600; font-size: var(--fs-xs); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
 
-.time { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 0 4px; color: var(--text); font: var(--fs-xs) var(--mono); }
+.time {
+  flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 0 4px; color: var(--muted); font: var(--fs-xs) var(--mono);
+  .pill:is(:hover, :has(:focus-visible, [aria-expanded="true"])) & { color: var(--text); }
+}
 .pill[data-mode="behind"] .time { color: var(--link-text); }
 
 .round, .speed, .exit, .toLive {
@@ -21,7 +29,10 @@
   &:hover:not(:disabled) { background: var(--hover); color: var(--text); }
   &:disabled { opacity: 0.4; cursor: default; }
 }
-.round { width: 28px; color: var(--text); background: var(--press); & svg { fill: currentColor; } }
+.round {
+  width: 28px; & svg { fill: currentColor; }
+  .pill:is(:hover, :has(:focus-visible, [aria-expanded="true"])) & { color: var(--text); background: var(--press); }
+}
 .speed {
   min-width: 34px; padding: 0 6px; font: var(--fs-xs) var(--mono);
   &[aria-expanded="true"] { background: var(--hover); color: var(--text); }
@@ -50,20 +61,25 @@
 .track { position: relative; flex: 1; min-width: 40px; height: 100%; margin: 0 4px; cursor: pointer; touch-action: none; }
 /* Neutral, so the event ticks stand out against it. */
 .groove {
-  position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; overflow: hidden;
-  border-radius: 2px; background: rgba(255, 255, 255, 0.12);
+  position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; overflow: hidden;
+  border-radius: 2px; background: rgba(255, 255, 255, 0.1); transition: height 0.15s ease, margin 0.15s ease;
+  .pill:is(:hover, :has(:focus-visible, [aria-expanded="true"])) & { height: 4px; margin-top: -2px; background: rgba(255, 255, 255, 0.12); }
 }
-.fill { height: 100%; background: rgba(255, 255, 255, 0.42); }
+.fill { height: 100%; background: rgba(255, 255, 255, 0.3); .pill:is(:hover, :has(:focus-visible, [aria-expanded="true"])) & { background: rgba(255, 255, 255, 0.42); } }
 .tick {
   position: absolute; top: 50%; width: 3px; height: 16px; margin: -8px 0 0 -1.5px; border-radius: 1.5px; pointer-events: none;
   box-shadow: 0 0 0 1.5px rgba(10, 14, 18, 0.85);
+  opacity: 0.5; scale: 1 0.6; transition: opacity 0.15s ease, scale 0.15s ease;
+  .pill:is(:hover, :has(:focus-visible, [aria-expanded="true"])) & { opacity: 1; scale: none; }
   &[data-kind="died"] { background: var(--danger); }
   &[data-kind="left"], &[data-kind="extracted"] { background: #7aa7ff; }
-  &[data-selected="true"] { width: 4px; height: 20px; margin: -10px 0 0 -2px; background: var(--accent); }
+  &[data-selected="true"] { width: 4px; height: 20px; margin: -10px 0 0 -2px; background: var(--accent); opacity: 1; scale: none; }
 }
 .thumb {
   position: absolute; top: 50%; z-index: 1; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; pointer-events: none;
   background: #eef2f5; box-shadow: 0 0 0 2px rgba(10, 14, 18, 0.7), 0 1px 4px rgba(0, 0, 0, 0.5);
+  scale: 0.65; transition: scale 0.15s ease;
+  .pill:is(:hover, :has(:focus-visible, [aria-expanded="true"])) & { scale: none; }
   .pill[data-mode="live"] & { background: var(--danger); }
 }
 .hover {
@@ -79,4 +95,7 @@
 }
 @container map (max-width: 400px) {
   .speedBox { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pill, .groove, .tick, .thumb { transition: none; }
 }

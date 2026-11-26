@@ -1,3 +1,4 @@
-.choice { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+/* A name and its choice; narrow, the choice goes below, still on the right. */
+.choice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; padding: 6px 0; & > :last-child { flex: none; margin-left: auto; } }
 .swatches { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 6px 0; }
 .swatch { display: flex; align-items: center; gap: 8px; cursor: pointer; }

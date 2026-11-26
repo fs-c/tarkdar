@@ -5,11 +5,12 @@
   &[aria-selected="true"] { background: var(--control); color: var(--text); }
 }
 .warnDot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
-.tier { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 30px; }
+/* A name and its control; narrow, the control goes below, still on the right. */
+.tier { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 8px; min-height: 30px; & > :last-child { flex: none; margin-left: auto; } }
 .tierDot { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; }
 .callout { margin: 0 14px 10px; padding: 9px 12px; border-radius: 12px; background: var(--accent-soft); border: 1px solid rgba(255, 181, 71, 0.25); color: var(--muted); & b { display: block; color: var(--accent); } }
 .key {
-  display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 10px; padding: 3px 0; color: var(--muted);
+  display: grid; grid-template-columns: 84px 1fr; align-items: center; gap: 10px; padding: 3px 0; color: var(--muted);
   & span:last-child { color: var(--text); }
   & kbd { margin-right: 4px; font: 11px var(--mono); color: var(--muted); border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; }
 }

@@ -9,14 +9,19 @@
   /* Theme tokens (colours, fonts, --color-scheme) are set by applyTheme (theme/apply.ts) on this element. */
   color-scheme: var(--color-scheme);
 
-  /* layout: the map fills the window; the sidebar card and the controls float over it */
-  --gap: 10px; /* from the window's edges to the sidebar card */
+  /* layout: a top bar and the sidebar on the chrome, the map in a rounded portal (App.module.css) */
+  --gap: 8px; /* between the portal and the window's edges */
+  --top-h: 48px; /* the top bar */
   --rail-w: 52px; /* the sidebar's icons */
+  --portal-r: 12px; /* the portal's corners */
   --fh: 36px; /* floating controls over the map: pills, buttons, bars, notices */
   --fr: 10px; /* ... their corners */
   --fr-in: 7px; /* ... and the corners of buttons inside them */
-  --r: 14px; /* cards: the sidebar, the details, menus over the map */
-  --blur: blur(18px) saturate(1.3); /* the frosted glass of what floats over the map */
+  --r: 14px; /* cards: the details, menus over the map */
+  /* The frosted glass of the control plane (App's .frost) and of what floats over the map. Not with a
+     -webkit-backdrop-filter beside it: the build then keeps only that one, which Chromium ignores (it
+     adds the prefix itself). */
+  --blur: blur(24px) saturate(1.4);
 
   /* type */
   --fs-2xs: 10px; /* badges, column headers */

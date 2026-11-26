@@ -1,11 +1,12 @@
-/* Top left of the map, right of the sidebar card (placed by Floating.module.css). */
-.wrap { position: relative; display: inline-block; max-width: 100%; vertical-align: top; }
-/* The bar may grow to this before entries go behind "+N". */
+/* In the top bar, centred: one width, as much of this as there's room for, until entries go behind "+N". */
+.root { --watch-bar-max: 720px; width: min(var(--watch-bar-max), 100%); min-width: 0; }
+.wrap { position: relative; }
 .bar {
-  --watch-bar-max: 720px;
   display: flex; align-items: center; gap: 4px; height: var(--fh); box-sizing: border-box; padding: 0 8px 0 4px;
-  min-width: 360px; max-width: min(var(--watch-bar-max), 100%); overflow: hidden; color: var(--faint); cursor: text;
-  &[data-open="true"], &:focus-within { box-shadow: 0 0 0 1px var(--link-line), var(--shadow-float); }
+  overflow: hidden; color: var(--faint); cursor: text;
+  border: 1px solid var(--border-strong); border-radius: var(--fr); background: color-mix(in srgb, var(--chrome) 55%, transparent);
+  &:hover { border-color: var(--border-hover); }
+  &[data-open="true"], &:focus-within { border-color: var(--link-line); box-shadow: 0 0 0 1px var(--link-line); }
 }
 .chip {
   flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px 0 7px; border-radius: var(--fr-in);

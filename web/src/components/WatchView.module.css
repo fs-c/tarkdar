@@ -1,6 +1,8 @@
 .view { padding-bottom: 12px; }
+/* The switch, the name (and what it matches), then remove (only while pointed at: no room kept for it)
+   and the level. */
 .entry {
-  display: grid; grid-template-columns: 12px 1fr auto auto; align-items: center; gap: 10px; padding: 5px 6px 5px 16px; margin: 0 6px; border-radius: 8px; cursor: pointer;
+  display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 5px 6px 5px 16px; margin: 0 6px; border-radius: 8px; cursor: pointer;
   &:hover { background: var(--hover); }
 }
 .switch {
@@ -11,8 +13,12 @@
 .label { color: #c9d2d8; .entry:hover & { color: var(--text); } .entry[data-on="false"] & { color: var(--faint); } }
 .n { color: var(--faint); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 .what { display: block; overflow: hidden; text-overflow: ellipsis; color: var(--faint); font-size: 11.5px; &[data-mono="true"] { font: 11.5px var(--mono); } }
-.query { display: block; width: 100%; box-sizing: border-box; margin-top: 1px; padding: 2px 6px; border: 0; border-radius: 6px; background: var(--press); color: var(--text); font: 11.5px var(--mono); outline: none; box-shadow: inset 0 0 0 1px var(--link-line); }
-.hover { display: inline-flex; opacity: 0; .entry:hover & { opacity: 1; } }
+.end { display: flex; align-items: center; gap: 2px; }
+.remove {
+  display: none; place-items: center; width: 24px; height: 24px; border-radius: 8px; color: var(--muted);
+  &:hover { background: var(--hover); color: var(--text); }
+  .entry:is(:hover, :has(:focus-visible)) & { display: grid; }
+}
 .icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; color: var(--muted); &:hover { background: var(--hover); color: var(--text); } }
 /* "Watch something" / "Track a quest": the end of each list. */
 .add {

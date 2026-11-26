@@ -1,7 +1,53 @@
-/* The map fills the window; the sidebar card (Sidebar.module.css) and the controls
-   (Floating.module.css) float over it. */
-.app { position: fixed; inset: 0; }
-.main { position: absolute; inset: 0; overflow: hidden; container: map / inline-size; }
+/* The control plane around a view into the map: the sidebar (rail and panel) down the window's left
+   edge, its top level with the top bar (the rail's logo, the open view's title); the top bar, with
+   the watch bar, across the rest; the map in a rounded portal below the top bar. The map goes on
+   beyond the portal, under the control plane, which is frosted glass over it (.frost). The map's own
+   controls (Floating.module.css) float inside the portal. */
+.app {
+  position: fixed; inset: 0; overflow: hidden; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: var(--top-h) minmax(0, 1fr);
+  background: var(--bg);
+}
+.sidebar { grid-column: 1; grid-row: 1 / -1; }
+
+/* ---- the top bar ---- */
+/* The watch bar, centred over the portal: as wide as it may grow, and no wider than what's left. */
+.top {
+  grid-column: 2; grid-row: 1; position: relative; z-index: 20; display: flex; align-items: center; justify-content: center; min-width: 0;
+  padding: 0 var(--gap);
+}
+
+/* ---- the map in focus ---- */
+/* While the pointer is in the portal, what's around it (the sidebar, the top bar) steps back, after a
+   moment, so passing over the map on the way elsewhere doesn't flicker it; leaving, it's back at once.
+   Not the top bar while the watch bar's suggestions or an entry's menu are open: they hang over the map
+   (and faded, the bar would take their glass's blur with it). */
+.chrome { transition: opacity 0.15s ease; }
+.app:has(> .main:hover) > .chrome:not(:has([data-open="true"], [aria-expanded="true"])) { opacity: 0.72; transition: opacity 0.4s ease 0.3s; }
+@media (prefers-reduced-motion: reduce) {
+  .chrome, .app:has(> .main:hover) > .chrome { transition: none; }
+}
+
+/* ---- the portal ---- */
+/* Its own stacking context, under the glass and the control plane. It doesn't clip: the map reaches
+   past it (Radar.module.css, by --bleed-x and --bleed-y, set by App). */
+.main {
+  grid-column: 2; grid-row: 2; position: relative; z-index: 0; isolation: isolate; container: map / inline-size;
+  margin: 0 var(--gap) var(--gap); border: 1px solid var(--border-strong); border-radius: var(--portal-r);
+}
+
+/* ---- the glass ---- */
+/* Frosted glass over all the window but the portal: the portal's box, its border pushed out past the
+   window's edges (--far), its inner corners the portal's; the mask keeps the border, not the inside.
+   Between the map and the control plane; the pointer goes through it. */
+.frost {
+  --far: 100vmax;
+  grid-column: 2; grid-row: 2; z-index: 5; pointer-events: none;
+  margin: calc(-1 * var(--far)) calc(var(--gap) - var(--far)) calc(var(--gap) - var(--far));
+  border: var(--far) solid transparent; border-radius: calc(var(--far) + var(--portal-r));
+  background: var(--overlay-surface) border-box; backdrop-filter: var(--blur);
+  mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0) border-box;
+  mask-composite: exclude;
+}
 
 /* Follow (FollowButton), in the map's bottom right corner. Turning with the view: filled. */
 .follow[aria-pressed="true"][data-heading="true"] { background: var(--accent); color: var(--on-accent); }

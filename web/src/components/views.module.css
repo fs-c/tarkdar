@@ -10,7 +10,12 @@
 }
 .tools { display: flex; align-items: center; gap: 8px; padding: 0 10px 6px; font-size: var(--fs-sm); }
 .grow { flex: 1; }
+/* Tabs across the whole row (Loot's Items and Containers): halves, whatever the panel's width. */
+.tabs { width: 100%; & > * { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; } }
 .faint { color: var(--faint); }
+/* Text that gives way (ellipsis) when the panel is narrow. */
+.clip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.watchTerm { flex: none; max-width: 60%; }
 /* A view's one call to action ("Watch …"). */
 .primary { color: var(--accent); background: var(--accent-soft); &:hover:not(:disabled) { background: rgba(255, 181, 71, 0.22); } }
 /* A view without a filter: its rows start where they would below one. */
@@ -59,6 +64,19 @@
 
 /* Loot: the mark (watched, needed for a quest), the name, the value, the distance. */
 .thing { grid-template-columns: 10px 1fr 48px 58px; gap: 8px; padding-left: 10px; & .pip { margin: 0 0 1px 1px; } }
+/* Loot's column heads, over the rows' columns: the value's and the distance's sort the list (the one
+   it's sorted by: lit, with its arrow). */
+.heads {
+  display: grid; align-items: center; height: 20px; margin: 0 6px; color: var(--faint); font-size: var(--fs-xs); white-space: nowrap;
+  & > :nth-child(n + 3) { justify-self: end; }
+}
+.sortHead {
+  display: inline-flex; align-items: center; gap: 2px; padding: 0; color: inherit; font: inherit;
+  & svg { visibility: hidden; }
+  &:not(:disabled):hover { color: var(--text); & svg { visibility: visible; opacity: 0.6; } }
+  &[aria-pressed="true"] { color: var(--muted); & svg { visibility: visible; opacity: 1; } }
+  &:disabled { cursor: default; }
+}
 .value { color: var(--faint); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; &.base { opacity: 0.7; } }
 .quest { color: var(--quest); }
 

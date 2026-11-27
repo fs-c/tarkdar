@@ -68,6 +68,13 @@ component's managed object sits behind a GC handle slot (`Component.ManagedHandl
 `ManagedHandle.Object`); the GameObjectManager keeps a sentinel list node {last, first} at 0x18; the
 camera managers became plain objects behind the static `CameraManager._instance`.
 
+The next SPT base-game update (2026-11-27, same Unity major) moved the transform structs only:
+`Transform.Hierarchy`/`Index` 0x50/0x58 → 0x60/0x68, `TransformHierarchy.ParentIndices` 0x78 → 0x50,
+`LocalTransforms` 0xA8 → 0x60. Symptom: bone names resolve but every position is "(unreadable)".
+`radar-diagnose` prints each bone's native Transform address to start `mem-peek` from; in the
+hierarchy, the parent array is the one where a child's slot holds its parent Transform's index
+(Transform +0x78 points at the parent).
+
 ## Dump format
 
 ```jsonc

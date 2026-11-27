@@ -3,20 +3,20 @@
   "note": "Initial values: live-EFT reference values from MeatyEFTRelease cac603e. Expect different values for SPT builds; regenerate with tools/update-offsets.py.",
   "build": {
     "GameAssembly.dll": {
-      "peTimestamp": "0x6B033115",
-      "imageSize": "0x7E8F000"
+      "peTimestamp": "0x6B085386",
+      "imageSize": "0x7E96000"
     },
     "UnityPlayer.dll": {
-      "peTimestamp": "0x6AEA0BF9",
-      "imageSize": "0x2245000"
+      "peTimestamp": "0x6B03EBBC",
+      "imageSize": "0x2244000"
     }
   },
   "bootstrap": {
-    "typeInfoTableRva": "0x75DA668"
+    "typeInfoTableRva": "0x75E1488"
   },
   "unityRvas": {
-    "gameObjectManager": "0x2054CB0",
-    "allCameras": "0x1F7DB00"
+    "gameObjectManager": "0x2053CB0",
+    "allCameras": "0x1F7CB00"
   },
   "unityLayout": {
     "GameObjectManager.LastActiveNode": "0x18",
@@ -31,10 +31,10 @@
     "Component.ManagedHandle": "0x10",
     "ManagedHandle.Object": "0x0",
     "Component.GameObject": "0x48",
-    "Transform.Hierarchy": "0x50",
-    "Transform.Index": "0x58",
-    "TransformHierarchy.ParentIndices": "0x78",
-    "TransformHierarchy.LocalTransforms": "0xA8",
+    "Transform.Hierarchy": "0x60",
+    "Transform.Index": "0x68",
+    "TransformHierarchy.ParentIndices": "0x50",
+    "TransformHierarchy.LocalTransforms": "0x60",
     "Camera.WorldToCamera": "0x98",
     "Camera.ViewProjection": "0x118",
     "Camera.FieldOfView": "0x198",

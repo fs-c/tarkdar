@@ -87,6 +87,7 @@ struct BoneInfo {
     std::size_t index = 0;
     std::string name;                   // the bone's GameObject name; empty if unreadable
     std::optional<unity::Pose> pose{};  // world pose
+    Address native = 0;                 // native Transform; 0 if unreadable
 };
 // Every bone of the skeleton behind bodyField (up to 1024 bones), read one by one. Empty if the
 // bone list is unreadable. Slow: for diagnostics only.

@@ -289,7 +289,8 @@ void checkSkeletonOf(Report& r, const eft::Game& game, std::string_view who, Add
     if (matched == int(eft::kJointCount)) r.ok(std::format("{}: all {} joint bones named as expected", who, matched));
     if (!listAll) return;
     for (const auto& b : bones)
-        r.info(std::format("bone {:3} {:<28} {}", b.index, b.name.empty() ? "?" : "'" + b.name + "'", offset(b)));
+        r.info(std::format("bone {:3} {:<28} {} (transform {:#x})", b.index, b.name.empty() ? "?" : "'" + b.name + "'", offset(b),
+                           b.native));
 }
 
 void checkSkeleton(Report& r, const std::shared_ptr<const eft::RaidSession>& session) {

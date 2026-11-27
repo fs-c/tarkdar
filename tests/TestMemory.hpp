@@ -31,8 +31,8 @@ inline constexpr unity::Layout kUnity{
     .gameObjectComponents = 0x48, .gameObjectComponentCount = 0x58, .gameObjectName = 0x78,
     .componentEntryStride = 0x10, .componentEntryComponent = 0x8,
     .componentManagedHandle = 0x10, .componentGameObject = 0x48, .managedHandleObject = 0x0,
-    .transformHierarchy = 0x50, .transformIndex = 0x58,
-    .hierarchyParentIndices = 0x78, .hierarchyLocalTransforms = 0xA8,
+    .transformHierarchy = 0x60, .transformIndex = 0x68,
+    .hierarchyParentIndices = 0x50, .hierarchyLocalTransforms = 0x60,
 };
 
 // Bump allocator over a FakeBackend process, with helpers to lay out managed objects.

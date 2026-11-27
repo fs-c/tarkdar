@@ -148,6 +148,7 @@ std::vector<BoneInfo> readAllBones(const Game& game, Address bodyField) {
         const Address managed =
             readPointer(game, list->items + game.managed.layout().arrayData + i * sizeof(Address), Freshness::Fresh);
         if (const auto native = managed ? game.managed.nativePointer(managed, Freshness::Fresh) : std::nullopt) {
+            b.native = *native;
             const Address object = readPointer(game, *native + kUnityLayout.componentGameObject, Freshness::Fresh);
             if (object)
                 b.name = game.mem.readCString(readPointer(game, object + kUnityLayout.gameObjectName, Freshness::Fresh),
